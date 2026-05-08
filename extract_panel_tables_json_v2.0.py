@@ -1,5 +1,5 @@
 # extract_panel_tables_json_v2.0.py
-# 2026-05-07  Jonghyun Park w/ Claude
+# 2026-05-08  Jonghyun Park w/ Claude
 """
 Adobe Workspace project의 모든 panel × 모든 reportlet(테이블)을 walk해서
 /reports API payload 형식의 JSON으로 자동 저장.
@@ -9,10 +9,12 @@ v1 (extract_panel_last_table_json_v1.0.py) 와의 차이:
   · v2: 모든 panel × 모든 reportlet → 각 reportlet 마다 카테고리별 변형 룰 적용
 
 panel context 자동 감지 (panel.name 키워드로):
-  · "[ALL SITES] 2026 ..." → prefix ""           → main/
-  · "[US] 2026 ..."        → prefix "us_"        → us_main/
-  · "[ALL SITES] 2025 ..." → prefix "last_"      → last_main/
-  · "[US] 2025 ..."        → prefix "us_last_"   → last_us_main/
+  · "[ALL SITES] {BASE_YEAR} ..." → prefix ""           → main/
+  · "[US] {BASE_YEAR} ..."        → prefix "us_"        → us_main/
+  · "[ALL SITES] {LAST_YEAR} ..." → prefix "last_"      → last_main/
+  · "[US] {LAST_YEAR} ..."        → prefix "us_last_"   → last_us_main/
+  · 토큰 어느 것도 안 매칭되면 fallback: ("current", "all") → main/
+  · REQUIRED_PANEL_KEYWORDS = [] 로 두면 모든 패널 통과 (토픽 단위 패널 구조 대응)
 
 reportlet 이름 → tb 이름 결정 (CSV 참조 X — 패널이 source of truth):
   · 패널의 SectionHeaderReportlet 으로부터 #_# 번호 결정 (range/fixed/sequential 패턴 인식)
@@ -20,22 +22,24 @@ reportlet 이름 → tb 이름 결정 (CSV 참조 X — 패널이 source of trut
   · slug 화 (Campaign→cmp, S.com→scom, Conversion→cvr 등 abbreviation, noise 패턴 stripping)
   · best_selling / next_page / multi_purchase 는 카테고리별 명시 매핑 사용
   · 결과 파일명 = panel_prefix + (#_# prefix +) slug
-  · 매 실행마다 ref/tb_column_name_mapping_MD_{YYYYMMDD_HHMM}.csv 자동 생성
-    (열: tb / value_n / column. value_n 은 metricContainer.metrics 개수만큼 value1..valueN)
+  · 매 실행마다 ref/tb_column_name_mapping_{YYYYMMDD_HHMM}.csv 자동 생성
+    (열: tb / value_n / column / panel / panel_slug / period)
 
-카테고리별 변형(prior 자동 복제) 룰:
-  · numbered (#_#_*)   : 2026 panel → main + main_prior 2개. 2025 panel → last 1개
-  · best_selling       : 2026 → main 1개. 2025 → last 1개. (prior 없음)
-  · next_page          : 2026 → main 1개. 2025 panel은 스킵 (last/prior 없음)
-  · multi_purchase     : 2026 → main + main_prior 2개. 2025 panel은 스킵
+카테고리별 변형(prior 자동 복제) 룰 — 프로젝트별로 다르므로 NEEDS_PRIOR_BY_CATEGORY /
+SKIP_LAST_BY_CATEGORY dict 로 조정. 대표 패턴:
+  · numbered (#_#_*)   : current panel → main + main_prior 2개. last panel → last 1개
+  · best_selling       : current → main 1개. last → last 1개. (prior 없음)
+  · next_page          : current → main 1개. last panel은 스킵
+  · multi_purchase     : current → main + main_prior 2개. last panel은 스킵
 
 prior 파일은 main reportlet의 payload를 그대로 복사한 템플릿. 실제 prior period 날짜·세그먼트
 교체는 이후 copy_prior_json.py 등 후속 유틸로 처리하는 흐름.
 
 사용:
-  python extract_panel_tables_json_v2.0.py             # 전체 추출 + 저장 (debug dump 기본 ON)
-  python extract_panel_tables_json_v2.0.py --dry-run   # 저장 안 하고 어떤 파일이 생길지만 표시
-  python extract_panel_tables_json_v2.0.py --no-debug  # debug dump 생략 (안정화 후)
+  python extract_panel_tables_json_v2.0.py                # 전체 추출 + 저장 (debug dump 기본 ON)
+  python extract_panel_tables_json_v2.0.py --dry-run      # 저장 안 하고 어떤 파일이 생길지만 표시
+  python extract_panel_tables_json_v2.0.py --no-debug     # debug dump 생략 (안정화 후)
+  python extract_panel_tables_json_v2.0.py --year 2025    # 기준년도 일시 오버라이드 (last 자동 = year-1)
 """
 from __future__ import annotations
 
@@ -66,23 +70,34 @@ PROJECT_ID = "YOUR_PROJECT_ID"   # MD 프로젝트
 # JSON 출력 root: 하위에 main/, last_main/, last_us_main/, main_prior/, us_main/, us_main_prior/ 자동 사용
 JSON_ROOT = Path(__file__).resolve().parent.parent / "json"
 
-# 추출 결과로 자동 생성되는 매핑 CSV. tb / value_n / column 열을 가지며,
+# 추출 결과로 자동 생성되는 매핑 CSV. tb / value_n / column / panel / panel_slug / period 열을 가지며,
 # tb = 출력된 JSON 파일명(.json 제거), value_n = value1..valueN (N = metricContainer.metrics 개수), column = 빈 값
-# 파일명: tb_column_name_mapping_MD_{YYYYMMDD_HHMM}.csv  (실행 시각 timestamp)
+# 파일명: tb_column_name_mapping_{YYYYMMDD_HHMM}.csv  (실행 시각 timestamp)
 # — 결과 안정화되면 timestamp 부분 제거하고 파일명 고정으로 바꿀 예정.
 OUTPUT_CSV_DIR = Path(__file__).resolve().parent.parent / "ref"
-OUTPUT_CSV_NAME_TEMPLATE = "tb_column_name_mapping_MD_{ts}.csv"
+OUTPUT_CSV_NAME_TEMPLATE = "tb_column_name_mapping_{ts}.csv"
 
 # ─── panel 컨텍스트 감지 룰 ────────────────────────────────────────
-CURRENT_YEAR = "2026"   # 패널 이름에 이 문자열 있으면 "이번 시즌"
-LAST_YEAR    = "2025"   # 있으면 "작년 시즌" (last_ prefix)
-US_TAGS      = ["[US]"] # 있으면 us_ prefix
+# 기준년도 — 패널 이름에 이 연도 문자열 있으면 "이번 시즌"으로 처리.
+# 25년 데이터 뽑으면 25로, 26년이면 26으로. 매년 1번 또는 시즌 단위로 수정.
+# CLI에서 --year 2025 로 일시 오버라이드 가능.
+BASE_YEAR    = 2026
+CURRENT_YEAR = str(BASE_YEAR)            # 호환 — 기존 코드 참조용
+LAST_YEAR    = str(BASE_YEAR - 1)        # 자동 도출 (있으면 last_ prefix)
+US_TAGS      = ["[US]"]                  # 있으면 us_ prefix
 
 # 처리 대상 패널 필터 — 패널 이름에 이 키워드들 중 하나가 있어야 처리.
-# (그 외 'Panel' 같은 빈/draft/daily 패널은 자동 스킵)
-REQUIRED_PANEL_KEYWORDS = ["[ALL SITES]", "[US]"]
+# 빈 리스트([])로 두면 모든 패널 통과 (토픽 단위 패널 구조 대응. 예: 'Basic Traffic', 'Cross-Sell').
+# 비어있지 않으면 필터 적용 — 'Panel' 같은 무명/draft/daily 패널 자동 스킵.
+REQUIRED_PANEL_KEYWORDS: list[str] = []
 
 # ─── 카테고리별 변형 생성 룰 ───────────────────────────────────────
+# 프로젝트마다 다름! 예:
+#  · prior 기간이 없는 캠페인 → 모두 False
+#  · last 시즌 데이터 따로 안 뽑는 캠페인 → SKIP_LAST_BY_CATEGORY 모두 True
+#  · US 패널이 main만 있고 prior/last 없는 케이스 → 워크스페이스 패널 자체에 [US] 작년 패널을
+#    안 만든 거라 자동으로 처리 안 됨 (코드에서 추가 설정 불필요)
+
 # 현재 연도 panel reportlet에 대해 _prior 변형 자동 복제할지
 NEEDS_PRIOR_BY_CATEGORY = {
     "numbered":       True,
@@ -109,10 +124,22 @@ SPECIAL_TABLE_NAMES = {
     ("last",    "us",  "best_selling",   ""):       "us_last_best_selling_products",
     ("current", "all", "next_page",      "ttlmx"):  "next_page_ttlmx",
     ("current", "all", "next_page",      "vdda"):   "next_page_vdda",
+    ("current", "all", "next_page",      "total"):  "next_page_total",
+    ("current", "all", "next_page",      "mx"):     "next_page_mx",
+    ("current", "all", "next_page",      "vd"):     "next_page_vd",
+    ("current", "all", "next_page",      "da"):     "next_page_da",
     ("current", "us",  "next_page",      ""):       "us_nextpage",
     ("current", "all", "multi_purchase", ""):       "multi_purchase",
     ("current", "us",  "multi_purchase", ""):       "us_multi_purchase",
 }
+
+# special 카테고리(best_selling/next_page/multi_purchase) 처리 방식.
+# True : SPECIAL_TABLE_NAMES 의 base 이름 그대로 (MD 운영 사본 호환 — 다운스트림 RESHAPE 가
+#        'best_selling_products.json' 같은 고정 파일명 의존 시)
+# False: panel_slug + reportlet_slug 결합 (panel 안에 같은 카테고리 reportlet 여러 개일 때 충돌 방지.
+#        토픽 단위 패널 구조 프로젝트 기본 — 한 패널에 best_selling + multi_purchase + cross_sell 섞여
+#        있고 각각 여러 reportlet이라 base 이름만으론 식별 못 함)
+SPECIAL_USE_BASE_NAME = False
 
 # ─── reportlet 이름 슬러그화 룰 ────────────────────────────────────
 # reportlet 제목 안의 단어 → tb 표기 변환 (CSV의 짧은 이름과 매칭률 높이기 위해)
@@ -316,6 +343,27 @@ def _slugify(name: str) -> str:
     return s.strip("_")
 
 
+def _dedupe_panel_rep(panel_slug: str, rep_slug: str) -> str:
+    """panel_slug 와 rep_slug 합칠 때 token 단위 prefix-suffix overlap 한 번만 사용.
+    예) panel='multi_purchase_best_selling_products', rep='best_selling_products_cmp'
+        → 'multi_purchase_best_selling_products_cmp'  (best/selling/products 3토큰 중복 제거)
+    overlap 없으면 'panel_rep' 단순 결합. 단복수 차이 등 형태 다르면 매칭 안 됨 (의도).
+    """
+    if not panel_slug:
+        return rep_slug
+    if not rep_slug:
+        return panel_slug
+    panel_tok = panel_slug.split("_")
+    rep_tok = rep_slug.split("_")
+    max_k = min(len(panel_tok), len(rep_tok))
+    overlap = 0
+    for k in range(max_k, 0, -1):
+        if panel_tok[-k:] == rep_tok[:k]:
+            overlap = k
+            break
+    return "_".join(panel_tok + rep_tok[overlap:])
+
+
 # ─── 카테고리 감지 ─────────────────────────────────────────────
 def _detect_category(reportlet_name: str, has_assigned_num: bool = False) -> tuple[str, str]:
     """(category, sub_kind) 반환. category∈{'best_selling','next_page','multi_purchase','numbered'}.
@@ -337,12 +385,23 @@ def _detect_category(reportlet_name: str, has_assigned_num: bool = False) -> tup
         return ("best_selling", "")
 
     if any(kw in n for kw in ("next page", "next-page", "nextpage")):
-        # 알파벳만 남긴 flat 으로 sub_kind 검사
+        # sub_kind 검사: 묶음(ttlmx/vdda) 우선, 단독(total/mx/vd/da) 차순.
+        # flat_alpha = 알파벳만 남긴 문자열로 묶음 검사
         flat_alpha = re.sub(r"[^a-z]+", "", n)
         if "ttlmx" in flat_alpha or "totalmx" in flat_alpha:
             return ("next_page", "ttlmx")
         if "vdda" in flat_alpha:
             return ("next_page", "vdda")
+        # 단독 단서 — 단어 단위 검사 (예: 'Next Page - Total' / 'Next Page - MX')
+        words = set(re.findall(r"[a-z]+", n))
+        if "total" in words:
+            return ("next_page", "total")
+        if "mx" in words:
+            return ("next_page", "mx")
+        if "vd" in words:
+            return ("next_page", "vd")
+        if "da" in words:
+            return ("next_page", "da")
         return ("next_page", "")
 
     if any(kw in n for kw in ("multi purchase", "multi-purchase", "multipurchase",
@@ -353,25 +412,35 @@ def _detect_category(reportlet_name: str, has_assigned_num: bool = False) -> tup
 
 
 def _resolve_tb_name(reportlet_name: str, assigned_num: tuple[int, int] | None,
-                     year_kind: str, region_kind: str) -> tuple[str | None, str]:
+                     year_kind: str, region_kind: str,
+                     panel_slug: str = "") -> tuple[str | None, str]:
     """reportlet → (출력 파일명 base, match_kind).
-    match_kind ∈ {'special','slug','none'}.
+    match_kind ∈ {'special','special-slug','slug','none'}.
 
     매칭 흐름:
       1) own #-# 도 없고 assigned_num 도 없는데 special(best/next/multi) 키워드 잡힘
-         → SPECIAL_TABLE_NAMES 명시 매핑
+         · SPECIAL_USE_BASE_NAME=True  → SPECIAL_TABLE_NAMES 명시 매핑 base 이름
+         · SPECIAL_USE_BASE_NAME=False → panel_prefix + panel_slug + reportlet_slug (충돌 방지)
       2) 그 외 → panel_prefix + (assigned_num 있으면 #_#_ prefix) + slug
-    CSV 참조 없음. 출력 후 별도 CSV로 (tb, value_n, column) 자동 생성.
+    CSV 참조 없음. 출력 후 별도 CSV로 (tb, value_n, column, panel, panel_slug, period) 자동 생성.
     """
     category, sub_kind = _detect_category(reportlet_name, has_assigned_num=(assigned_num is not None))
 
-    # special 카테고리는 명시 매핑 우선
+    # special 카테고리 처리
     if category != "numbered":
-        for sub in (sub_kind, ""):
-            key = (year_kind, region_kind, category, sub)
-            if key in SPECIAL_TABLE_NAMES:
-                return SPECIAL_TABLE_NAMES[key], "special"
-        return None, "none"
+        if SPECIAL_USE_BASE_NAME:
+            # 기존 동작 — 명시 매핑 base 이름 사용 (MD 운영 사본 호환)
+            for sub in (sub_kind, ""):
+                key = (year_kind, region_kind, category, sub)
+                if key in SPECIAL_TABLE_NAMES:
+                    return SPECIAL_TABLE_NAMES[key], "special"
+            return None, "none"
+        # panel_slug + reportlet_slug 결합 — 충돌 방지 + 토큰 중복 제거
+        rep_slug = _slugify(reportlet_name)
+        if not rep_slug and not panel_slug:
+            return None, "none"
+        panel_pref = _panel_prefix(year_kind, region_kind)
+        return panel_pref + _dedupe_panel_rep(panel_slug, rep_slug), "special-slug"
 
     # numbered 처리
     panel_pref = _panel_prefix(year_kind, region_kind)
@@ -464,14 +533,77 @@ def _walk_column_tree(root_nodes: list) -> list[dict]:
 
 
 def _build_metric_container(reportlet: dict) -> dict:
+    """columnTree (열) + freeformTable.staticRows (행) 펼쳐서 metricContainer 빌드.
+
+    두 가지 모드 자동 분기:
+      · row × column cross-tab — staticRows 가 있거나 totalsType="allVisits"
+        예) 'Basic Traffic - Campaign' (Mobile/PC/Android/Others/iOS + All_Visits 6행 × 7열)
+        포맷: columnId="metric_id:::position", filters=[STATIC_ROW_COMPONENT_X, "<col_id>"]
+      · column-only — row 정보 없음 (대부분의 reportlet)
+        포맷: columnId="position", filters=["<col_id>", "<col_id_parent>", ...]
+    """
     column_tree = reportlet.get("columnTree") or {}
     leaves = _walk_column_tree(column_tree.get("nodes") or [])
-    sort_cfg = (reportlet.get("freeformTable") or {}).get("sort") or {}
+
+    ff = reportlet.get("freeformTable") or {}
+    static_rows_raw = ff.get("staticRows") or []
+    totals_type = (ff.get("settings") or {}).get("totalsType")
+
+    # row segment ID 리스트 (Segment 타입만; Dimension item 등은 일단 무시)
+    row_segs: list[str] = []
+    for r in static_rows_raw:
+        comp = r.get("component") or {}
+        if comp.get("type") == "Segment" and comp.get("id"):
+            row_segs.append(comp["id"])
+    # totalsType="allVisits" + staticRows 가 있으면 → 가상 'All_Visits' row 1개 append
+    # (staticRows 비어있을 땐 단순 totals 설정일 뿐 row 차원 아님 → column-only 처리)
+    if row_segs and totals_type == "allVisits":
+        row_segs.append("All_Visits")
+
+    sort_cfg = ff.get("sort") or {}
     sort_target_leaf_id = sort_cfg.get("columnId")
     sort_asc = sort_cfg.get("asc")
 
-    metric_filters: list[dict] = []
     metrics: list[dict] = []
+    metric_filters: list[dict] = []
+
+    if row_segs:
+        # ── row × column cross-tab 모드 ──────────────────────────
+        # filter id 패턴 (Adobe Workspace UI 관찰):
+        #   row 측: STATIC_ROW_COMPONENT_{2*global_idx + 1}  (홀수)
+        #   col 측: 전역 정수 카운터 (0, 1, 2, ... 누적)
+        #   columnId position: 2 * global_idx
+        # column tree depth > 1 이면 path 모든 segment 를 deepest→outermost 순서로 emit
+        # (column-only 모드와 동일한 reversed(segments) 패턴)
+        global_idx = 0
+        next_col_id = 0
+        for row_seg in row_segs:
+            for leaf in leaves:
+                row_filter_id = f"STATIC_ROW_COMPONENT_{2 * global_idx + 1}"
+                col_position  = 2 * global_idx
+
+                # column path 의 모든 segment 를 별도 filter로 (deepest→outermost)
+                col_filter_ids: list[str] = []
+                for _sid in reversed(leaf["segments"]):
+                    col_filter_ids.append(str(next_col_id))
+                    next_col_id += 1
+
+                entry = {
+                    "columnId": f"{leaf['metric_id']}:::{col_position}",
+                    "id": leaf["metric_id"],
+                    "filters": [row_filter_id] + col_filter_ids,
+                }
+                metrics.append(entry)
+
+                # metricFilters: row first, then cols in same order
+                metric_filters.append({"id": row_filter_id, "type": "segment", "segmentId": row_seg})
+                for fid, sid in zip(col_filter_ids, reversed(leaf["segments"])):
+                    metric_filters.append({"id": fid, "type": "segment", "segmentId": sid})
+
+                global_idx += 1
+        return {"metrics": metrics, "metricFilters": metric_filters}
+
+    # ── column-only 모드 (기존) ───────────────────────────────────
     next_filter_id = 0
     for leaf in leaves:
         # leaf→root 순서 (Adobe 출력 관례)
@@ -515,11 +647,10 @@ def _build_report_payload(project: dict, panel: dict, reportlet: dict) -> dict:
     funcs = rep_stats.get("functions") or []
     statistics = {"functions": funcs if funcs else STATISTICS_FALLBACK["functions"]}
 
-    return {
+    payload = {
         "rsid": rsid,
         "globalFilters": global_filters,
         "metricContainer": metric_container,
-        "dimension": dimension,
         "settings": settings,
         "statistics": statistics,
         "capacityMetadata": {
@@ -531,6 +662,10 @@ def _build_report_payload(project: dict, panel: dict, reportlet: dict) -> dict:
             ]
         },
     }
+    if dimension:
+        # dimension 비어있으면 키 자체 omit (test_real 패턴 따라감)
+        payload["dimension"] = dimension
+    return payload
 
 
 # ─── 출력 위치 ──────────────────────────────────────────────────
@@ -563,6 +698,12 @@ def _save_json(payload: dict, filename: str, *, dry_run: bool) -> Path:
 
 # ─── 메인 ───────────────────────────────────────────────────────
 def main() -> int:
+    # Windows cp949 콘솔에서 print 시 unicode (→, —, ▶) 깨지지 않도록
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         description="Adobe Workspace project의 모든 panel × reportlet → /reports JSON")
     parser.add_argument("--no-debug", dest="debug", action="store_false",
@@ -570,13 +711,21 @@ def main() -> int:
     parser.set_defaults(debug=True)
     parser.add_argument("--dry-run", dest="dry_run", action="store_true",
                         help="실제 저장 없이 어떤 파일이 생길지만 표시")
+    parser.add_argument("--year", type=int, default=BASE_YEAR,
+                        help=f"기준년도 (default {BASE_YEAR}). last 자동 = year-1")
     args = parser.parse_args()
+
+    # --year 오버라이드 — 전역 갱신
+    global CURRENT_YEAR, LAST_YEAR
+    CURRENT_YEAR = str(args.year)
+    LAST_YEAR    = str(args.year - 1)
 
     ts = datetime.now().strftime("%y%m%d_%H%M")
     headers, gcid = _load_auth_headers()
 
     print(f"[{ts}] extract_panel_tables_json_v2.0")
     print(f"  project    : {PROJECT_ID}")
+    print(f"  base year  : {CURRENT_YEAR}  (last = {LAST_YEAR})")
     print(f"  json root  : {JSON_ROOT}")
     print(f"  output CSV : {OUTPUT_CSV_DIR / OUTPUT_CSV_NAME_TEMPLATE.format(ts=ts)}")
     print()
@@ -595,28 +744,32 @@ def main() -> int:
     saved: list[Path] = []
     skipped: list[tuple[str, str, str]] = []      # (panel_name, reportlet_name, reason)
     unmatched: list[tuple[str, str]] = []         # 카테고리 자체가 결정 안 됨
-    # 출력 CSV용 (tb_name, num_metrics, panel_label, period)
+    # 출력 CSV용 (tb_name, num_metrics, panel_label, panel_slug, period)
     # panel_label: 'all_2026', 'us_2026', 'all_2025', 'us_2025' 같은 region_year 약어
+    # panel_slug:  panel 이름 자체 슬러그 ('basic_traffic', 'cross_sell', 'all_sites_2026_campaign' 등)
     # period:      'campaign' (current year main) / 'prior' (current year _prior) / 'last' (last year)
-    csv_rows: list[tuple[str, int, str, str]] = []
+    csv_rows: list[tuple[str, int, str, str, str]] = []
 
     for p_idx, panel in enumerate(panels):
         p_name = panel.get("name", f"(panel-{p_idx})")
 
-        # 필수 키워드 없는 패널은 스킵 (예: 'Panel' 같은 빈/draft/daily)
-        if not any(kw in p_name for kw in REQUIRED_PANEL_KEYWORDS):
+        # 필수 키워드 없는 패널은 스킵 (예: 'Panel' 같은 빈/draft/daily).
+        # REQUIRED_PANEL_KEYWORDS = [] 면 모든 패널 통과 (토픽 단위 패널 구조 대응).
+        if REQUIRED_PANEL_KEYWORDS and not any(kw in p_name for kw in REQUIRED_PANEL_KEYWORDS):
             print(f"\n[panel skip] panel[{p_idx}] '{p_name}' — 필수 키워드({REQUIRED_PANEL_KEYWORDS}) 없음")
             continue
 
         year_kind, region_kind = _detect_panel_context(p_name)
         prefix = _panel_prefix(year_kind, region_kind)
-        # CSV col4 'panel': region_year 약어 ('all_2026', 'us_2025' 등)
+        # CSV 'panel' 컬럼: region_year 약어 ('all_2026', 'us_2025' 등)
         year_str = CURRENT_YEAR if year_kind == "current" else LAST_YEAR
         panel_label = f"{region_kind}_{year_str}"
+        # CSV 'panel_slug' 컬럼: panel 이름 슬러그 ('basic_traffic' 등)
+        panel_slug = _slugify(p_name)
 
         rep_iter = list(_iter_panel_reportlets(panel))
         print(f"\n▶ panel[{p_idx}] '{p_name}'")
-        print(f"  year={year_kind}  region={region_kind}  prefix='{prefix}'  label='{panel_label}'")
+        print(f"  year={year_kind}  region={region_kind}  prefix='{prefix}'  label='{panel_label}'  slug='{panel_slug}'")
         print(f"  reportlets: {len(rep_iter)}개 (subPanels 순서)")
 
         for r_idx, (assigned_num, r) in enumerate(rep_iter):
@@ -629,7 +782,7 @@ def main() -> int:
                 print(f"    [skip] '{r_name}' ({category}) — last year 스킵 룰")
                 continue
 
-            tb_name, match_kind = _resolve_tb_name(r_name, assigned_num, year_kind, region_kind)
+            tb_name, match_kind = _resolve_tb_name(r_name, assigned_num, year_kind, region_kind, panel_slug)
             if not tb_name:
                 unmatched.append((p_name, r_name))
                 print(f"    [unmatched] '{r_name}' — 카테고리/이름 결정 실패")
@@ -644,29 +797,30 @@ def main() -> int:
             # period: 'campaign' (current year main) / 'last' (last year main)
             main_period = "campaign" if year_kind == "current" else "last"
             saved.append(_save_json(payload, f"{tb_name}.json", dry_run=args.dry_run))
-            csv_rows.append((tb_name, num_metrics, panel_label, main_period))
+            csv_rows.append((tb_name, num_metrics, panel_label, panel_slug, main_period))
 
-            # _prior 변형 (2026 panel + 카테고리 룰 만족 시) — period: 'prior'
+            # _prior 변형 (current year panel + 카테고리 룰 만족 시) — period: 'prior'
             if year_kind == "current" and NEEDS_PRIOR_BY_CATEGORY.get(category, False):
                 saved.append(_save_json(payload, f"{tb_name}_prior.json", dry_run=args.dry_run))
-                csv_rows.append((f"{tb_name}_prior", num_metrics, panel_label, "prior"))
+                csv_rows.append((f"{tb_name}_prior", num_metrics, panel_label, panel_slug, "prior"))
 
     # ── 매핑 CSV 출력 ───────────────────────────────────────────────
     # 각 tb 마다 metric 개수(N)만큼 행 생성 → tb 1개 = N개 row (value1..valueN)
-    # 칼럼: tb / value_n / column / panel / period
-    #   column = 빈 값 (사용자가 채울 영역)
-    #   panel  = 'all_2026' / 'us_2026' / 'all_2025' / 'us_2025'
-    #   period = 'campaign' / 'prior' / 'last'
+    # 칼럼: tb / value_n / column / panel / panel_slug / period
+    #   column     = 빈 값 (사용자가 채울 영역)
+    #   panel      = 'all_2026' / 'us_2026' / 'all_2025' / 'us_2025'  (region_year 약어)
+    #   panel_slug = panel 이름 슬러그 ('basic_traffic', 'cross_sell' 등)
+    #   period     = 'campaign' / 'prior' / 'last'
     csv_out_path = OUTPUT_CSV_DIR / OUTPUT_CSV_NAME_TEMPLATE.format(ts=ts)
-    total_csv_rows = sum(n for _, n, _, _ in csv_rows)
+    total_csv_rows = sum(n for _, n, _, _, _ in csv_rows)
     if not args.dry_run:
         csv_out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(csv_out_path, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
-            w.writerow(["tb", "value_n", "column", "panel", "period"])
-            for tb_name, n, panel_label, period in csv_rows:
+            w.writerow(["tb", "value_n", "column", "panel", "panel_slug", "period"])
+            for tb_name, n, panel_label, panel_slug, period in csv_rows:
                 for i in range(1, n + 1):
-                    w.writerow([tb_name, f"value{i}", "", panel_label, period])
+                    w.writerow([tb_name, f"value{i}", "", panel_label, panel_slug, period])
         print(f"\n[CSV] 매핑 자동생성: {csv_out_path}")
         print(f"      tb {len(csv_rows)}개 × 각 N(metric)개 = 총 {total_csv_rows}행")
     else:
