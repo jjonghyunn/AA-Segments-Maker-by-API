@@ -9,7 +9,7 @@ numeric loginId를 찾기 위한 헬퍼.
 사용 예:
   python find_user_id.py --ims-user-id "B22...e"             # IMS user ID 정확 매칭 (가장 안전)
   python find_user_id.py --login user1                    # login 필드 substring
-  python find_user_id.py --email user1@company_name    # email 필드 substring
+  python find_user_id.py --email 'user1@company_name'    # email 필드 substring
   python find_user_id.py --name "user1"                   # fullName substring
   python find_user_id.py --all                               # 전체 목록 (company_id 사용자 전부)
   python find_user_id.py --all --csv users.csv               # 전체 + CSV dump
