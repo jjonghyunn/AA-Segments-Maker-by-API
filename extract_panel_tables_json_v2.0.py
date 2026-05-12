@@ -504,43 +504,108 @@ def _build_global_filters(panel: dict) -> list[dict]:
     return filters
 
 
+def _comp_name(comp: dict) -> str:
+    """component dict 에서 표시 이름 추출. workspace JSON 은 component.__metaData__.name 에 박혀있음.
+    fallback 순서: __metaData__.name → name → '' (id 는 안 씀 — segments 컬럼은 사람이 읽는 용도)."""
+    if not isinstance(comp, dict):
+        return ""
+    meta_name = (comp.get("__metaData__") or {}).get("name")
+    if isinstance(meta_name, str) and meta_name:
+        return meta_name
+    n = comp.get("name")
+    return n if isinstance(n, str) else ""
+
+
 def _walk_column_tree(root_nodes: list) -> list[dict]:
+    """columnTree 를 leaf 까지 walk. leaf 마다 그 path 의 segment id 리스트 + 이름 리스트 모음.
+
+    leaf entry:
+        metric_id     : leaf 에 매달린 metric id (없으면 leaf emit 안 함)
+        metric_name   : 그 metric 의 표시 이름 (component.__metaData__.name)
+        segments      : root→leaf 경로의 segment ID 리스트 (Adobe 등록 순서)
+        segment_names : 위와 1:1 대응되는 표시 이름 리스트 (CSV segments 컬럼용)
+        leaf_id       : leaf node id
+        position      : walk 순서 (전역 counter)
+    """
     leaves: list[dict] = []
     counter = [-1]
-    def walk(node, segments, metric):
+    def walk(node, segments, segment_names, metric, metric_name):
         counter[0] += 1
         my_pos = counter[0]
         comp = node.get("component") or {}
         ctype = comp.get("type")
         cid = comp.get("id")
         new_segments = list(segments)
+        new_segment_names = list(segment_names)
         new_metric = metric
+        new_metric_name = metric_name
         if ctype == "Segment" and cid:
             new_segments.append(cid)
+            new_segment_names.append(_comp_name(comp))
         elif ctype in ("Metric", "CalculatedMetric") and cid:
             new_metric = cid
+            new_metric_name = _comp_name(comp)
         children = node.get("nodes") or []
         if not children:
             if new_metric is not None:
-                leaves.append({"metric_id": new_metric, "segments": new_segments,
-                               "leaf_id": node.get("id"), "position": my_pos})
+                leaves.append({
+                    "metric_id":     new_metric,
+                    "metric_name":   new_metric_name or "",
+                    "segments":      new_segments,
+                    "segment_names": new_segment_names,
+                    "leaf_id":       node.get("id"),
+                    "position":      my_pos,
+                })
             return
         for child in children:
-            walk(child, new_segments, new_metric)
+            walk(child, new_segments, new_segment_names, new_metric, new_metric_name)
     for n in root_nodes or []:
-        walk(n, [], None)
+        walk(n, [], [], None, None)
     return leaves
 
 
-def _build_metric_container(reportlet: dict) -> dict:
+def _build_metric_container(reportlet: dict) -> tuple[dict, list[list[str]], list[str]]:
     """columnTree (열) + freeformTable.staticRows (행) 펼쳐서 metricContainer 빌드.
 
+    반환: (metric_container_dict, segment_names_per_metric, metric_names_per_metric)
+        · metric_container_dict        — payload['metricContainer'] 에 그대로 들어갈 dict
+        · segment_names_per_metric     — metrics 와 같은 길이의 list.
+                                         각 entry = 해당 metric 셀의 segment 이름 리스트
+                                         (panel-level baseline 은 제외, 순수 cell-specific 만)
+        · metric_names_per_metric      — metrics 와 같은 길이의 list. 각 entry = metric 표시 이름
+
     두 가지 모드 자동 분기:
-      · row × column cross-tab — staticRows 가 있거나 totalsType="allVisits"
-        예) 'Basic Traffic - Campaign' (Mobile/PC/Android/Others/iOS + All_Visits 6행 × 7열)
-        포맷: columnId="metric_id:::position", filters=[STATIC_ROW_COMPONENT_X, "<col_id>"]
-      · column-only — row 정보 없음 (대부분의 reportlet)
-        포맷: columnId="position", filters=["<col_id>", "<col_id_parent>", ...]
+
+      · column-only 모드 — staticRows 없음 (대부분의 reportlet)
+        세그먼트가 열 방향으로만 줄세움. value_n 별 segments = 그 column path 의 세그 1개~N개.
+
+        예) 단순 줄세움 (3열 × 2행):
+                   |  seg_A  |  seg_B  |  seg_C  |
+            -------|---------|---------|---------|
+            Visit  |  val1   |  val2   |  val3   |
+            Vstr   |  val4   |  val5   |  val6   |
+            → value1 segments=[seg_A], value2=[seg_B], value3=[seg_C], …
+
+      · row × column cross-tab 모드 (햄버거) — staticRows 가 있거나 totalsType="allVisits"
+        왼쪽에 row 세그, 위쪽에 col 세그 — 격자형. 각 셀 = row_seg ∩ col_seg (AND 의미).
+        value_n 별 segments = [row_seg, col_seg_outer, col_seg_inner, ...] (row 먼저, 그 다음 col path).
+
+        예) 격자 (3 row 세그 × 2 col 세그 = 6 cells, metric 당 6 values):
+                       |  col_seg_X  |  col_seg_Y  |
+            -----------|-------------|-------------|
+            row_seg_A  |   value1    |   value2    |
+            row_seg_B  |   value3    |   value4    |
+            row_seg_C  |   value5    |   value6    |
+            → value3 = "row_seg_B AND col_seg_X" 셀.
+              segments 컬럼 = "row_seg_B; col_seg_X"  (row 먼저, ; 로 AND)
+
+        column tree depth > 1 이면 col path 의 모든 segment 를 outermost→deepest 순으로 추가.
+        (코드에서는 path 안의 reversed(segments) deepest→outermost 로 emit 하지만,
+         segments 컬럼은 사람 가독성 위해 outermost→deepest 정상 순서로 박음.)
+
+    filter id 패턴:
+      · row × col: columnId="metric_id:::position", filters=[STATIC_ROW_COMPONENT_X, col_id_1, ...]
+      · column-only: columnId="position", filters=["<col_id>", "<col_id_parent>", ...]
     """
     column_tree = reportlet.get("columnTree") or {}
     leaves = _walk_column_tree(column_tree.get("nodes") or [])
@@ -549,16 +614,19 @@ def _build_metric_container(reportlet: dict) -> dict:
     static_rows_raw = ff.get("staticRows") or []
     totals_type = (ff.get("settings") or {}).get("totalsType")
 
-    # row segment ID 리스트 (Segment 타입만; Dimension item 등은 일단 무시)
+    # row segment (ID + 이름) 추출 — Segment 타입만; Dimension item 등은 일단 무시
     row_segs: list[str] = []
+    row_seg_names: list[str] = []
     for r in static_rows_raw:
         comp = r.get("component") or {}
         if comp.get("type") == "Segment" and comp.get("id"):
             row_segs.append(comp["id"])
+            row_seg_names.append(_comp_name(comp))
     # totalsType="allVisits" + staticRows 가 있으면 → 가상 'All_Visits' row 1개 append
     # (staticRows 비어있을 땐 단순 totals 설정일 뿐 row 차원 아님 → column-only 처리)
     if row_segs and totals_type == "allVisits":
         row_segs.append("All_Visits")
+        row_seg_names.append("All_Visits")
 
     sort_cfg = ff.get("sort") or {}
     sort_target_leaf_id = sort_cfg.get("columnId")
@@ -566,18 +634,19 @@ def _build_metric_container(reportlet: dict) -> dict:
 
     metrics: list[dict] = []
     metric_filters: list[dict] = []
+    seg_names_per_metric: list[list[str]] = []
+    metric_names_per_metric: list[str] = []
 
     if row_segs:
-        # ── row × column cross-tab 모드 ──────────────────────────
-        # filter id 패턴 (Adobe Workspace UI 관찰):
+        # ── row × column cross-tab 모드 (격자, 햄버거) ─────────────
+        # 각 cell = row_seg ∩ col_path_segs (AND). filter id 패턴:
         #   row 측: STATIC_ROW_COMPONENT_{2*global_idx + 1}  (홀수)
         #   col 측: 전역 정수 카운터 (0, 1, 2, ... 누적)
         #   columnId position: 2 * global_idx
-        # column tree depth > 1 이면 path 모든 segment 를 deepest→outermost 순서로 emit
-        # (column-only 모드와 동일한 reversed(segments) 패턴)
+        # column tree depth > 1 이면 path 모든 segment 를 deepest→outermost 순서로 emit.
         global_idx = 0
         next_col_id = 0
-        for row_seg in row_segs:
+        for row_seg, row_seg_name in zip(row_segs, row_seg_names):
             for leaf in leaves:
                 row_filter_id = f"STATIC_ROW_COMPONENT_{2 * global_idx + 1}"
                 col_position  = 2 * global_idx
@@ -600,13 +669,18 @@ def _build_metric_container(reportlet: dict) -> dict:
                 for fid, sid in zip(col_filter_ids, reversed(leaf["segments"])):
                     metric_filters.append({"id": fid, "type": "segment", "segmentId": sid})
 
-                global_idx += 1
-        return {"metrics": metrics, "metricFilters": metric_filters}
+                # segments 컬럼용: row 먼저, 그 다음 column path (outermost→deepest 정상 순서)
+                cell_names = [row_seg_name] + list(leaf["segment_names"])
+                seg_names_per_metric.append([n for n in cell_names if n])
+                metric_names_per_metric.append(leaf.get("metric_name", "") or "")
 
-    # ── column-only 모드 (기존) ───────────────────────────────────
+                global_idx += 1
+        return {"metrics": metrics, "metricFilters": metric_filters}, seg_names_per_metric, metric_names_per_metric
+
+    # ── column-only 모드 ────────────────────────────────────────
     next_filter_id = 0
     for leaf in leaves:
-        # leaf→root 순서 (Adobe 출력 관례)
+        # leaf→root 순서 (Adobe 출력 관례) — metricFilters
         filter_ids: list[str] = []
         for sid in reversed(leaf["segments"]):
             fid = str(next_filter_id)
@@ -617,16 +691,23 @@ def _build_metric_container(reportlet: dict) -> dict:
         if sort_target_leaf_id and leaf["leaf_id"] == sort_target_leaf_id:
             entry["sort"] = "desc" if sort_asc is False else "asc"
         metrics.append(entry)
-    return {"metrics": metrics, "metricFilters": metric_filters}
+
+        # segments 컬럼용: outermost→deepest 정상 순서 (가독성)
+        seg_names_per_metric.append([n for n in leaf["segment_names"] if n])
+        metric_names_per_metric.append(leaf.get("metric_name", "") or "")
+
+    return {"metrics": metrics, "metricFilters": metric_filters}, seg_names_per_metric, metric_names_per_metric
 
 
-def _build_report_payload(project: dict, panel: dict, reportlet: dict) -> dict:
+def _build_report_payload(project: dict, panel: dict, reportlet: dict) -> tuple[dict, list[list[str]], list[str]]:
+    """payload dict 와 함께 metric 별 segments(이름 리스트) + metric 이름도 반환.
+    매핑 CSV 의 segments / metric 컬럼용 (panel-level baseline 은 제외, cell-specific 만)."""
     rsid = ((panel.get("reportSuite") or {}).get("id")
             or project.get("rsid")
             or project.get("definition", {}).get("rsid")
             or "")
     global_filters = _build_global_filters(panel)
-    metric_container = _build_metric_container(reportlet)
+    metric_container, seg_names_per_metric, metric_names_per_metric = _build_metric_container(reportlet)
 
     ff = reportlet.get("freeformTable") or {}
     dim_settings = ff.get("dimensionSettings") or []
@@ -665,7 +746,7 @@ def _build_report_payload(project: dict, panel: dict, reportlet: dict) -> dict:
     if dimension:
         # dimension 비어있으면 키 자체 omit (test_real 패턴 따라감)
         payload["dimension"] = dimension
-    return payload
+    return payload, seg_names_per_metric, metric_names_per_metric
 
 
 # ─── 출력 위치 ──────────────────────────────────────────────────
@@ -744,11 +825,18 @@ def main() -> int:
     saved: list[Path] = []
     skipped: list[tuple[str, str, str]] = []      # (panel_name, reportlet_name, reason)
     unmatched: list[tuple[str, str]] = []         # 카테고리 자체가 결정 안 됨
-    # 출력 CSV용 (tb_name, num_metrics, panel_label, panel_slug, period)
+    # 출력 CSV용 (tb_name, seg_names_per_metric, metric_names_per_metric, panel_label, panel_slug, period)
+    # seg_names_per_metric:    길이 N(metric 수). 각 entry = 해당 value_n 셀의 segment 이름 리스트
+    #                          (panel-level baseline 은 제외, cell-specific cross-tab 만).
+    #                          cross-tab row × col 인 경우 row 먼저 → col path 순서.
+    #                          CSV 쓸 때 ';' 로 join — 한 셀에 여러 segment 가 AND 의미로 적용됨.
+    # metric_names_per_metric: 길이 N. 각 entry = 그 value_n 의 metric 표시 이름.
     # panel_label: 'all_2026', 'us_2026', 'all_2025', 'us_2025' 같은 region_year 약어
     # panel_slug:  panel 이름 자체 슬러그 ('basic_traffic', 'cross_sell', 'all_sites_2026_campaign' 등)
     # period:      'campaign' (current year main) / 'prior' (current year _prior) / 'last' (last year)
-    csv_rows: list[tuple[str, int, str, str, str]] = []
+    csv_rows: list[tuple[str, list[list[str]], list[str], str, str, str]] = []
+    # segments 컬럼 join 구분자 — segment 이름에 ':' 가 등장 가능하므로 ';' 사용
+    SEG_JOIN = "; "
 
     for p_idx, panel in enumerate(panels):
         p_name = panel.get("name", f"(panel-{p_idx})")
@@ -788,7 +876,7 @@ def main() -> int:
                 print(f"    [unmatched] '{r_name}' — 카테고리/이름 결정 실패")
                 continue
 
-            payload = _build_report_payload(project, panel, r)
+            payload, seg_names_per_metric, metric_names_per_metric = _build_report_payload(project, panel, r)
             num_metrics = len(payload.get("metricContainer", {}).get("metrics", []))
 
             num_str = f"{assigned_num[0]}-{assigned_num[1]}" if assigned_num else "—"
@@ -797,30 +885,36 @@ def main() -> int:
             # period: 'campaign' (current year main) / 'last' (last year main)
             main_period = "campaign" if year_kind == "current" else "last"
             saved.append(_save_json(payload, f"{tb_name}.json", dry_run=args.dry_run))
-            csv_rows.append((tb_name, num_metrics, panel_label, panel_slug, main_period))
+            csv_rows.append((tb_name, seg_names_per_metric, metric_names_per_metric, panel_label, panel_slug, main_period))
 
             # _prior 변형 (current year panel + 카테고리 룰 만족 시) — period: 'prior'
+            # segments / metric 은 main 과 동일 (prior 는 daterange 만 다른 변형)
             if year_kind == "current" and NEEDS_PRIOR_BY_CATEGORY.get(category, False):
                 saved.append(_save_json(payload, f"{tb_name}_prior.json", dry_run=args.dry_run))
-                csv_rows.append((f"{tb_name}_prior", num_metrics, panel_label, panel_slug, "prior"))
+                csv_rows.append((f"{tb_name}_prior", seg_names_per_metric, metric_names_per_metric, panel_label, panel_slug, "prior"))
 
     # ── 매핑 CSV 출력 ───────────────────────────────────────────────
     # 각 tb 마다 metric 개수(N)만큼 행 생성 → tb 1개 = N개 row (value1..valueN)
-    # 칼럼: tb / value_n / column / panel / panel_slug / period
+    # 칼럼: tb / value_n / column / segments / metric / panel / panel_slug / period
     #   column     = 빈 값 (사용자가 채울 영역)
+    #   segments   = 그 value_n 셀의 segment 이름들을 ';' 로 join.
+    #                column-only 모드면 보통 1개, cross-tab(햄버거)이면 row_seg; col_seg (AND).
+    #                panel-level baseline (LATIN CR 제거, [Global] Excluded EPP 등) 은 제외.
+    #   metric     = 그 value_n 의 metric 표시 이름 ('Visits', 'Orders' 등). 보통 1개.
     #   panel      = 'all_2026' / 'us_2026' / 'all_2025' / 'us_2025'  (region_year 약어)
     #   panel_slug = panel 이름 슬러그 ('basic_traffic', 'cross_sell' 등)
     #   period     = 'campaign' / 'prior' / 'last'
     csv_out_path = OUTPUT_CSV_DIR / OUTPUT_CSV_NAME_TEMPLATE.format(ts=ts)
-    total_csv_rows = sum(n for _, n, _, _, _ in csv_rows)
+    total_csv_rows = sum(len(seg_list) for _, seg_list, _, _, _, _ in csv_rows)
     if not args.dry_run:
         csv_out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(csv_out_path, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
-            w.writerow(["tb", "value_n", "column", "panel", "panel_slug", "period"])
-            for tb_name, n, panel_label, panel_slug, period in csv_rows:
-                for i in range(1, n + 1):
-                    w.writerow([tb_name, f"value{i}", "", panel_label, panel_slug, period])
+            w.writerow(["tb", "value_n", "column", "segments", "metric", "panel", "panel_slug", "period"])
+            for tb_name, seg_names_per_metric, metric_names_per_metric, panel_label, panel_slug, period in csv_rows:
+                for i, (names, m_name) in enumerate(zip(seg_names_per_metric, metric_names_per_metric), start=1):
+                    seg_str = SEG_JOIN.join(names) if names else ""
+                    w.writerow([tb_name, f"value{i}", "", seg_str, m_name or "", panel_label, panel_slug, period])
         print(f"\n[CSV] 매핑 자동생성: {csv_out_path}")
         print(f"      tb {len(csv_rows)}개 × 각 N(metric)개 = 총 {total_csv_rows}행")
     else:
