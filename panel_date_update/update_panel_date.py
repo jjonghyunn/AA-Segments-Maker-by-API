@@ -49,7 +49,7 @@ PROJECT_ID = "YOUR_PROJECT_ID"
 # 패널 이름이 이 정규식에 매칭되는 패널 1개만 처리한다.
 # CAMPAIGN NAME Campaign 패널들이 사이트코드별([DE], [UK] ...)로 여러 개 있을 경우,
 # 사이트코드까지 포함시켜 1개만 매칭되게 좁혀야 함.
-PANEL_NAME_PATTERN = r"\[DE\]\s*campaign_name'?s\s*Day\s*Campaign"
+PANEL_NAME_PATTERN = r"\[AU\]\s*campaign_name'?s\s*Day\s*Campaign"
 
 # 패널 name 및 subtree 안에서 치환할 종료일 문자열
 OLD_END_DATE = "2026-05-10"
