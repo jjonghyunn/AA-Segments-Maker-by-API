@@ -37,7 +37,7 @@ COMPANY_ID = "company_id"
 # 빈 리스트면 모든 Date Range 출력.
 NAME_INCLUDES = [
     "CAMPAIGN NAME",
-    "25 MD",
+    "25 sw",
 ]
 
 # ─── 페이징 ────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 # dateranges/ — Adobe Analytics Date Range 일괄 도구 모음
 
-회사 전체 Date Range 컴포넌트를 **조회 / 갱신 / 생성** 하는 3종 도구. 단일 record CRUD 는 상위 폴더의 `aa_daterange.py` 사용.
+회사 전체 Date Range 컴포넌트를 **조회 / 갱신 / 생성 / upsert** 하는 4종 도구. 단일 record CRUD 는 상위 폴더의 `aa_daterange.py` 사용.
 
-기준 문서 업데이트일: 2026-05-08
+기준 문서 업데이트일: 2026-05-14
 
 ## 도구 비교
 
@@ -11,10 +11,11 @@
 | `aa_dateranges_list.py` | GET `/dateranges?includeType=all` | 회사 전체에서 이름 키워드로 골라서 ID·정의 추출 |
 | `aa_dateranges_update.py` | GET + PUT `/dateranges/{id}` | 사이트별 6값 입력 → 매칭되는 기존 daterange 일괄 갱신 |
 | `aa_dateranges_create.py` | POST `/dateranges` | 사이트별 6값 입력 → 새 daterange 일괄 생성 |
+| `aa_dateranges_upsert.py` | GET + PUT + POST | 사이트별 6값 입력 → fetch 결과와 매칭해서 **이미 있으면 UPDATE / 없으면 CREATE** 자동 분류. `--apply` 전 분류 결과 출력 + y/N input() confirm |
 
 ## 공통 입력 — 사이트별 6값
 
-`aa_dateranges_update.py` / `aa_dateranges_create.py` 공통:
+`aa_dateranges_update.py` / `aa_dateranges_create.py` / `aa_dateranges_upsert.py` 공통:
 
 ```
 SITE, THIS_START, THIS_END, LAST_START, LAST_END, BEFORE_BASE
