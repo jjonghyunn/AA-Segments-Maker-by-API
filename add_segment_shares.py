@@ -5,7 +5,7 @@ Adobe Analytics segment 중 이름에 특정 키워드가 들어간 것들에 �
 
 수행 작업
   1) `/segments?expansion=...` 로 본인 owner 의 segment 전체 GET
-  2) name 또는 description 에 KEYWORD 가 들어간 segment 매칭
+  2) name 또는 description 에 KEYWORDS 의 모든 substring 다 포함 (AND) 인 segment 매칭
   3) 매칭 목록을 사용자에게 보여주고 확인 받음 (안전장치)
   4) 확인 후 각 segment 의 shares 필드에 SHARE_USER_IDS 추가 (기존 shares 보존)
   5) `--apply` 면 실제 PUT, 아니면 dry-run
@@ -49,7 +49,13 @@ OWN_LOGIN_ID = 000000001
 
 # 이 키워드가 name 또는 description 에 substring 으로 포함된 segment 매칭 (case-insensitive)
 # 같은 값을 AA API 의 `name` 쿼리 파라미터로도 보내서 server-side 사전 필터링 (회사 전체 22만 → 수십개로)
-KEYWORD = "d=mid"
+# 이 키워드들 모두 (AND) name 또는 description 에 substring 으로 포함된 segment 만 매칭.
+# server-side `name` 필터는 KEYWORDS[0] 만 사용 (가장 specific 한 키워드를 앞에 둘 것).
+# client-side 에서 나머지 키워드들도 다 매칭하는 segment 만 통과 (AND).
+KEYWORDS: list[str] = [
+    "[CAMPAIGN NAME] cc",
+    # "& order",
+]
 
 # owner.id 화이트리스트 (numeric loginId). 비어있으면 미사용.
 # 예: [000000001, YOUR_LOGIN_ID] → 두 사람 owner segment 만
@@ -77,8 +83,33 @@ OWNER_FULLNAME_INCLUDES: list[str] = [
 #   1) 첫 실행 (dry-run) → segments_matched_YYMMDD_HHMM.csv 생성
 #   2) CSV 열어 share 추가할 segment 의 SegmentId 컬럼 값 복사 → 아래 박기
 #   3) --apply 로 다시 실행 → 그것만 share 추가
+# 한 줄에 하나씩 segment id 박기. 빈 줄 무시. # 으로 시작하면 주석 처리 (해당 id 제외).
+# 큰따옴표·콤마 안 써도 됨 — 아래 자동 parse.
+TARGET_SEGMENT_IDS_RAW = """
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+"""
+
 TARGET_SEGMENT_IDS: list[str] = [
-    "segment_id_placeholder",
+    line.strip()
+    for line in TARGET_SEGMENT_IDS_RAW.splitlines()
+    if line.strip() and not line.strip().startswith("#")
 ]
 
 # 콘솔에 매칭 결과 첫 N 개만 print (나머지는 CSV 만 — 회사 전체 검색 시 매칭 너무 많을 때)
@@ -88,12 +119,13 @@ PRINT_FIRST_N = 5
 # 본인 + 추가 인원
 SHARE_USER_IDS = [
     000000001,   # user1@company_name.com  (Jonghyun Park)
-    # YOUR_LOGIN_ID,   # user2@company_name.com    (User2 Name)
-    # YOUR_LOGIN_ID,   # user3@company_name.com (User3 Name)
-    # YOUR_LOGIN_ID,   # user4@company_name.com        (User4 Name)
-    # YOUR_LOGIN_ID,   # user5@company_name.com    (User5 Name)
-    # YOUR_LOGIN_ID,   # user6@company_name.com     (User6 Name)
-    # YOUR_LOGIN_ID,   # user7@company_name.com  (User7 Name)
+    YOUR_LOGIN_ID,   # user2@company_name.com    (User2 Name)
+    YOUR_LOGIN_ID,   # user3@company_name.com (User3 Name)
+    YOUR_LOGIN_ID,   # user4@company_name.com        (User4 Name)
+    YOUR_LOGIN_ID,   # user5@company_name.com    (User5 Name)
+    YOUR_LOGIN_ID,   # user6@company_name.com     (User6 Name)
+    YOUR_LOGIN_ID,   # user7@company_name.com  (User7 Name)
+    YOUR_LOGIN_ID, # user8_login
 ]
 
 # ════════════════════════════════════════════════════════════════════
@@ -280,14 +312,17 @@ def post_share(headers: dict, gcid: str, component_id: str, share_to_id: int,
     return r.json()
 
 
-def match_segments(segments: list[dict], keyword: str) -> list[dict]:
-    """name 또는 description 에 keyword (case-insensitive) 포함된 segment 만 반환."""
-    kw = keyword.lower()
+def match_segments(segments: list[dict], keywords) -> list[dict]:
+    """name 또는 description 에 keywords 의 모든 substring 이 다 포함된 segment 만 (AND, case-insensitive).
+    keywords 가 str 면 단일 키워드, list 면 AND 매칭."""
+    if isinstance(keywords, str):
+        kws = [keywords.lower()]
+    else:
+        kws = [k.lower() for k in keywords]
     out = []
     for s in segments:
-        name = (s.get("name") or "").lower()
-        desc = (s.get("description") or "").lower()
-        if kw in name or kw in desc:
+        text = ((s.get("name") or "") + " " + (s.get("description") or "")).lower()
+        if all(kw in text for kw in kws):
             out.append(s)
     return out
 
@@ -342,7 +377,7 @@ def main() -> int:
 
     now = datetime.now()
     print(f"[{now:%Y-%m-%d %H:%M:%S}] segment share 일괄 추가 도구")
-    print(f"  KEYWORD                 : {KEYWORD!r}  (server-side name + client substring 둘 다)")
+    print(f"  KEYWORDS                : {KEYWORDS}  (AND 매칭. server-side name = KEYWORDS[0])")
     print(f"  RSID 필터               : {RSID!r}  (빈 문자열 = 전체 RSID)")
     print(f"  OWNER_ID_FILTER         : {OWNER_ID_FILTER}")
     print(f"  OWNER_FULLNAME_INCLUDES : {OWNER_FULLNAME_INCLUDES}")
@@ -352,8 +387,9 @@ def main() -> int:
     headers, gcid = load_auth_headers()
 
     # server-side name 필터로 22만 → 수십개로 사전 축소 (회사 전체에서 substring 일치 명만)
-    print(f"\nGET /segments (RSID={RSID!r}, includeType=all, server-side name={KEYWORD!r}) ...")
-    server_filtered = list_segments(headers, gcid, RSID, name_filter=KEYWORD)
+    server_filter_keyword = KEYWORDS[0] if KEYWORDS else ""
+    print(f"\nGET /segments (RSID={RSID!r}, includeType=all, server-side name={server_filter_keyword!r}) ...")
+    server_filtered = list_segments(headers, gcid, RSID, name_filter=server_filter_keyword)
     print(f"  server-side name 필터 후 {len(server_filtered)}개")
 
     # AA API 가 owner.name/login 안 채워서 aa_user_id_*.csv 로 loginId → name/login lookup 보강
@@ -364,9 +400,9 @@ def main() -> int:
     else:
         print(f"  ⚠️ aa_user_id CSV 못찾음 — owner.name/login 비어있을 수 있음 (find_user_id.py --all --csv ... 로 생성)")
 
-    # client-side: name 또는 description 에 KEYWORD substring 재확인 (description 안에 든 케이스 보강)
-    keyword_matches = match_segments(server_filtered, KEYWORD)
-    print(f"  client-side name/description KEYWORD 매칭: {len(keyword_matches)}개")
+    # client-side: name 또는 description 에 KEYWORDS 의 모든 substring 다 포함 (AND)
+    keyword_matches = match_segments(server_filtered, KEYWORDS)
+    print(f"  client-side AND 매칭 ({KEYWORDS}): {len(keyword_matches)}개")
 
     # owner 필터 — fullName substring 또는 id 화이트리스트 (OR)
     before_owner = list(keyword_matches)   # owner 필터 전 보존 (진단용)
@@ -390,7 +426,7 @@ def main() -> int:
             print(f"\n   고유 owner.name 값들 ({len(unique_names)}개): {unique_names[:20]}")
             print(f"   고유 owner.id 값들   ({len(unique_ids)}개): {unique_ids[:20]}")
         print("\n   확인: (1) RSID (현재값: {!r})  /  RSID=\"\" 로 두면 모든 RSID".format(RSID))
-        print("        (2) KEYWORD 가 정확한 substring 인지 (name/description case-insensitive)")
+        print("        (2) KEYWORDS 의 substring 들이 정확한지 (모두 AND 매칭, case-insensitive)")
         print("        (3) OWNER_FULLNAME_INCLUDES / OWNER_ID_FILTER 너무 좁지 않은지 (위 진단 참고)")
         return 1
 
