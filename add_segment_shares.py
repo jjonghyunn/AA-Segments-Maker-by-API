@@ -53,7 +53,7 @@ OWN_LOGIN_ID = 000000001
 # server-side `name` 필터는 KEYWORDS[0] 만 사용 (가장 specific 한 키워드를 앞에 둘 것).
 # client-side 에서 나머지 키워드들도 다 매칭하는 segment 만 통과 (AND).
 KEYWORDS: list[str] = [
-    "[CAMPAIGN NAME] cc",
+    "[CAMPAIGN NAME]",
     # "& order",
 ]
 
@@ -104,6 +104,58 @@ segment_id_placeholder
 segment_id_placeholder
 segment_id_placeholder
 segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+
 """
 
 TARGET_SEGMENT_IDS: list[str] = [
@@ -456,11 +508,16 @@ def main() -> int:
             own = s.get("owner") or {}
             shares = s.get("shares") or []
             share_ids = "|".join(str(normalize_share_id(sh)) for sh in shares if normalize_share_id(sh))
+            # tags — string list 또는 dict list ({id,name}) 둘 다 대응 (AA API 응답 형식 가변)
+            tag_names = [
+                (t.get("name") or t.get("id") or "") if isinstance(t, dict) else str(t)
+                for t in (s.get("tags") or [])
+            ]
             w.writerow([
                 flag, s.get("id", ""), s.get("name", ""), s.get("rsid", ""),
                 own.get("id", ""), own.get("login", ""), own.get("name", ""),
                 s.get("modified", ""), s.get("description", ""),
-                "|".join(s.get("tags") or []),
+                "|".join(t for t in tag_names if t),
                 len(shares), share_ids,
             ])
     print(f"\n📝 매칭 결과 CSV: {csv_path.name} ({len(keyword_matches)}행)")

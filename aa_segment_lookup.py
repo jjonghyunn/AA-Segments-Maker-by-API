@@ -1,15 +1,36 @@
 # segment_lookup.py
 # 2026-05-15  Jonghyun Park w/ Claude
 # updated: 2026-05-15 13:00  — owner_name을 aa_user_id CSV에서 보강
+# updated: 2026-05-18       — --search 키워드 nargs='+' 로 AND 매칭 (공백 구분), 사용법 주석 보완
 """
 세그먼트 ID 리스트 → 기본 정보 CSV + DSL 구조 파일(.dsl) 출력.
 
 .dsl 파일은 aa_create_segment_v2.py의 입력으로 바로 재사용 가능.
 
 사용법:
+  # ID 직접 지정 (여러 개 공백 구분)
   python segment_lookup.py s200001591_abc123 s200001591_def456
+
+  # ID list 파일에서 읽기 (한 줄에 하나)
   python segment_lookup.py --from-file segment_ids.txt
+
+  # 이름 키워드 검색 (1 개)
+  python segment_lookup.py --search "campaign"
   python segment_lookup.py --search "campaign" --rsid rsid_placeholder
+
+  # 이름 키워드 AND 검색 (여러 개 — 공백 구분, 각 quote 로 감쌈)
+  python segment_lookup.py --search "[CAMPAIGN NAME]" "recomm"               # AND 매칭
+  python segment_lookup.py --search "[CAMPAIGN NAME]" "US_CC" --limit 500
+
+  주의: --search 키워드 list 는 **공백 구분** (콤마 박지 말 것).
+        PowerShell 에서 콤마 (`,`) 는 array operator 라 native exe 전달 시 처리 불일치 가능.
+        ❌ --search "[CAMPAIGN NAME]","recomm"     (잘못 — single string 으로 들어갈 수 있음)
+        ✅ --search "[CAMPAIGN NAME]" "recomm"     (정확 — argparse nargs='+' 가 공백 구분)
+
+  검색 동작:
+    · 첫 키워드  → AA API server-side `name` 파라미터로 사전 필터 (가장 specific 한 것 앞에 둘 것)
+    · 나머지 키워드 → client-side 에서 case-insensitive substring 으로 AND 추가 매칭 (name + description)
+    · --limit (default 50) — server-side 사전 필터 결과 상한. AND 결과가 적으면 limit 늘리기.
 """
 from __future__ import annotations
 
@@ -345,26 +366,67 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
     }
 
 
-def _search_segments(headers: dict, gcid: str, keyword: str,
+def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
                      rsid: str = "", limit: int = 50) -> list[dict]:
-    """GET /segments — 이름 키워드로 검색. 결과를 _lookup_segment 포맷으로 반환."""
+    """GET /segments — 이름 키워드 검색. 결과를 _lookup_segment 포맷으로 반환.
+
+    keywords:
+      · str → 단일 키워드 (기존 동작)
+      · list[str] → 모두 (AND) substring 매칭. 첫 키워드만 server-side `name` 필터 (가장 specific 한 거 앞에 둘 것),
+                     나머지는 client-side 에서 case-insensitive substring AND 추가 매칭.
+    """
+    if isinstance(keywords, str):
+        kw_list = [keywords]
+    else:
+        kw_list = [k for k in (keywords or []) if k]
+    if not kw_list:
+        return []
     url = f"https://analytics.adobe.io/api/{gcid}/segments"
-    params: dict[str, Any] = {
+    base_params: dict[str, Any] = {
         "expansion": "definition,name,description,owner,tags,reportSuiteName",
-        "name": keyword,
-        "limit": limit,
+        "name": kw_list[0],          # server-side: 첫 키워드만 (AA API 가 단일값 받음)
         "includeType": "all",
     }
     if rsid:
-        params["rsids"] = rsid
+        base_params["rsids"] = rsid
 
-    r = requests.get(url, headers=headers, params=params, timeout=60)
-    if r.status_code != 200:
-        print(f"ERROR: 검색 실패 — {r.status_code} {r.reason}: {r.text[:200]}")
-        return []
-
-    data = r.json()
-    items = data.get("content", [])
+    # paging — limit 결과 받을 때까지 페이지 순회. AA API max page size = 1000.
+    PAGE_SIZE = 1000
+    MAX_PAGES = 50
+    items: list[dict] = []
+    for page in range(MAX_PAGES):
+        params = {**base_params, "limit": PAGE_SIZE, "page": page}
+        r = requests.get(url, headers=headers, params=params, timeout=60)
+        if r.status_code != 200:
+            print(f"ERROR: 검색 실패 page {page} — {r.status_code} {r.reason}: {r.text[:200]}")
+            break
+        data = r.json()
+        rows = data.get("content", [])
+        if not rows:
+            break
+        items.extend(rows)
+        is_last = bool(data.get("lastPage")) or len(rows) < PAGE_SIZE
+        if len(items) >= limit and limit > 0:
+            items = items[:limit] if not isinstance(keywords, list) or len(keywords) <= 1 else items
+            # AND 매칭이 더 있을 수 있어서 client-side 필터 전엔 자르지 말고 전체 유지
+            if isinstance(keywords, list) and len(keywords) > 1:
+                pass   # 그냥 계속 받음 (AND 필터 후 자름)
+            else:
+                break
+        if is_last:
+            break
+    if limit and not (isinstance(keywords, list) and len(keywords) > 1):
+        items = items[:limit]
+    # client-side AND — 나머지 키워드들 모두 (case-insensitive) 매칭
+    extra_kws = [k.lower() for k in kw_list[1:]]
+    if extra_kws:
+        items = [
+            it for it in items
+            if all(kw in (it.get("name", "") + " " + (it.get("description") or "")).lower() for kw in extra_kws)
+        ]
+    # AND 필터 후 limit 자름 (multi keyword 케이스)
+    if limit and isinstance(keywords, list) and len(keywords) > 1:
+        items = items[:limit]
     results: list[dict] = []
     for item in items:
         owner = item.get("owner", {})
@@ -390,14 +452,23 @@ def _search_segments(headers: dict, gcid: str, keyword: str,
 # ═══════════════════════════════════════════════════════════════════
 
 def main() -> int:
+    # Windows cp949 콘솔에서도 em dash / 한글 안 깨지게
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         description="세그먼트 ID 조회 또는 이름 키워드 검색 → CSV + DSL 구조 파일 출력"
     )
     parser.add_argument("ids", nargs="*", help="segment ID(s)")
     parser.add_argument("--from-file", help="segment ID 목록 파일 (한 줄에 하나)")
-    parser.add_argument("--search", help="세그먼트 이름 키워드 검색")
+    parser.add_argument("--search", nargs="+", default=None,
+                        help="세그먼트 이름 키워드 검색 (여러 개 박으면 AND 매칭). "
+                             "공백 구분 (콤마 X). 첫 키워드만 server-side 필터, 나머지는 client-side AND. "
+                             "예: --search \"[CAMPAIGN NAME]\" \"recomm\"  /  --search \"[CAMPAIGN NAME]\" \"US_CC\" --limit 500")
     parser.add_argument("--rsid", default="", help="검색 시 RSID 필터 (선택)")
-    parser.add_argument("--limit", type=int, default=50, help="검색 결과 최대 건수 (기본 50)")
+    parser.add_argument("--limit", type=int, default=500, help="검색 결과 최대 건수 (기본 500)")
     args = parser.parse_args()
 
     # ID 수집
@@ -426,7 +497,8 @@ def main() -> int:
     requested_at = now.strftime("%Y-%m-%d %H:%M:%S")
 
     if search_mode:
-        print(f"[{requested_at}] segment search — \"{args.search}\"")
+        kw_disp = " AND ".join(repr(k) for k in args.search) if isinstance(args.search, list) else repr(args.search)
+        print(f"[{requested_at}] segment search — {kw_disp}")
         if args.rsid:
             print(f"  RSID filter: {args.rsid}")
     else:

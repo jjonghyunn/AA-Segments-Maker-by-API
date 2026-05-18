@@ -1,19 +1,23 @@
 # update_panel_date.py
-# 2026-05-11  Jonghyun Park w/ Claude
+# 2026-05-18  Jonghyun Park w/ Claude
 """
-Adobe Analytics Workspace 프로젝트의 특정 패널 1개에 대해
-종료일을 일괄 치환하는 도구.
+Adobe Analytics Workspace 프로젝트의 PANEL_NAME_PATTERN 에 매칭되는 모든 패널에
+대해 시작일/종료일을 일괄 치환하는 도구.
 
 수행 작업
-  1) 패널 name 안의 OLD_END_DATE 문자열 → NEW_END_DATE 로 치환
-  2) 그 패널의 subtree(JSON)를 재귀 탐색해서 dateRange / reportRange /
-     endTimestamp / endDate 등 어디에 박혀있든 OLD_END_DATE → NEW_END_DATE 로
-     문자열 치환
+  1) 매칭된 각 패널 subtree(JSON)를 재귀 탐색. 기존 날짜 값 몰라도 OK.
+     · 값이 ISO interval format "<ISO>/<ISO>" 면 (키 이름 무관) 시작/끝 둘 다 교체.
+       예: "dateRange": "2026-04-20T00:00:00/2026-04-20T23:59:59"
+            → "<NEW_START>T00:00:00/<NEW_END>T23:59:59"
+     · 그 외 단일 ISO 날짜 값이고 key 이름이 start* 계열이면 → NEW_START_DATE 로,
+       end* 계열이면 → NEW_END_DATE 로 교체.
+  2) OLD_*_DATE 가 설정돼 있으면 추가로 패널 name 안의 OLD → NEW substring 치환.
+  3) 모든 패널 변경을 합쳐 project 1회 PUT.
 
 설계 원칙
-  · 1개 패널만 정확히 매칭되어야 진행 (0개 또는 2개 이상이면 abort)
+  · 매칭 패널 0개면 abort. 1개 이상이면 모두 처리.
   · 기본은 dry-run (실제 PUT 안 함). 실제 반영하려면 --apply
-  · 다른 패널/프로젝트 메타데이터는 손대지 않음 — 매칭된 패널 subtree 안에서만 치환
+  · 매칭 안 된 패널/프로젝트 메타데이터는 손대지 않음 — 매칭 패널 subtree 안에서만 치환
 
 사용 예
   python update_panel_date.py             # dry-run (안전 확인용)
@@ -46,14 +50,25 @@ COMPANY_ID = "company_id"
 # 대상 Workspace project ID (URL 의 /workspace/edit/<여기> 부분)
 PROJECT_ID = "YOUR_PROJECT_ID"
 
-# 패널 이름이 이 정규식에 매칭되는 패널 1개만 처리한다.
-# CAMPAIGN NAME Campaign 패널들이 사이트코드별([DE], [UK] ...)로 여러 개 있을 경우,
-# 사이트코드까지 포함시켜 1개만 매칭되게 좁혀야 함.
-PANEL_NAME_PATTERN = r"\[AU\]\s*campaign_name'?s\s*Day\s*Campaign"
+# 패널 이름이 이 정규식에 매칭되는 모든 패널을 일괄 치환한다 (0개면 abort).
+# 1개만 좁히고 싶으면 사이트코드 등으로 좁힐 것.
+# 주의: 정규식에서 `[` `]` 는 character class 이므로 literal 매칭하려면 escape 필요.
+#   ✗ r"[Global] Content Analysis"   → "G/l/o/b/a 중 한 글자" 로 해석됨
+#   ✓ r"\[Global\] Content Analysis" → literal "[Global]" 매칭
+# 예시:
+#   r"\bContent Analysis\b"                — 모든 사이트의 Content Analysis 패널 일괄
+#   r"\[AU\]\s*campaign_name'?s\s*Day\s*Campaign" — 특정 사이트 1개만
+#   r"\[Global\]\s*Content Analysis"       — Global 사이트의 Content Analysis 만
+PANEL_NAME_PATTERN = r"\bContent Analysis\b"
 
-# 패널 name 및 subtree 안에서 치환할 종료일 문자열
-OLD_END_DATE = "2026-05-10"
-NEW_END_DATE = "2026-05-11"
+# 시작/종료일 — 트리 안 start*/end* 키의 값을 이 값으로 교체 (기존 값 무관).
+NEW_START_DATE = "2026-05-11"
+NEW_END_DATE   = "2026-05-17"
+
+# (선택) 패널 name 텍스트 안의 옛 날짜 substring 치환용. 비워두면 name 안 건드림.
+# 트리 안 dateRange / reportRange 등은 위 NEW_*_DATE 로 키 기반 교체되므로 무관.
+OLD_START_DATE = ""   # 예: "2026-05-01"
+OLD_END_DATE   = ""   # 예: "2026-05-11"
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용 — 보통 수정 불필요
@@ -61,6 +76,20 @@ NEW_END_DATE = "2026-05-11"
 
 API_BASE = "https://analytics.adobe.io/api"
 SCRIPT_DIR = Path(__file__).parent
+
+# 날짜 key 패턴 — 트리 워크 중 이 패턴에 매칭되는 key 의 값을 교체.
+# 매칭 예: start, startDate, startDateTime, startTimestamp, end, endDate, ...
+# startMs / endMs (millis) 도 키 매칭은 되지만 값에 ISO 날짜 없으니 자동 패스.
+START_KEY_RE = re.compile(r"^start(?:Date|DateTime|Timestamp|Ms)?$", re.IGNORECASE)
+END_KEY_RE   = re.compile(r"^end(?:Date|DateTime|Timestamp|Ms)?$",   re.IGNORECASE)
+ISO_DATE_RE  = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+# ISO 8601 Interval 형식 — "<시작ISO>/<끝ISO>" 단일 문자열 (Adobe Workspace 의
+# dateRange 값이 보통 이 형태로 박힘. 예: "2026-04-20T00:00:00/2026-04-20T23:59:59").
+# 키 이름과 무관하게 이 패턴이 매칭되면 시작/끝 날짜 부분만 NEW_*_DATE 로 교체.
+ISO_INTERVAL_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2}(?:T[\d:.+\-Z]*)?)/(\d{4}-\d{2}-\d{2}(?:T[\d:.+\-Z]*)?)$"
+)
 
 
 def load_auth_headers() -> tuple[dict, str]:
@@ -128,7 +157,7 @@ def find_matching_panels(project: dict, pattern: str) -> list[tuple[int, int, di
 
 def replace_in_subtree(node, old: str, new: str) -> int:
     """node 트리(dict/list)를 재귀 탐색하면서 문자열 안의 old → new 치환.
-    치환된 누적 횟수 반환."""
+    치환된 누적 횟수 반환. (name 안 OLD_*_DATE substring 치환용 등)"""
     count = 0
     if isinstance(node, dict):
         for k, v in list(node.items()):
@@ -142,6 +171,56 @@ def replace_in_subtree(node, old: str, new: str) -> int:
         for item in node:
             count += replace_in_subtree(item, old, new)
     return count
+
+
+def replace_date_fields(node, new_start: str, new_end: str) -> tuple[int, int, int, list[str]]:
+    """트리 재귀 탐색하면서 날짜 값 교체. 기존 날짜 값 무관.
+    교체 대상:
+      A) 값이 ISO interval format "<ISO>/<ISO>" 인 경우 (키 이름 무관) — 시작/끝 둘 다.
+         예: "dateRange": "2026-04-20T00:00:00/2026-04-20T23:59:59"
+      B) 값에 단일 ISO 날짜만 있고 key 이름이 start* 매칭 → new_start 로.
+      C) 값에 단일 ISO 날짜만 있고 key 이름이 end* 매칭 → new_end 로.
+    Returns (n_interval, n_start, n_end, samples_for_log)."""
+    counters = {"interval": 0, "start": 0, "end": 0}
+    samples: list[str] = []
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            for k, v in list(obj.items()):
+                if isinstance(v, str):
+                    # A) ISO interval format — 키 이름 무관
+                    m = ISO_INTERVAL_RE.match(v)
+                    if m:
+                        sp = ISO_DATE_RE.sub(new_start, m.group(1), count=1)
+                        ep = ISO_DATE_RE.sub(new_end,   m.group(2), count=1)
+                        new_v = f"{sp}/{ep}"
+                        if new_v != v:
+                            obj[k] = new_v
+                            counters["interval"] += 1
+                            samples.append(f"  [interval] {k}: {v!r} → {new_v!r}")
+                        continue
+                    # B/C) 단일 ISO 날짜 + start*/end* 키 매칭
+                    if ISO_DATE_RE.search(v):
+                        if START_KEY_RE.search(k):
+                            new_v = ISO_DATE_RE.sub(new_start, v)
+                            if new_v != v:
+                                obj[k] = new_v
+                                counters["start"] += 1
+                                samples.append(f"  [start]    {k}: {v!r} → {new_v!r}")
+                        elif END_KEY_RE.search(k):
+                            new_v = ISO_DATE_RE.sub(new_end, v)
+                            if new_v != v:
+                                obj[k] = new_v
+                                counters["end"] += 1
+                                samples.append(f"  [end]      {k}: {v!r} → {new_v!r}")
+                elif isinstance(v, (dict, list)):
+                    walk(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item)
+
+    walk(node)
+    return counters["interval"], counters["start"], counters["end"], samples
 
 
 def collect_date_strings(node, found: list[str]) -> None:
@@ -199,56 +278,91 @@ def main() -> int:
     if not matches:
         print(f"\n❌ 패턴 r\"{PANEL_NAME_PATTERN}\" 에 매칭되는 패널 없음 — abort")
         return 1
-    if len(matches) > 1:
-        print(f"\n❌ {len(matches)}개 매칭 — 1개만 매칭되도록 PANEL_NAME_PATTERN 좁혀주세요:")
-        for ws_idx, p_idx, p in matches:
-            print(f"     [ws{ws_idx} p{p_idx}] {p.get('name')}")
-        return 1
 
-    ws_idx, p_idx, panel = matches[0]
-    print(f"\n✅ 매칭 패널: [ws{ws_idx} p{p_idx}] {panel.get('name')}")
+    print(f"\n✅ {len(matches)}개 매칭 패널:")
+    for ws_idx, p_idx, p in matches:
+        print(f"     [ws{ws_idx} p{p_idx}] {p.get('name')}")
 
-    if args.dump:
-        dump_path = SCRIPT_DIR / f"panel_dump_{PROJECT_ID[:8]}_ws{ws_idx}_p{p_idx}_{timestamp}.json"
-        dump_path.write_text(
-            json.dumps(panel, ensure_ascii=False, indent=2), encoding="utf-8"
+    # 각 매칭 패널 처리 — deepcopy + 치환 후 project tree 에 반영, 마지막에 1회 PUT
+    total_interval = 0
+    total_start = 0
+    total_end = 0
+    total_name = 0
+    for ws_idx, p_idx, panel in matches:
+        if args.dump:
+            dump_path = SCRIPT_DIR / f"panel_dump_{PROJECT_ID[:8]}_ws{ws_idx}_p{p_idx}_{timestamp}.json"
+            dump_path.write_text(
+                json.dumps(panel, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            print(f"💾 패널 JSON 덤프 저장: {dump_path}")
+
+        before_dates: list[str] = []
+        collect_date_strings(panel, before_dates)
+        name_before = panel.get("name", "")
+        print(f"\n  ── [ws{ws_idx} p{p_idx}] {name_before} ──")
+        print(f"  subtree 안 ISO 날짜 문자열 (최대 10개):")
+        for s in before_dates[:10]:
+            print(f"    - {s}")
+        if len(before_dates) > 10:
+            print(f"    ... ({len(before_dates) - 10}개 더 있음)")
+
+        panel_after = copy.deepcopy(panel)
+
+        # 1) 트리 교체 — interval 형식 "<ISO>/<ISO>" 값 + start*/end* 키 값
+        n_interval, n_start, n_end, samples = replace_date_fields(
+            panel_after, NEW_START_DATE, NEW_END_DATE
         )
-        print(f"💾 패널 JSON 덤프 저장: {dump_path}")
+        if samples:
+            print(f"  트리 교체 ({n_interval} interval + {n_start} start + {n_end} end):")
+            for s in samples[:20]:
+                print(s)
+            if len(samples) > 20:
+                print(f"    ... ({len(samples) - 20}개 더)")
+        else:
+            print(f"  트리 교체: 변경 없음 (interval / start* / end* 매칭 없음)")
 
-    before_dates: list[str] = []
-    collect_date_strings(panel, before_dates)
-    print(f"\n매칭 패널 subtree 안 ISO 날짜 문자열 (중복 포함, 최대 30개):")
-    for s in before_dates[:30]:
-        print(f"  - {s}")
-    if len(before_dates) > 30:
-        print(f"  ... ({len(before_dates) - 30}개 더 있음)")
+        # 2) (선택) name 안 OLD substring 치환 — OLD_*_DATE 비어있으면 건너뜀
+        n_name_this = 0
+        nm = panel_after.get("name", "") or ""
+        if OLD_START_DATE and OLD_START_DATE in nm:
+            n_name_this += nm.count(OLD_START_DATE)
+            nm = nm.replace(OLD_START_DATE, NEW_START_DATE)
+        if OLD_END_DATE and OLD_END_DATE in nm:
+            n_name_this += nm.count(OLD_END_DATE)
+            nm = nm.replace(OLD_END_DATE, NEW_END_DATE)
+        panel_after["name"] = nm
+        name_after = nm
+        if name_before != name_after:
+            print(f"  name 변경: {name_before!r} → {name_after!r}")
 
-    panel_after = copy.deepcopy(panel)
-    n_replaced = replace_in_subtree(panel_after, OLD_END_DATE, NEW_END_DATE)
+        total_interval += n_interval
+        total_start += n_start
+        total_end += n_end
+        total_name += n_name_this
 
-    print(f"\n--- 치환 결과 ---")
-    print(f"  OLD → NEW : {OLD_END_DATE} → {NEW_END_DATE}")
-    print(f"  치환 횟수 : {n_replaced}")
+        project["definition"]["workspaces"][ws_idx]["panels"][p_idx] = panel_after
 
-    if n_replaced == 0:
-        print(f"\n⚠️ 패널 subtree 에 '{OLD_END_DATE}' 가 없어 치환할 게 없습니다.")
-        print(f"   OLD_END_DATE 값을 위 ISO 날짜 목록과 대조해서 확인하세요.")
+    print(f"\n--- 합계 ---")
+    print(f"  NEW_START_DATE    : {NEW_START_DATE}")
+    print(f"  NEW_END_DATE      : {NEW_END_DATE}")
+    print(f"  매칭 패널         : {len(matches)}개")
+    print(f"  interval 교체     : {total_interval}건 (<ISO>/<ISO> 형식)")
+    print(f"  start 키 교체     : {total_start}건")
+    print(f"  end 키 교체       : {total_end}건")
+    print(f"  name substring    : {total_name}건 (OLD_*_DATE 비어있으면 0)")
+
+    if total_interval + total_start + total_end + total_name == 0:
+        print(f"\n⚠️ 매칭된 어느 패널에도 교체할 날짜 값이 없습니다.")
+        print(f"   --dump 로 패널 JSON 떠서 start/end 키 구조 확인해보세요.")
         return 1
-
-    print(f"\n--- name 변화 ---")
-    print(f"  BEFORE: {panel.get('name')}")
-    print(f"  AFTER : {panel_after.get('name')}")
 
     if not args.apply:
         print("\nℹ️ Dry-run 모드 — 실제 PUT 안 함. 적용하려면 --apply")
         return 0
 
-    # 실제 적용: project.definition.workspaces[ws_idx].panels[p_idx] 를 panel_after 로 교체 후 PUT
-    project["definition"]["workspaces"][ws_idx]["panels"][p_idx] = panel_after
-
     print(f"\nPUT project {PROJECT_ID} ...")
     put_project(headers, gcid, PROJECT_ID, project)
-    print(f"\n✅ 완료 — {OLD_END_DATE} → {NEW_END_DATE} ({n_replaced}회 치환)")
+    print(f"\n✅ 완료 — start={NEW_START_DATE} end={NEW_END_DATE} ({len(matches)}개 패널)")
     print(f"   AA Workspace 에서 새로고침해서 확인하세요.")
     return 0
 

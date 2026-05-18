@@ -2,6 +2,10 @@
 # 2026-05-15  Jonghyun Park w/ Claude
 # updated: 2026-05-15  — v2.1 기반. --input 상대경로일 때 스크립트 폴더 기준 fallback 추가
 #                       (cwd 가 어디든 segment_maker 폴더의 segments.csv 자동 발견)
+# updated: 2026-05-18  — segment-ref cache patch (sequence-prefix 변환) +
+#                       --update-or-create (mixed PUT/POST) +
+#                       --lookup-by-name (segment_id 빈 row 의 자동 채움 via 폴더의 최신 segment_lookup csv) +
+#                       result csv 의 Action 컬럼 (PUT/POST 구분)
 """
 CSV 입력 → AA 세그먼트 일괄 생성 또는 업데이트.
 
@@ -12,16 +16,26 @@ v2.2 변경점 (vs v2.1):
   · --input 상대경로면 우선 cwd 기준 → 없으면 스크립트 폴더(segment_maker/) 기준으로 fallback.
     어디서 실행하든 segments.csv 가 segment_maker/ 안에 있으면 자동 인식.
 
-사용법:
-  python aa_create_segment_v2_2.py --input segments.csv              # dry-run (생성)
-  python aa_create_segment_v2_2.py --input segments.csv --apply      # 실제 POST (생성)
-  python aa_create_segment_v2_2.py --input segments.csv --update     # dry-run (업데이트)
-  python aa_create_segment_v2_2.py --input segments.csv --update --apply  # 실제 PUT (업데이트)
+사용법 (--input 비우면 폴더의 최신 segments_input_*.csv 자동 pick):
+  python aa_create_segment_v2_2.py --input segments.csv                     # dry-run (CREATE)
+  python aa_create_segment_v2_2.py --input segments.csv --apply             # 실제 POST (CREATE)
+  python aa_create_segment_v2_2.py --update --apply                         # 실제 PUT (모두 update, segment_id 컬럼 모두 박혀야)
+  python aa_create_segment_v2_2.py --update-or-create --apply               # mixed: id 있으면 PUT, 없으면 POST
+  python aa_create_segment_v2_2.py --update-or-create --lookup-by-name --apply
+       # ↑ 자동: segment_id 빈 row 는 폴더의 최신 segment_lookup_*.csv 에서 name 정확 매칭으로 자동 채움
+       #        매칭되면 PUT (update), 없으면 POST (create). 가장 일반 운영 흐름.
 
-생성(POST): CSV 필수 칼럼 — name, structure
-업데이트(PUT): CSV 필수 칼럼 — segment_id, structure
-  → segment_id 모르면: python segment_lookup.py --search "세그먼트이름"
+CSV 필수 칼럼:
+  · CREATE (POST)               — name, structure
+  · UPDATE (PUT)                — segment_id, structure  (csv 마다 박혀 있어야)
+  · MIXED (--update-or-create)  — name, structure  (segment_id 있으면 PUT, 없으면 POST 자동 분기)
 CSV 선택 칼럼: description, rsid, tags
+
+segment_id 모르거나 많아서 수동 박기 부담:
+  · 미리 segment_lookup 으로 csv 받아두기:
+      python aa_segment_lookup.py --search "[CAMPAIGN NAME]" --limit 500
+      → segment_lookup_<ts>_<keyword>.csv 생성 (segment_id + name 박힘)
+  · 그 후 v2.2 에 --lookup-by-name 옵션 → 자동 매칭 (수동 박기 불필요)
 """
 from __future__ import annotations
 
@@ -53,7 +67,23 @@ from aa_create_segment_v2 import (
 # 사용자가 바꿔야 하는 부분
 # ════════════════════════════════════════════════════════════════════
 
-INPUT_CSV = "segments.csv"
+# INPUT_CSV = "segments_input_260518_2232_global.csv"
+INPUT_CSV = "segments_input_260518_2251_scenario.csv"
+
+# segment-ref 캐시 파일명 suffix — 캠페인 / 환경 별로 분리 가능.
+#   ""       → segment_ref_cache.json         (기본)
+#   "global" → segment_ref_cache_global.json
+#   "us"     → segment_ref_cache_us.json
+#   콤마 구분 multi-cache 지원 → 모든 파일 merge load (앞 파일 우선, 첫 파일이 save target).
+# --cache <name> argparse 로도 override 가능 (CLI 우선).
+# 시나리오 csv (글로벌+US 섞임) 처리 시 → 글로벌·US evar 캐시 + ATC 캐시 모두 박아야
+# delayed_purchase 의 ATC visit segment-ref 까지 inline 처리됨.
+CACHE_NAME = "26sw_evar_global,26sw_evar_us,add_to_cart_global,add_to_cart_us"
+
+# --lookup-by-name 시 활용할 lookup csv 파일명 (default).
+# 빈 값이면 폴더의 모든 segment_lookup_*.csv 자동 merge (사전순 reverse — 새 거 우선).
+# 특정 파일 명시하면 그것만 사용. --lookup-csv argparse 로도 override 가능.
+LOOKUP_CSV = ""   # 예: "segment_lookup_260518_1327_CAMPAIGN NAME.csv"
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -61,26 +91,58 @@ INPUT_CSV = "segments.csv"
 
 OUTPUT_DIR = Path(__file__).resolve().parent
 RESULT_CSV_PREFIX = "segment_v2_2_result_"
-SEG_REF_CACHE_PATH = OUTPUT_DIR / "segment_ref_cache.json"   # @<seg_id> → AA container 인라인 캐시
+
+
+def _resolve_cache_paths(name: str) -> list[Path]:
+    """CACHE_NAME 또는 --cache 값 (콤마 분리 가능) → cache 파일 경로 list.
+    예: "us,add_to_cart_us" → [segment_ref_cache_us.json, segment_ref_cache_add_to_cart_us.json].
+    list 첫 파일이 save target, 모든 파일 load + merge (앞 파일 우선 — 충돌 시 뒤 파일이 덮어쓰지 않음)."""
+    raw = (name or "").strip()
+    if not raw:
+        return [OUTPUT_DIR / "segment_ref_cache.json"]
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        return [OUTPUT_DIR / "segment_ref_cache.json"]
+    return [OUTPUT_DIR / f"segment_ref_cache_{p}.json" for p in parts]
+
+
+def _resolve_cache_path(name: str) -> Path:
+    """첫 cache 파일 — save target (신규 fetch 결과 저장될 곳)."""
+    return _resolve_cache_paths(name)[0]
 
 import requests
 
 
-def _load_seg_ref_cache() -> dict[str, dict]:
-    """캐시 파일 load. 없으면 빈 dict 반환."""
-    if SEG_REF_CACHE_PATH.exists():
+def _load_seg_ref_cache(cache_path) -> dict[str, dict]:
+    """캐시 파일 load. cache_path 가 Path 면 한 파일, list[Path] 면 여러 파일 merge.
+    Merge 순서 — 앞 파일 우선 (뒤 파일 매칭 시 덮어쓰지 않음). 첫 파일이 save target."""
+    if isinstance(cache_path, list):
+        merged: dict[str, dict] = {}
+        for p in cache_path:
+            if not p.exists():
+                continue
+            try:
+                with open(p, encoding="utf-8") as f:
+                    one = json.load(f)
+                for k, v in one.items():
+                    if k not in merged:
+                        merged[k] = v
+            except Exception:
+                continue
+        return merged
+    if cache_path.exists():
         try:
-            with open(SEG_REF_CACHE_PATH, encoding="utf-8") as f:
+            with open(cache_path, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return {}
     return {}
 
 
-def _save_seg_ref_cache(cache: dict[str, dict]) -> None:
+def _save_seg_ref_cache(cache_path: Path, cache: dict[str, dict]) -> None:
     """캐시 파일 저장 (사용자 OneDrive 폴더, 로컬 전용)."""
     try:
-        with open(SEG_REF_CACHE_PATH, "w", encoding="utf-8") as f:
+        with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"  [seg-ref cache] 저장 실패 (무시): {e}")
@@ -101,6 +163,32 @@ def _fetch_segment_container(seg_id: str, headers: dict, gcid: str) -> dict | No
     return container
 
 
+def _patch_root_sequence_for_hit_scope(definition: dict) -> dict:
+    """root container.context = 'hits' + root.pred.func = 'sequence' 케이스 → 'sequence-prefix' + context='visitors' 변환.
+
+    AA reference 의 정확한 패턴 (Delayed Purchase 같은 hit-scope sequence):
+      container { context: "hits", pred: { func: "sequence-prefix", context: "visitors", stream: [...] } }
+
+    AA validator 룰:
+      · `sequence` (full)  → implicit context 가 visits/visitors 여야 함, hit-scope 거부
+      · `sequence-prefix`  → hit-scope 컨테이너 안 허용. 단 자체 `context` 필수 ("visitors" 권장)
+    """
+    if not isinstance(definition, dict):
+        return definition
+    container = definition.get("container")
+    if not isinstance(container, dict):
+        return definition
+    if container.get("context") != "hits":
+        return definition
+    pred = container.get("pred")
+    if isinstance(pred, dict) and pred.get("func") == "sequence":
+        pred["func"] = "sequence-prefix"
+        # sequence-prefix 자체 context 필수 — reference 패턴 따라 "visitors"
+        if "context" not in pred:
+            pred["context"] = "visitors"
+    return definition
+
+
 def _patch_definition_for_aa(node, *, fetch_seg_pred=None):
     """v2 컴파일 결과 JSON → AA validator 호환 형식 후처리.
 
@@ -116,11 +204,22 @@ def _patch_definition_for_aa(node, *, fetch_seg_pred=None):
     재귀로 dict / list 안 모든 노드 순회.
     """
     if isinstance(node, dict):
-        # 1) event metric 의 exists → event-exists + evt 키
+        # 1a) event metric 의 exists (v2 가 이미 event type 으로 컴파일한 경우)
         if (node.get("func") == "exists"
                 and isinstance(node.get("val"), dict)
                 and node["val"].get("func") == "event"):
             return {"func": "event-exists", "evt": node["val"]}
+        # 1b) `<varname>instances` 의 exists — v2 는 attr (variables/...) 로 컴파일하지만
+        #     AA 는 metric (metrics/...) + event-exists func + evt 키로 받음 (US 패턴)
+        if (node.get("func") == "exists"
+                and isinstance(node.get("val"), dict)
+                and node["val"].get("func") == "attr"
+                and isinstance(node["val"].get("name"), str)
+                and node["val"]["name"].endswith("instances")):
+            attr_name = node["val"]["name"]
+            metric_name = attr_name.replace("variables/", "metrics/", 1)
+            return {"func": "event-exists",
+                    "evt": {"func": "event", "name": metric_name}}
         # 2) segment-ref → sub-segment 의 container inline
         if node.get("func") == "segment-ref" and fetch_seg_pred is not None:
             seg_id = node.get("segmentId")
@@ -151,9 +250,12 @@ def _structure_to_dsl(structure: str) -> str:
         `'Component'!hit(` 같은 토큰은 보존.)
     """
     raw_tokens = structure.split(" | ")
-    # 1) event<N> event-exists → event<N> exists
+    # 1) `<varname> event-exists` → `<varname> exists`
+    #    글로벌: `event<N> event-exists`, US: `evar<N>instances event-exists` 둘 다 매칭.
+    #    v2 parser 는 `exists` operator 만 받음 — `event-exists` 는 토큰 자체로 파싱 실패.
+    #    JSON 컴파일 후 _patch_definition_for_aa 에서 AA 호환 `event-exists` func 으로 다시 변환.
     tokens = [
-        re.sub(r"\bevent(\d+) event-exists\b", r"event\1 exists", t)
+        re.sub(r"\b(\w+) event-exists\b", r"\1 exists", t)
         for t in raw_tokens
     ]
     # 2) `not '<container>'!hit(` → `NOT (`  (parser 는 NOT named container 미지원, NOT (...) grouping 만 받음)
@@ -240,11 +342,30 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true",
                         help="실제 POST/PUT 수행. 없으면 JSON 출력만 (dry-run)")
     parser.add_argument("--update", action="store_true",
-                        help="기존 세그먼트 업데이트 (PUT). segment_id 칼럼 필수. "
+                        help="기존 세그먼트 업데이트 (PUT). segment_id 칼럼 필수 — 빈 row 있으면 ERROR. "
                              "segment_id 모르면: python segment_lookup.py --search \"이름\"")
+    parser.add_argument("--update-or-create", action="store_true",
+                        help="mixed mode: row 별 segment_id 있으면 PUT (update), 없으면 POST (create). "
+                             "재실행 시 — 새 segment 는 만들고 기존 segment 는 갱신. --update 와 동시 사용 불가.")
+    parser.add_argument("--lookup-by-name", action="store_true",
+                        help="csv 의 segment_id 빈 row 는 폴더의 segment_lookup_*.csv (가장 최신) 에서 name 정확 매칭으로 segment_id 자동 채움. "
+                             "AA GET 없이 로컬 csv 만 활용. --update-or-create 와 같이 쓰면 매칭되면 PUT, 없으면 POST.")
+    parser.add_argument("--lookup-csv", default=LOOKUP_CSV,
+                        help=f"--lookup-by-name 의 lookup csv 경로 명시. 빈 값이면 폴더의 모든 segment_lookup_*.csv merge "
+                             f"(사전순 reverse, 새 거 우선). 코드 상단 LOOKUP_CSV 로 default 박을 수 있음 (현재 {LOOKUP_CSV!r}).")
     parser.add_argument("--input", default=INPUT_CSV,
                         help=f"입력 CSV 경로 (default: {INPUT_CSV})")
+    parser.add_argument("--cache", default=CACHE_NAME,
+                        help="segment-ref 캐시 파일 suffix (예: --cache us → segment_ref_cache_us.json). "
+                             f"빈 값이면 기본 segment_ref_cache.json. 코드 상단 CACHE_NAME 으로 default 지정 가능 (현재 {CACHE_NAME!r}).")
     args = parser.parse_args()
+    seg_ref_cache_paths = _resolve_cache_paths(args.cache)
+    seg_ref_cache_path = seg_ref_cache_paths[0]   # save target = 첫 파일
+    if len(seg_ref_cache_paths) == 1:
+        print(f"[seg-ref cache] {seg_ref_cache_path.name}")
+    else:
+        print(f"[seg-ref cache] save: {seg_ref_cache_path.name} / load merge: " +
+              ", ".join(p.name for p in seg_ref_cache_paths))
 
     now = datetime.now()
     timestamp = now.strftime("%y%m%d_%H%M")
@@ -252,32 +373,96 @@ def main() -> int:
 
     # ── CSV 읽기 ──
     # --input 절대경로 → 그대로 사용
-    # --input 상대경로 → 1) cwd 기준 시도, 2) 없으면 스크립트 폴더(OUTPUT_DIR) 기준 fallback
-    input_path = Path(args.input)
-    if not input_path.is_absolute() and not input_path.exists():
-        fallback = OUTPUT_DIR / input_path
-        if fallback.exists():
-            input_path = fallback
-    if not input_path.exists():
-        print(f"ERROR: 입력 파일 없음: {input_path}")
-        print(f"       cwd: {Path.cwd()}")
-        print(f"       script dir: {OUTPUT_DIR}")
-        return 1
+    # --input 빈 값이면 폴더 내 segments_input_*.csv 파일명 사전순 최신 1개 자동 pick.
+    # 박혀 있으면 그대로 사용 (상대경로면 cwd → script 폴더 fallback).
+    input_arg = (args.input or "").strip()
+    if not input_arg:
+        cands = sorted(OUTPUT_DIR.glob("segments_input_*.csv"), reverse=True)
+        if not cands:
+            print(f"ERROR: segments_input_*.csv 못 찾음 — {OUTPUT_DIR}")
+            return 1
+        input_path = cands[0]
+        print(f"[input auto-latest] {input_path.name}  (총 {len(cands)} 개 후보 중 최신)")
+    else:
+        input_path = Path(input_arg)
+        if not input_path.is_absolute() and not input_path.exists():
+            fallback = OUTPUT_DIR / input_path
+            if fallback.exists():
+                input_path = fallback
+        if not input_path.exists():
+            print(f"ERROR: 입력 파일 없음: {input_path}")
+            print(f"       cwd: {Path.cwd()}")
+            print(f"       script dir: {OUTPUT_DIR}")
+            return 1
 
     rows = _parse_csv(input_path)
     if not rows:
         print("ERROR: structure가 있는 행이 없습니다.")
         return 1
 
-    update_mode = args.update
-    mode_label = "UPDATE" if update_mode else "CREATE"
+    # --lookup-by-name: segment_id 빈 row 는 lookup csv 에서 name 정확 매칭으로 채움
+    if getattr(args, "lookup_by_name", False):
+        # lookup csv 결정 — --lookup-csv 명시 또는 폴더의 가장 최신 segment_lookup_*.csv
+        lookup_csv_arg = (getattr(args, "lookup_csv", "") or "").strip()
+        if lookup_csv_arg:
+            lookup_path = Path(lookup_csv_arg)
+            if not lookup_path.is_absolute() and not lookup_path.exists():
+                fb = OUTPUT_DIR / lookup_path
+                if fb.exists():
+                    lookup_path = fb
+            lookup_paths = [lookup_path] if lookup_path else []
+        else:
+            # 폴더의 모든 segment_lookup_*.csv 사전순 reverse — 새 거 우선, 옛 거 fallback
+            lookup_paths = sorted(OUTPUT_DIR.glob("segment_lookup_*.csv"), reverse=True)
+        if not lookup_paths:
+            print(f"  [lookup-by-name] ⚠️ lookup csv 없음 — segment_id 빈 row 그대로 (POST 처리됨)")
+        else:
+            # 여러 lookup csv 의 name → id 매핑 merge (앞 파일 우선 — 새 거가 옛 거 덮어씀)
+            name_to_id: dict[str, str] = {}
+            used_files: list[str] = []
+            for p in lookup_paths:
+                try:
+                    added = 0
+                    with open(p, encoding="utf-8-sig") as f:
+                        for r in csv.DictReader(f):
+                            nm = (r.get("name") or "").strip()
+                            sid = (r.get("segment_id") or "").strip()
+                            if nm and sid and nm not in name_to_id:
+                                name_to_id[nm] = sid
+                                added += 1
+                    if added > 0:
+                        used_files.append(f"{p.name}(+{added})")
+                except Exception:
+                    continue
+            n_filled = 0
+            for r in rows:
+                if not (r.get("segment_id") or "").strip():
+                    sid = name_to_id.get((r.get("name") or "").strip())
+                    if sid:
+                        r["segment_id"] = sid
+                        n_filled += 1
+            print(f"  [lookup-by-name] {len(lookup_paths)} lookup csv merge → {n_filled}/{len(rows)} row 의 segment_id 채움")
+            if used_files:
+                print(f"    매핑 추가 — {', '.join(used_files[:5])}{'...' if len(used_files)>5 else ''}")
 
-    # update 모드: segment_id 필수 검증
+    update_mode = args.update
+    mixed_mode  = getattr(args, "update_or_create", False)
+    if update_mode and mixed_mode:
+        print(f"ERROR: --update 와 --update-or-create 동시 사용 불가. 하나만 선택.")
+        return 1
+    if mixed_mode:
+        mode_label = "MIXED"   # row 별 segment_id 있음/없음 자동 분기
+    elif update_mode:
+        mode_label = "UPDATE"
+    else:
+        mode_label = "CREATE"
+
+    # update 모드: segment_id 필수 검증 (mixed 모드는 row 별 자동 분기라 검증 안 함)
     if update_mode:
         missing_ids = [i+1 for i, r in enumerate(rows) if not r["segment_id"]]
         if missing_ids:
             print(f"ERROR: --update 모드인데 segment_id가 없는 행: {missing_ids}")
-            print(f"  → segment_id 조회: python segment_lookup.py --search \"세그먼트이름\"")
+            print(f"  → mixed mode 원하면 --update-or-create 사용 (segment_id 빈 row 는 POST, 있는 row 는 PUT)")
             return 1
 
     action_label = f"{mode_label} / {'APPLY' if args.apply else 'DRY-RUN'}"
@@ -285,18 +470,30 @@ def main() -> int:
     print(f"  Company : {COMPANY_ID}")
     print(f"  Input   : {input_path}")
     print(f"  Segments: {len(rows)}개")
-    if update_mode:
+    if mixed_mode:
+        n_put  = sum(1 for r in rows if (r.get("segment_id") or "").strip())
+        n_post = len(rows) - n_put
+        print(f"  Mode    : MIXED (PUT {n_put} update + POST {n_post} create — segment_id 유무로 row 별 분기)")
+    elif update_mode:
         print(f"  Mode    : UPDATE (기존 세그먼트 덮어쓰기)")
     print()
 
     # ── segment-ref 처리 준비 — cache + lazy auth load ──
-    seg_ref_cache: dict[str, dict] = _load_seg_ref_cache()
+    seg_ref_cache: dict[str, dict] = _load_seg_ref_cache(seg_ref_cache_paths)   # 여러 파일 merge load
     _auth_state: dict = {"headers": None, "gcid": None, "tried": False}
+
+    def _extract_container(entry):
+        """cache entry → container dict. 두 형식 호환:
+        · 새 형식 {"container": {...}, "name": ..., ...} → entry["container"]
+        · 옛 형식 container 자체 → entry 그대로"""
+        if isinstance(entry, dict) and "container" in entry and isinstance(entry.get("container"), dict):
+            return entry["container"]
+        return entry
 
     def fetch_seg_pred(seg_id: str) -> dict | None:
         """segment-ref 의 sub-segment container 가져오기. cache 우선, miss 면 AA GET 시도."""
         if seg_id in seg_ref_cache:
-            return seg_ref_cache[seg_id]
+            return _extract_container(seg_ref_cache[seg_id])
         if not _auth_state["tried"]:
             _auth_state["tried"] = True
             try:
@@ -311,7 +508,8 @@ def main() -> int:
             return None
         container = _fetch_segment_container(seg_id, _auth_state["headers"], _auth_state["gcid"])
         if container is not None:
-            seg_ref_cache[seg_id] = container
+            # 자동 fetch 는 metadata 없이 container 만 받음 — 새 형식으로 저장 (lookup name 은 빈 값)
+            seg_ref_cache[seg_id] = {"container": container, "name": "", "description": "", "rsid": ""}
             print(f"  [seg-ref] cache 추가 — {seg_id}")
         return container
 
@@ -325,6 +523,7 @@ def main() -> int:
             ast = parse_dsl(dsl_text)
             definition = compile_to_definition(ast)
             definition = _patch_definition_for_aa(definition, fetch_seg_pred=fetch_seg_pred)
+            definition = _patch_root_sequence_for_hit_scope(definition)   # Delayed Purchase: root sequence → sequence-prefix
             print(f"  [{i+1}] '{row['name']}' — 파싱 OK")
             specs.append({**row, "definition": definition, "dsl": dsl_text})
         except DSLParseError as e:
@@ -333,7 +532,7 @@ def main() -> int:
             specs.append({**row, "definition": None, "dsl": dsl_text})
 
     # segment-ref cache 저장 (loop 중 fetch 한 게 있으면 디스크에 영구 저장)
-    _save_seg_ref_cache(seg_ref_cache)
+    _save_seg_ref_cache(seg_ref_cache_path, seg_ref_cache)
 
     if errors:
         print(f"\n파싱 에러 {len(errors)}건:")
@@ -345,21 +544,7 @@ def main() -> int:
 
     print()
 
-    # ── Payload 출력 ──
-    for i, spec in enumerate(specs):
-        if spec["definition"] is None:
-            continue
-        print(f"{'─' * 60}")
-        print(f"Row {i+1}: {spec['name']}")
-        if update_mode:
-            print(f"  Segment ID: {spec['segment_id']}  (PUT 대상)")
-        print(f"  RSID: {spec['rsid'] or DEFAULT_RSID}")
-        print(f"  Tags: {spec['tags']}")
-        print(f"  Description: {spec['description']}")
-        print()
-        print("  Definition JSON:")
-        print(json.dumps(spec["definition"], ensure_ascii=False, indent=2))
-        print()
+    # Payload 미리보기 — 콘솔 출력 안 함 (너무 김). dryrun csv 에 ParseStatus / Mode 박힘.
 
     if not args.apply:
         # Dry-run 결과 CSV — 파싱 성공/실패 한 눈에 확인용 (apply 안 해도 진단 결과 csv 로 남김)
@@ -412,6 +597,7 @@ def main() -> int:
         if spec["definition"] is None:
             results.append({
                 "name": spec["name"], "seg_id": spec.get("segment_id", ""),
+                "action": "skip",
                 "status": "SKIP", "url": "", "error": "파싱 실패",
             })
             continue
@@ -432,15 +618,19 @@ def main() -> int:
         if owner_id is not None:
             payload["owner"] = {"id": owner_id}
 
-        if update_mode:
+        # PUT (segment_id 있음, update_mode 또는 mixed 모드 + 그 row 가 id 있음) vs POST (없음)
+        row_seg_id = (spec.get("segment_id") or "").strip()
+        if update_mode or (mixed_mode and row_seg_id):
             # PUT — 기존 세그먼트 업데이트
-            seg_id = spec["segment_id"]
+            seg_id = row_seg_id
             url = f"{base_endpoint}/{seg_id}"
-            print(f"  [{i+1}/{len(specs)}] PUT '{spec['name']}' ({seg_id}) ...", end=" ")
+            action_label = "update"
+            print(f"  [{i+1}/{len(specs)}] update '{spec['name']}' ({seg_id}) ...", end=" ")
             r = requests.put(url, headers=headers, json=payload, timeout=60)
         else:
-            # POST — 새 세그먼트 생성
-            print(f"  [{i+1}/{len(specs)}] POST '{spec['name']}' ...", end=" ")
+            # POST — 새 세그먼트 생성 (CREATE 또는 mixed 의 segment_id 빈 row)
+            action_label = "create"
+            print(f"  [{i+1}/{len(specs)}] create '{spec['name']}' ...", end=" ")
             r = requests.post(base_endpoint, headers=headers, json=payload, timeout=60)
 
         if r.status_code in (200, 201):
@@ -450,6 +640,7 @@ def main() -> int:
             print(f"OK — {seg_id}")
             results.append({
                 "name": spec["name"], "seg_id": seg_id,
+                "action": action_label,
                 "status": f"{r.status_code} {r.reason}",
                 "url": ui_url, "error": "",
             })
@@ -458,6 +649,7 @@ def main() -> int:
             print(f"FAIL — {r.status_code} {r.reason}")
             results.append({
                 "name": spec["name"], "seg_id": spec.get("segment_id", ""),
+                "action": action_label,
                 "status": f"{r.status_code} {r.reason}",
                 "url": "", "error": error,
             })
@@ -466,17 +658,23 @@ def main() -> int:
     csv_path = OUTPUT_DIR / f"{RESULT_CSV_PREFIX}{timestamp}.csv"
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        w.writerow(["RequestedAt", "Name", "SegmentId", "RSID", "Status", "Url", "Error"])
+        w.writerow(["RequestedAt", "Name", "SegmentId", "RSID", "Action", "Status", "Url", "Error"])
         for res in results:
             w.writerow([
                 requested_at, res["name"], res["seg_id"],
-                "", res["status"], res["url"], res["error"],
+                "", res.get("action", ""), res["status"], res["url"], res["error"],
             ])
     print(f"\nresult CSV: {csv_path}")
 
-    ok = sum(1 for r in results if r["seg_id"])
-    fail = sum(1 for r in results if not r["seg_id"])
-    print(f"[summary] 성공: {ok}, 실패: {fail}")
+    def _is_ok(r):
+        s = r.get("status", "")
+        return s.startswith("200") or s.startswith("201")
+    ok = sum(1 for r in results if _is_ok(r))
+    skip = sum(1 for r in results if r.get("status") == "SKIP")
+    fail = len(results) - ok - skip
+    n_update = sum(1 for r in results if r.get("action") == "update")
+    n_create = sum(1 for r in results if r.get("action") == "create")
+    print(f"[summary] 성공: {ok}, 실패: {fail}, skip: {skip}  (update: {n_update} / create: {n_create})")
 
     return 0 if fail == 0 else 1
 

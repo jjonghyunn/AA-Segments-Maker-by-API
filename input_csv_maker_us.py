@@ -1,7 +1,8 @@
-# input_csv_maker.py
-# 2026-05-15  Jonghyun Park w/ Claude
+# input_csv_maker_us.py
+# 2026-05-18  Jonghyun Park w/ Claude
+# input_csv_maker.py 의 US 캠페인 파생 — RSID, flat 구조, evar<N>instances event-exists 패턴
 """
-seg_make_ref_*.csv → aa_create_segment_v2_1.py 가 받는 input CSV 자동 변환.
+seg_make_ref_us_*.csv → aa_create_segment_v2_1.py 가 받는 input CSV 자동 변환.
 
 처리 대상 — eVar25/26/35/48 의 *_event-exists 컬럼 중 **1개라도 TRUE** 인 row.
 
@@ -29,17 +30,18 @@ from pathlib import Path
 # 사용자가 바꿔야 하는 부분
 # ════════════════════════════════════════════════════════════════════
 
-SEG_MAKE_REF_CSV = "seg_make_ref_260515_1554.csv"   # 빈 값이면 폴더 내 seg_make_ref_*.csv 파일명 사전순 최신 1개 자동 선택. 특정 파일 강제 지정 시 파일명 박기.
+seg_make_ref_us_CSV = ""   # 빈 값이면 폴더 내 seg_make_ref_us_*.csv 파일명 사전순 최신 1개 자동 선택. 특정 파일 강제 지정 시 파일명 박기.
 
-# 공통 컨테이너 segment ID (segment-ref 로 참조될 ID)
-# 두 가지 방법 (둘 다 동작, COMMON_SEGMENT_REF 가 우선):
-#   1) 직접 박기: COMMON_SEGMENT_REF + COMMON_SEGMENT_REF_NAME 둘 다
-#   2) cache lookup: REF_SEGMENT_NAME + CACHE_NAME 박으면 segment_ref_cache_<CACHE_NAME>.json 에서 자동 결정
-# COMMON_SEGMENT_REF_NAME 박혀 있으면 dsl 에 named container wrap (`'<name>'!hit(@<id>)`).
-COMMON_SEGMENT_REF      = "segment_id_placeholder"
-COMMON_SEGMENT_REF_NAME = ""   # 예: "[CAMPAIGN NAME] Campaign Main Page_Evar" — 박혀 있으면 named container wrap
-REF_SEGMENT_NAME = ""          # 예: "Campaign Main Page_Evar" — cache 에서 name partial 매칭
-CACHE_NAME       = "26sw_evar_global,add_to_cart_global"   # 콤마 분리 — 두 cache 다 lookup (Campaign Main + ATC)
+# US 버전 — visit/visitor 모드에서 AND 로 묶을 US 캠페인 segment-ref ID.
+# 두 가지 방법 (둘 다 동작, 둘 다 박혀 있으면 COMMON_SEGMENT_REF 가 우선):
+#   1) 직접 박기: COMMON_SEGMENT_REF = "s200001591_<id>" (가장 단순, ID 알면)
+#   2) cache lookup: REF_SEGMENT_NAME + CACHE_NAME 박으면 segment_ref_cache_<CACHE_NAME>.json 에서
+#      name partial 매칭으로 자동 ID 결정 (prewarm_seg_ref_cache.py 로 미리 cache 만들어 둘 것)
+# 둘 다 빈 값이면 visit/visitor 모드에서도 AND 묶음 없이 단순 visit(hit(...)) 만 (hit 모드는 어차피 영향 없음).
+COMMON_SEGMENT_REF      = ""   # 예: "s200001591_<US_캠페인_Main_Page_segment_id>"
+COMMON_SEGMENT_REF_NAME = ""   # 예: "[CAMPAIGN NAME] US_Campaign Main Page_Evar" — 박혀 있으면 dsl 에 named container wrap (`'<name>'!hit(@<id>)`)
+REF_SEGMENT_NAME   = "US_Campaign Main Page_Evar"   # cache 에서 name partial 매칭 → id + name 자동 결정
+CACHE_NAME         = "26sw_evar_us,add_to_cart_us"   # 콤마 분리 — 두 cache 다 lookup (Campaign Main + ATC)
 
 # 이름 변환 룰 (캠페인 시즌 변경 시)
 NAME_CAMPAIGN_BEFORE = "[CAMPAIGN NAME]"
@@ -48,36 +50,33 @@ NAME_CAMPAIGN_AFTER  = "[CAMPAIGN NAME]"
 # 공통 substring 최소 길이 — 이 길이 미만은 generic 으로 간주, 특이사항 컨테이너로 강제
 MIN_LCS_LENGTH = 4
 
-# 한 seg_make_ref row 를 어떻게 segment 로 만들지 — 콤마 구분으로 여러 옵션 동시 활성화.
+# 한 seg_make_ref row 를 어떻게 segment 로 만들지 — 콤마 구분으로 여러 옵션 동시 활성화 가능.
 # 옵션:
-#   "visit"            → visit 버전 (visit( hit( @공통ref AND ( '<name>'!hit(...) ) ) ), 이름 뒤 ' (Visit)' suffix)
-#   "hit"              → hit 버전  (hit( '<name>'!hit(...) ), 공통 ref 없음, suffix 없음)
-#   "delayed_purchase" → Delayed Purchase 버전 (visit 안에 [MainPage + 본 segment + ATC + NOT orders] THEN visit(orders))
-#                        ATC_VISIT_SEGMENT_REF / NAME 또는 ATC_REF_SEGMENT_NAME 박혀 있어야 동작.
+#   "visit"            → visit 버전 (이름 뒤 ' (Visit)' suffix)
+#   "hit"              → hit 버전 (이름 suffix 없음)
+#   "delayed_purchase" → Delayed Purchase 버전 (이름 뒤 ' (Delayed Purchase)' suffix)
+#                        → visit 안에 [본 segment content + ATC visit + NOT orders] THEN visit(orders) wrap.
+#                          ATC_VISIT_SEGMENT_REF / ATC_VISIT_SEGMENT_NAME 또는 ATC_REF_SEGMENT_NAME 박혀 있어야 동작.
 # backward compat: "both" → "visit,hit"
-# SCOPE_MODE = "visit,hit"
 SCOPE_MODE = "visit,hit,delayed_purchase"
 # SCOPE_MODE = "hit"
 # SCOPE_MODE = "visit"
 # SCOPE_MODE = "delayed_purchase"
-# 예: SCOPE_MODE = "visit,hit,delayed_purchase"
-# 예: SCOPE_MODE = "hit"
+# 예: SCOPE_MODE = "visit,hit"
+# 예: SCOPE_MODE = "hit"   (단일)
 
-# delayed_purchase 옵션의 ATC (Add to Cart Visit) segment-ref — 글로벌은 [Global] Add to Cart Visit
-ATC_VISIT_SEGMENT_REF      = ""   # 예: "YOUR_PROJECT_ID"  (직접 박기)
-ATC_VISIT_SEGMENT_NAME     = ""   # 예: "[Global] Add to Cart Visit"
-ATC_REF_SEGMENT_NAME       = "[Global] Add to Cart Visit"   # cache 에서 partial 매칭 → id+name 자동
+# delayed_purchase 옵션의 ATC (Add to Cart Visit) segment-ref — visit/hit 의 COMMON_SEGMENT_REF 와 별개
+ATC_VISIT_SEGMENT_REF      = ""   # 예: "s200001591_<US_ATC_Visit_id>"  (직접 박기)
+ATC_VISIT_SEGMENT_NAME     = ""   # 예: "[US] Add to Cart Visit"        (named container wrap 박힘)
+ATC_REF_SEGMENT_NAME       = "[US] Add to Cart Visit"   # cache 에서 partial 매칭 → id+name 자동 (CACHE_NAME 활용). 글로벌과 안 섞이게 [US] prefix 박을 것
 
-DEFAULT_RSID = "rsid_placeholder"
-# DEFAULT_RSID = "rsid_placeholder"
+DEFAULT_RSID = "rsid_placeholder"   # US 캠페인 RSID
 DEFAULT_TAGS = ""
 
 # ─── evar 블록 묶음 방식 (row 별 override) ──────────────────────
-# raw csv 에 'evar_join' 컬럼 있고 값이 "OR" (case-insensitive) 이면
-# 그 row 의 evar_blocks 들을 named container wrap 안에 OR 로 묶음.
-# 빈 값 / "AND" / 컬럼 없음 → 기본 AND 동작 (모든 evar_block 사이 AND).
-# OR 그루핑이 raw paren `(...)` 으로는 v2_2 의 paren strip 에 잡혀 사라지므로
-# named container wrap 으로 self-contained 형태로 보존.
+# raw csv 에 'evar_join' 컬럼 있고 값이 "OR"/"AND" 면 그 값 우선.
+# 컬럼 없거나 값 빈 채면 → multi-evar TRUE (>=2) 자동 OR (default), 단일이면 AND.
+# named container wrap 으로 OR 묶음 — raw paren 은 v2_2 의 paren strip 에 잡혀 사라지므로.
 EVAR_JOIN_COLUMN = "evar_join"
 EVAR_JOIN_WRAP_NAME = "evar OR group"
 
@@ -99,7 +98,7 @@ WARN_DUPLICATE_CUSTOMLINK_AND_EVAR = True
 # (예: eVar26_event-exists 컬럼이 있으면 eVar26 도 같이 본 후 evar 블록 빌드)
 # 그 외 prop<N> / evar<N> (event-exists 컬럼 없음) → site 컨테이너 (별도 hit-scope) 에 추가됨.
 # EVAR_COLUMNS / SITE_VARS / EVAR_INLINE_NUMS 같은 hardcoded 리스트는 csv 헤더 스캔으로 동적 결정.
-EVAR_EVENT_EXISTS_REGEX = r"^(?:or_|and_)?eVar(\d+)_event-exists$"   # or_/and_ prefix 허용 (row 묶음 의도 명시용 — 인식만, evar_join 자동 default 와 별개)
+EVAR_EVENT_EXISTS_REGEX = r"^(?:or_|and_)?eVar(\d+)_event-exists$"   # or_/and_ prefix 허용 (row 묶음 의도 명시용 — 인식만, evar_join 매커니즘과 별개)
 EVAR_VALUE_COLUMN_TEMPLATE = "eVar{num}"           # value 컬럼 이름 (case-insensitive 매칭)
 ALLOWED_VAR_NUM_RANGE = range(1, 201)              # evar/prop 인식 번호 상한 (1~200, 넉넉히)
 
@@ -112,17 +111,23 @@ SITE_CONTAINER_NAME = "site"   # site 양수/음수 컨테이너 (prop/evar 의 
 # 값이 있으면 그 row 의 자동 LCS 무시하고 사용자가 박은 키워드로 해당 evar 블록 강제.
 CRYSTALLIZE_CONDITION_TO_OPERATOR: dict[str, str] = {
     "starts": "starts-with",
-    "starts-with": "starts-with",   # hyphen 형식도 매칭
+    "starts-with": "starts-with",   # hyphen 형식 (예: starts-with_evar105) 도 매칭
     "contains": "contains",
     "equals": "equals",
 }
 CRYSTALLIZE_COLUMN_REGEX = r"^(starts|contains|equals)_crystallize_(evar\d+)$"
+# US 패턴 — cond prefix 없는 'crystallize_evar<N>' 형식. default operator = starts-with (US 기본).
+CRYSTALLIZE_COLUMN_REGEX_NO_COND = r"^crystallize_(evar\d+)$"
+
+# customlink 컬럼 — 헤더에 부가 설명 (한글 등) 붙어 있어도 prefix 매칭으로 찾음
+# 예: "customlink", "customLink", "customLink (한글, ...)"
+CUSTOMLINK_COLUMN_REGEX = r"^custom[Ll]ink\b"
 
 # Generic site / evar 필터 컬럼 — {not_있으면제외 없으면 포함}{조건}_{prop/evar}{#}
 # 예: starts_prop1, not_starts_evar1, contains_evar26, not_contains_evar26
 # default operator (조건 없는 옛 컬럼 prop<N>/evar<N>/not_prop<N>/not_evar<N>) → starts-with
 # default 줄바꿈 multi 값 → <operator>-any-of [...] (contains 만 표준 지원, 다른 op multi 는 OR 로 묶음)
-GENERIC_FILTER_REGEX = r"^(?:or_|and_)?(?P<neg>not_)?(?P<cond>starts|contains|equals)_(?P<var>prop|evar)(?P<num>\d+)$"
+GENERIC_FILTER_REGEX = r"^(?:or_|and_)?(?P<neg>not_)?(?P<cond>starts-with|contains|equals|starts)_(?P<var>prop|evar)(?P<num>\d+)$"
 LEGACY_FILTER_REGEX  = r"^(?P<neg>not_)?(?P<var>prop|evar)(?P<num>\d+)$"   # prop1, not_prop1, evar1, not_evar1 등 (default starts-with)
 
 # ════════════════════════════════════════════════════════════════════
@@ -163,10 +168,11 @@ def classify_filter_column(header: str) -> tuple[bool, str, str] | None:
       3) eVar<N> / eVar<N>_event-exists / 그 외 → None (이 함수가 다루지 않음)
     """
     h = header.strip()
-    # eVar<N>_event-exists 헤더는 필터 컬럼 아님 — 메인 evar 블록의 exists flag
+    # eVar<N>_event-exists / eVar<N>(값 컬럼) 같은 메인 evar 블록 헤더는 필터 컬럼 아님 — 우선 제외
     if re.match(EVAR_EVENT_EXISTS_REGEX, h, flags=re.IGNORECASE):
         return None
-    # eVar<N> 값 컬럼 (main evar 블록 대상) 도 필터 컬럼 아님 — 단 main 에서 inline_evar_nums 의 N 인 경우에만 제외 (그 외 evar<N> 헤더는 site filter 로 인식)
+    if re.match(r"^eVar\d+$", h, flags=re.IGNORECASE):
+        return None
     # 1) 새 명시 형식
     m = re.match(GENERIC_FILTER_REGEX, h, flags=re.IGNORECASE)
     if m:
@@ -194,17 +200,12 @@ def classify_filter_column(header: str) -> tuple[bool, str, str] | None:
 
 
 def _format_filter_condition(var_name: str, op: str, vals: list[str]) -> str:
-    """단일 또는 multi 값 → DSL 조건. 한 줄 (single) 또는 ' | OR | ' 토큰 분리 (multi).
-    · 1 개   → `<var> <op> '<v>'`
-    · 2+ 개  → contains 면 `<var> contains-any-of ['v1', ...]`, 그 외 op 는 ' | OR | ' 토큰 분리
-              (paren grouping 안 박음 — parser 가 한 줄 한 cond 룰이라 paren 안 박힌 OR 토큰만 정상 처리)
-    """
+    """단일 또는 multi 값 → DSL 조건. paren grouping 없이 ' | OR | ' 토큰 분리 (parser 가 한 줄 한 cond 룰)."""
     if len(vals) == 1:
         return f"{var_name} {op} '{vals[0]}'"
     if op == "contains":
         values_str = ", ".join(f"'{v}'" for v in vals)
         return f"{var_name} contains-any-of [{values_str}]"
-    # multi vals OR — " | OR | " 로 토큰 분리. paren wrap 없음 (parser 가 paren 안 받음).
     return " | OR | ".join(f"{var_name} {op} '{v}'" for v in vals)
 
 
@@ -301,64 +302,61 @@ def derive_name_with_suffix(base_name: str, structure_oneline: str) -> str:
 def build_evar_block(evar_num: int, values: list[str],
                      crystallize_override: tuple[str, str] | None = None,
                      extra_conditions: list[tuple[bool, str, list[str]]] | None = None) -> str:
-    """한 eVarN 의 DSL 블록 (한 줄, ' | ' 구분).
-    · crystallize_override = (operator, value) → 자동 LCS 무시, 사용자 키워드 강제
-    · 값 없음 → 'vN'!hit( eventN event-exists )
-    · 공통 substring 있음 (≥ MIN_LCS_LENGTH) → 'vN'!hit( eventN event-exists AND evarN contains '<lcs>' )
-    · 공통 없음 → '특이사항'!hit( eventN event-exists AND evarN contains-any-of ['v1','v2',...] )
+    """[US] 한 eVarN 의 DSL 블록 (한 줄, ' | ' 구분). 컨테이너 없는 flat 구조.
 
-    extra_conditions: list of (is_negative, operator, values) — 메인 블록 안에 inline AND / AND NOT 추가.
-       (못 잡힌 keyword 보정·제외 케이스. 예: not_contains_evar26 = ':tab' → AND NOT (evar26 contains ':tab'))
+    US reference 패턴 (큰따옴표 + instance metric + starts-with):
+      · 값 없음 → evar<N>instances event-exists
+      · crystallize override = (op, val) → evar<N>instances event-exists AND evar<N> <op> "<val>"
+      · 공통 substring ≥ MIN_LCS_LENGTH → ... AND evar<N> starts-with "<lcs>"
+      · 공통 없음 → ... AND evar<N> starts-with "<v1>" OR evar<N> starts-with "<v2>" ...
+
+    extra_conditions: list of (is_negative, operator, values) — 메인 블록 끝에 inline AND / AND NOT 추가.
     """
-    tokens: list[str]
+    var = f"evar{evar_num}"
+    tokens: list[str] = [f"{var}instances event-exists"]
+
     if crystallize_override:
         op, val = crystallize_override
-        tokens = [
-            f"'v{evar_num}'!hit(",
-            f"event{evar_num} event-exists",
-            "AND",
-            f"evar{evar_num} {op} '{val}'",
-        ]
-    elif not values:
-        # 값 없고 event-exists 만 TRUE 인 case — reference 패턴 따라 `evar<N> exists AND event<N> event-exists`
-        # (예: CC_00. Contents Click Total 의 evar25/26/35 — 값 없이 event-exists 만 TRUE)
-        tokens = [
-            f"'v{evar_num}'!hit(",
-            f"evar{evar_num} exists",
-            "AND",
-            f"event{evar_num} event-exists",
-        ]
-    else:
+        # crystallize val 도 줄바꿈으로 multi 가능 → OR 묶음 (US reference 패턴)
+        cry_vals = split_evar_values(val)
+        if len(cry_vals) <= 1:
+            tokens.append("AND")
+            tokens.append(f'{var} {op} "{cry_vals[0] if cry_vals else val}"')
+        else:
+            tokens.append("AND")
+            for i, v in enumerate(cry_vals):
+                if i > 0:
+                    tokens.append("OR")
+                tokens.append(f'{var} {op} "{v}"')
+    elif values:
         lcs = find_longest_common_substring(values).strip()
         if len(lcs) >= MIN_LCS_LENGTH:
-            tokens = [
-                f"'v{evar_num}'!hit(",
-                f"event{evar_num} event-exists",
-                "AND",
-                f"evar{evar_num} contains '{lcs}'",
-            ]
+            tokens.append("AND")
+            tokens.append(f'{var} starts-with "{lcs}"')
         else:
-            # 공통 없음 → 특이사항 컨테이너
-            values_str = ", ".join(f"'{v}'" for v in values)
-            tokens = [
-                "'특이사항'!hit(",
-                f"event{evar_num} event-exists",
-                "AND",
-                f"evar{evar_num} contains-any-of [{values_str}]",
-            ]
+            # 공통 없음 → 각 값 starts-with OR 묶음 (reference 패턴)
+            tokens.append("AND")
+            for i, v in enumerate(values):
+                if i > 0:
+                    tokens.append("OR")
+                tokens.append(f'{var} starts-with "{v}"')
 
-    # inline extra_conditions — 메인 블록 안에 AND / AND NOT 추가
+    # inline extra_conditions — 큰따옴표 사용 (US 패턴)
     if extra_conditions:
-        var_name = f"evar{evar_num}"
         for is_neg, op, vals in extra_conditions:
             vals_clean = [v for v in (vals or []) if v]
             if not vals_clean:
                 continue
-            cond_str = _format_filter_condition(var_name, op, vals_clean)
+            # US 는 큰따옴표라 _format_filter_condition (작은따옴표) 대신 직접 빌드
+            if len(vals_clean) == 1:
+                cond_str = f'{var} {op} "{vals_clean[0]}"'
+            else:
+                # multi values OR 묶음 — 각 줄 별 op
+                sub = " OR ".join(f'{var} {op} "{v}"' for v in vals_clean)
+                cond_str = f"({sub})"
             tokens.append("AND")
             tokens.append(f"NOT ({cond_str})" if is_neg else cond_str)
 
-    tokens.append(")")
     return " | ".join(tokens)
 
 
@@ -395,15 +393,18 @@ def build_dsl_block(name: str, description: str, rsid: str, tags: str,
     return "\n".join(parts)
 
 
-def _build_site_container_inner(filters: list[tuple[str, str, list[str]]]) -> str:
-    """site 컨테이너 내부 — 여러 (operator, var_name, values) 를 OR 로 묶음.
-    각 항목은 _format_filter_condition 으로 한 줄 만들고, 여러 항목이면 그 사이에 OR 토큰."""
+def _build_us_filter_inner(filters: list[tuple[str, str, list[str]]]) -> str:
+    """[US] 여러 (op, var, vals) 를 OR 로 묶음. 큰따옴표 사용. multi vals 는 paren 으로 묶어 OR."""
     lines: list[str] = []
     for op, var, vals in (filters or []):
         vals_clean = [v for v in vals if v]
         if not vals_clean:
             continue
-        cond_str = _format_filter_condition(var, op, vals_clean)
+        if len(vals_clean) == 1:
+            cond_str = f'{var} {op} "{vals_clean[0]}"'
+        else:
+            sub = " OR ".join(f'{var} {op} "{v}"' for v in vals_clean)
+            cond_str = f"({sub})"
         if lines:
             lines.append("OR")
         lines.append(cond_str)
@@ -414,32 +415,29 @@ def build_customlink_block(customlink: str, evar_blocks: list[str],
                            site_pos: list[tuple[str, str, list[str]]] | None = None,
                            site_neg: list[tuple[str, str, list[str]]] | None = None,
                            evar_join: str = "AND") -> str:
-    """한 customlink + eVar 조건 (+ 선택 site 양수/음수 필터) 의 inner hit 블록.
+    """[US] flat hit(...) 구조 — Component / site 컨테이너 없이 inline AND.
 
     구조:
       hit(
-        'Component'!hit( customlink starts-with '<cl>' )
-        AND  <eVar 블록들 ...>
-        AND  '<SITE>'!hit( <site_pos OR 묶음> )      # 양수
-        AND  not '<SITE>'!hit( <site_neg OR 묶음> )  # 음수 (de Morgan 으로 둘 다 starts-with 아님 의미)
+        customlink starts-with "<cl>"
+        AND
+        <eVar 블록들 inline ...>      # build_evar_block 결과 (컨테이너 없음)
+        AND
+        <site 양수 inline OR 묶음>
+        AND
+        NOT (<site 음수 inline OR 묶음>)
       )
 
-    site_pos / site_neg 형식: list of (operator, var_name, values_list)
-      예: [("starts-with", "prop1", ["au"]), ("starts-with", "evar1", ["au"])]
-    여러 항목 OR 로 묶임. 빈 list 면 해당 컨테이너 추가 안 함.
+    site_pos / site_neg : list of (operator, var_name, values_list).  큰따옴표 사용.
 
     evar_join: "AND" (default) | "OR" — evar_blocks 가 2 개 이상일 때 묶음 방식.
-       OR 일 때 named container wrap (EVAR_JOIN_WRAP_NAME) 안에 OR 토큰으로 묶음.
+       OR 일 때 named container wrap (EVAR_JOIN_WRAP_NAME) 안 OR 토큰으로 묶음.
        (raw paren `(...)` 은 v2_2 의 paren strip 에 잡혀 사라지므로 컨테이너 형태로 보존.)
     """
     parts: list[str] = ["hit("]
     has_first = False
     if customlink:
-        parts.extend([
-            "'Component'!hit(",
-            f"customlink starts-with '{customlink}'",
-            ")",
-        ])
+        parts.append(f'customlink starts-with "{customlink}"')
         has_first = True
     # eVar 블록들 — join 옵션 따라 AND (default) 또는 OR (named container wrap)
     if evar_blocks:
@@ -460,69 +458,65 @@ def build_customlink_block(customlink: str, evar_blocks: list[str],
                     parts.append("AND")
                 parts.append(block)
                 has_first = True
-    # 양수 site 필터
-    pos_inner = _build_site_container_inner(site_pos or [])
+    # 양수 site 필터 — paren 으로 OR 묶음
+    pos_inner = _build_us_filter_inner(site_pos or [])
     if pos_inner:
-        site_block = f"'{SITE_CONTAINER_NAME}'!hit( | {pos_inner} | )"
         if has_first:
             parts.append("AND")
-        parts.append(site_block)
+        # 여러 항목 또는 multi vals 면 이미 paren 포함, 단일 항목+단일 val 이면 그대로
+        parts.append(f"({pos_inner})" if " OR " in pos_inner else pos_inner)
         has_first = True
-    # 음수 site 필터 — 양수 컨테이너를 'not' 으로 감쌈
-    neg_inner = _build_site_container_inner(site_neg or [])
+    # 음수 site 필터 — NOT (...) 으로 감쌈
+    neg_inner = _build_us_filter_inner(site_neg or [])
     if neg_inner:
-        not_site_block = f"not '{SITE_CONTAINER_NAME}'!hit( | {neg_inner} | )"
         if has_first:
             parts.append("AND")
-        parts.append(not_site_block)
+        parts.append(f"NOT ({neg_inner})")
         has_first = True
     parts.append(")")
     return " | ".join(parts)
 
 
 def build_structure(name: str, customlink_blocks: list[str],
-                    root_scope: str = "visit") -> str:
-    """전체 structure 한 줄 ' | ' 구분.
-
-    customlink_blocks 가 1 개여도 (안전성·시각 일관성 위해) 항상 paren grouping 으로 감쌈.
-    2 개 이상이면 OR 로 엮음.
+                    root_scope: str = "hit") -> str:
+    """[US] flat 구조 — name container 없음. customlink_blocks 1 개면 그대로,
+    여러 개면 hit( <block1> OR <block2> ... ) 로 nested OR 묶음.
 
     root_scope:
-      · "visit" / "visitor" → 공통 ref AND ( '<name>'!hit( <blocks 또는 OR> ) ) 로 묶음
-                              → visit( hit( @공통ref AND ( '<name>'!hit( ... ) ) ) )
-      · "hit"               → 공통 ref 없이 단독 → hit( '<name>'!hit( <blocks 또는 OR> ) )"""
-    parts: list[str] = []
-    closing: list[str] = []
-    if root_scope == "hit":
-        parts.append("hit(")
-        parts.append(f"'{name}'!hit(")
-        closing = [")", ")"]
+      · "hit"     → customlink_blocks[0] 그대로 (이미 `hit( ... )`) 또는 nested hit 안 OR
+      · "visit"   → `visit( <위 결과> )` 로 한 단 더 감쌈 (COMMON_SEGMENT_REF 빈 문자열이라 AND 묶음 없음)
+      · "visitor" → 위와 동일하게 visitor() 로 감쌈
+    """
+    if not customlink_blocks:
+        return ""
+    # hit-level 묶음
+    if len(customlink_blocks) == 1:
+        hit_part = customlink_blocks[0]   # already 'hit( ... )'
     else:
-        parts.append(f"{root_scope}(")
-        parts.append("hit(")
-        # COMMON_SEGMENT_REF_NAME 있으면 named container wrap ('<name>'!hit(@<id>)), 없으면 @<id> 단독
+        # 여러 개 — nested hit() 안에 OR 로 묶음
+        inner_tokens: list[str] = []
+        for i, block in enumerate(customlink_blocks):
+            if i > 0:
+                inner_tokens.append("OR")
+            inner_tokens.append(block)
+        hit_part = "hit( | " + " | ".join(inner_tokens) + " | )"
+
+    if root_scope == "hit":
+        return hit_part
+    # visit / visitor — COMMON_SEGMENT_REF 값 있으면 글로벌처럼 AND 묶음, 없으면 단순 wrap.
+    # US 캠페인 visit segment 만들 때 COMMON_SEGMENT_REF 에 US 용 segment-ref ID 박아둘 것
+    # (글로벌과 다른 값. 비어있으면 segment-ref 묶음 없이 visit(hit(...)) 만 — hit 모드와 동등 의미).
+    if COMMON_SEGMENT_REF:
+        # named container wrap — COMMON_SEGMENT_REF_NAME 있으면 '<name>'!hit(@<id>) 로 박음 (reference dsl 스타일)
         if COMMON_SEGMENT_REF_NAME:
-            parts.append(f"'{COMMON_SEGMENT_REF_NAME}'!hit(")
-            parts.append(f"@{COMMON_SEGMENT_REF}")
-            parts.append(")")
+            ref_token = f"'{COMMON_SEGMENT_REF_NAME}'!hit( | @{COMMON_SEGMENT_REF} | )"
         else:
-            parts.append(f"@{COMMON_SEGMENT_REF}")
-        parts.append("AND")
-        parts.append("(")                       # ← 추가 paren grouping 열기 (수동편집예시 .dsl 형식)
-        parts.append(f"'{name}'!hit(")
-        closing = [")", ")", ")", ")"]          # ← name-container 닫기 + paren grouping 닫기 + hit 닫기 + root 닫기
-
-    # customlink 블록들 — 1 개면 그대로, 2+ 면 OR 로 엮음
-    for i, block in enumerate(customlink_blocks):
-        if i > 0:
-            parts.append("OR")
-        parts.append(block)
-
-    parts.extend(closing)
-    return " | ".join(parts)
+            ref_token = f"@{COMMON_SEGMENT_REF}"
+        return f"{root_scope}( | hit( | {ref_token} | AND | {hit_part} | ) | )"
+    return f"{root_scope}( | {hit_part} | )"
 
 
-def _lookup_visit_seg_id(base_name: str) -> tuple[str, str]:
+def _lookup_visit_seg_from_result_csv(base_name: str) -> tuple[str, str]:
     """(Visit) segment 의 (id, full name) lookup — 가장 최신 segment_v2_2_result_*.csv (방금 POST 한 visit segments) 만 본다.
     lookup csv (segment_lookup_*.csv) 는 의도적으로 안 봄 — 이전 캠페인 같은 name segment 잘못 매칭 방지.
     매칭 없으면 ("", "") → Delayed Purchase 빌더가 fallback (inline content). visit segment 먼저 POST 해야 함."""
@@ -547,36 +541,52 @@ def _lookup_visit_seg_id(base_name: str) -> tuple[str, str]:
 
 
 def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_blocks: list[str]) -> str:
-    """[Global] Delayed Purchase wrap — visit 안에 [본 segment content (visit-seg 동일 의미: @<MAIN_REF> AND <inner>) + ATC + NOT orders] THEN visit(orders).
+    """[US] Delayed Purchase wrap — visit 안에 [본 segment content + ATC visit + NOT orders] THEN visit(orders).
 
-    visit segment 의 segment-ref `@<visit_id>` 가져오지 않음 — visit segment 가 없는 경우도 있고 매칭 모호.
-    대신 visit segment 의 inner content 와 동일하게 inline (Campaign Main Page filter 와 AND 묶음).
+    reference 패턴 (US_CC_00 등):
+      hit(
+        visit(
+          '<본 segment name>'!hit( <본 segment inner content> )
+          THEN
+          '<ATC Visit name>'!hit( @<ATC id> )
+          AND
+          hit( NOT orders event-exists )
+        )
+        THEN
+        visit( orders event-exists )
+      )
+
+    customlink_blocks 의 inner content (각 `hit( ... )` 의 안쪽) 만 추출해 name container 안에 박음.
     """
-    # customlink_blocks 의 inner content 추출 (각 hit(...) 의 안쪽)
-    inner_parts: list[str] = []
-    for i, block in enumerate(customlink_blocks):
-        toks = block.split(" | ")
-        if len(toks) >= 3 and toks[0].strip() == "hit(" and toks[-1].strip() == ")":
-            inner = toks[1:-1]
-        else:
-            inner = toks
-        if i > 0:
-            inner_parts.append("OR")
-        inner_parts.extend(inner)
+    # visit segment 의 segment-ref 활용 — 가장 최신 result csv 에서 '<base> (Visit)' 의 id lookup
+    visit_id, visit_name = _lookup_visit_seg_from_result_csv(base_name)
 
-    # outermost = hit — reference dsl. v2.2 가 root sequence → sequence-prefix 자동 변환 (hit-scope 허용)
-    parts: list[str] = [
-        "hit(",
-        "visit(",
-        f"'{base_name}'!hit(",
-    ]
-    # 본 segment 의 name container 안 — visit segment 의 inner 와 동일: @<COMMON_REF> AND <inner content>
-    if COMMON_SEGMENT_REF:
-        parts.append(f"@{COMMON_SEGMENT_REF}")
-        parts.append("AND")
-    parts.extend(inner_parts)
-    parts.append(")")
+    # outermost = hit — reference dsl 그대로. v2.2 의 _patch_definition_for_aa 가 root sequence → sequence-prefix 변환 (hit-scope 허용)
+    parts: list[str] = ["hit(", "visit("]
+
+    if visit_id:
+        # B: '<visit name>'!hit( @<visit_id> ) — named container + segment-ref (가장 최신 result csv 의 visit segment 활용)
+        parts.append(f"'{visit_name}'!hit(")
+        parts.append(f"@{visit_id}")
+        parts.append(")")
+    else:
+        # fallback (A): visit content inline — base name container 안에 customlink_blocks inner content
+        inner_parts: list[str] = []
+        for i, block in enumerate(customlink_blocks):
+            toks = block.split(" | ")
+            if len(toks) >= 3 and toks[0].strip() == "hit(" and toks[-1].strip() == ")":
+                inner = toks[1:-1]
+            else:
+                inner = toks
+            if i > 0:
+                inner_parts.append("OR")
+            inner_parts.extend(inner)
+        parts.append(f"'{base_name}'!hit(")
+        parts.extend(inner_parts)
+        parts.append(")")
+
     parts.append("THEN")
+    # ATC Visit segment-ref — named container wrap 또는 @<id> 단독
     if ATC_VISIT_SEGMENT_REF:
         if ATC_VISIT_SEGMENT_NAME:
             parts.append(f"'{ATC_VISIT_SEGMENT_NAME}'!hit(")
@@ -586,18 +596,22 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
             parts.append(f"@{ATC_VISIT_SEGMENT_REF}")
     parts.extend([
         "AND",
-        "hit(", "NOT orders event-exists", ")",
-        ")",
+        "hit(",
+        "NOT orders event-exists",
+        ")",          # NOT orders hit close
+        ")",          # outer visit close
         "THEN",
-        "visit(", "orders event-exists", ")",
-        ")",
+        "visit(",
+        "orders event-exists",
+        ")",          # final visit close
+        ")",          # outer hit close
     ])
     return " | ".join(parts)
 
 
 def _lookup_seg_ref_by_name(name_pat: str, cache_name: str) -> tuple[str, str]:
     """segment_ref_cache_<cache_name>.json 들 (콤마 분리 가능) 에서 name partial 매칭으로 (segment id, full name) 찾기.
-    cache_name 예: "26sw_evar_global" / "26sw_evar_global,add_to_cart_global" — 여러 cache 순서대로 시도."""
+    cache_name 예: "us" / "us,add_to_cart_us" — 여러 cache 파일 순서대로 시도, 첫 매칭 반환."""
     import json
     if not name_pat:
         return ("", "")
@@ -634,25 +648,12 @@ def main() -> int:
         pass
 
     parser = argparse.ArgumentParser(description="seg_make_ref CSV → v2_1 input CSV 자동 변환")
-    parser.add_argument("--input", default=SEG_MAKE_REF_CSV,
-                        help="input CSV. 빈 값이면 폴더에서 seg_make_ref_*.csv 사전순 최신 1개 자동 선택.")
+    parser.add_argument("--input", default=seg_make_ref_us_CSV,
+                        help="input CSV. 빈 값이면 폴더에서 seg_make_ref_us_*.csv 사전순 최신 1개 자동 선택.")
     parser.add_argument("--output-ts", dest="output_ts", default="",
                         help="출력 파일 ts override (scenario 에서 _global / _us suffix 박을 때 사용). "
                              "빈 값이면 datetime.now() 사용.")
     args = parser.parse_args()
-
-    # REF_SEGMENT_NAME 으로 cache lookup (COMMON_SEGMENT_REF 직접 박혀 있으면 lookup 안 함)
-    global COMMON_SEGMENT_REF, COMMON_SEGMENT_REF_NAME
-    if REF_SEGMENT_NAME and not COMMON_SEGMENT_REF_NAME:
-        looked_id, looked_name = _lookup_seg_ref_by_name(REF_SEGMENT_NAME, CACHE_NAME)
-        # 단 직접 박힌 COMMON_SEGMENT_REF 있으면 id 유지 (사용자 의도 존중), name 만 채움
-        if looked_id and not COMMON_SEGMENT_REF:
-            COMMON_SEGMENT_REF = looked_id
-        if looked_name and not COMMON_SEGMENT_REF_NAME:
-            COMMON_SEGMENT_REF_NAME = looked_name
-    if COMMON_SEGMENT_REF:
-        wrap_note = f" (named container wrap: {COMMON_SEGMENT_REF_NAME!r})" if COMMON_SEGMENT_REF_NAME else ""
-        print(f"  [common-ref] visit/visitor 모드에서 AND 묶일 segment id: {COMMON_SEGMENT_REF}{wrap_note}")
 
     # SCOPE_MODE 파싱 — 콤마 구분 list. backward compat "both" → ["visit","hit"]
     if SCOPE_MODE.strip().lower() == "both":
@@ -661,15 +662,29 @@ def main() -> int:
         modes = [m.strip().lower() for m in SCOPE_MODE.split(",") if m.strip()]
     print(f"  [scope] modes: {modes}")
 
+    # COMMON_SEGMENT_REF 결정 — 직접 박은 값 우선, 없으면 REF_SEGMENT_NAME 으로 cache lookup
+    global COMMON_SEGMENT_REF, COMMON_SEGMENT_REF_NAME
+    if not COMMON_SEGMENT_REF and REF_SEGMENT_NAME:
+        looked_id, looked_name = _lookup_seg_ref_by_name(REF_SEGMENT_NAME, CACHE_NAME)
+        if looked_id:
+            COMMON_SEGMENT_REF = looked_id
+            if not COMMON_SEGMENT_REF_NAME:
+                COMMON_SEGMENT_REF_NAME = looked_name
+    if COMMON_SEGMENT_REF:
+        wrap_note = f" (named container wrap: {COMMON_SEGMENT_REF_NAME!r})" if COMMON_SEGMENT_REF_NAME else ""
+        print(f"  [common-ref] visit/visitor 모드에서 AND 묶일 segment id: {COMMON_SEGMENT_REF}{wrap_note}")
+    elif "visit" in modes or "visitor" in modes:
+        print(f"  [common-ref] (없음) — visit/visitor 모드도 segment-ref AND 묶음 없이 단순 visit(hit(...)) 만 생성됨")
+
     # ATC segment-ref (delayed_purchase 옵션 용) — 직접 박은 값 우선, 없으면 ATC_REF_SEGMENT_NAME 으로 lookup
     global ATC_VISIT_SEGMENT_REF, ATC_VISIT_SEGMENT_NAME
     if "delayed_purchase" in modes:
         if not ATC_VISIT_SEGMENT_REF and ATC_REF_SEGMENT_NAME:
-            atc_id, atc_nm = _lookup_seg_ref_by_name(ATC_REF_SEGMENT_NAME, CACHE_NAME)
-            if atc_id:
-                ATC_VISIT_SEGMENT_REF = atc_id
+            looked_id, looked_name = _lookup_seg_ref_by_name(ATC_REF_SEGMENT_NAME, CACHE_NAME)
+            if looked_id:
+                ATC_VISIT_SEGMENT_REF = looked_id
                 if not ATC_VISIT_SEGMENT_NAME:
-                    ATC_VISIT_SEGMENT_NAME = atc_nm
+                    ATC_VISIT_SEGMENT_NAME = looked_name
         if ATC_VISIT_SEGMENT_REF:
             print(f"  [atc-ref] delayed_purchase 용 ATC visit segment id: {ATC_VISIT_SEGMENT_REF}  (name: {ATC_VISIT_SEGMENT_NAME!r})")
         else:
@@ -681,17 +696,15 @@ def main() -> int:
     out_warn_path = OUTPUT_DIR / OUTPUT_WARN_NAME_TEMPLATE.format(ts=ts)
 
     # ─── input CSV 결정 ─────────────────────────────────────
-    # SEG_MAKE_REF_CSV (또는 --input) 가 비어 있으면 OUTPUT_DIR 의 seg_make_ref_*.csv 중
+    # seg_make_ref_us_CSV (또는 --input) 가 비어 있으면 OUTPUT_DIR 의 seg_make_ref_us_*.csv 중
     # 파일명 사전순 최신 1 개 자동 선택. 파일명 timestamp 는 _YYMMDD_HHMM 이므로
     # 사전순 정렬 = 시간순 정렬 (mtime 보다 안정적 — OneDrive 동기화·복사 시 mtime 이 어긋날 수 있어서).
     input_arg = (args.input or "").strip()
     if not input_arg:
-        # 글로벌 — 'seg_make_ref_<YYMMDD>_<HHMM>.csv' 패턴만 (숫자 시작). us / tmp 같은 파생 제외.
-        all_files = sorted(OUTPUT_DIR.glob("seg_make_ref_*.csv"), reverse=True)
-        candidates = [p for p in all_files
-                      if re.match(r"^seg_make_ref_\d", p.name) and "_tmp." not in p.name]
+        candidates = [p for p in sorted(OUTPUT_DIR.glob("seg_make_ref_us_*.csv"), reverse=True)
+                      if "_tmp." not in p.name]   # scenario 임시 csv 제외
         if not candidates:
-            print(f"ERROR: seg_make_ref_<YYMMDD>_<HHMM>.csv 못 찾음 — {OUTPUT_DIR}")
+            print(f"ERROR: seg_make_ref_us_*.csv 못 찾음 — {OUTPUT_DIR}")
             return 1
         src_path = candidates[0]
         print(f"  [auto-latest] {src_path.name}  (총 {len(candidates)} 개 후보 중 최신)")
@@ -727,21 +740,39 @@ def main() -> int:
                 continue
             value_col_key = EVAR_VALUE_COLUMN_TEMPLATE.format(num=num).lower()
             value_col = fieldnames_lower.get(value_col_key)
-            # value_col 없어도 OK — generic filter (starts-with_eVarN 등) 또는 crystallize 가 main 조건 역할
+            # value_col 없어도 OK — crystallize_evar<N> 같은 override 있으면 main evar 블록 빌드 가능
             evar_event_cols.append((hdr, value_col or "", num))
             inline_evar_nums.add(num)
         if evar_event_cols:
             print(f"  [evar-event] 인식된 evar 블록 대상: " +
                   ", ".join(f"eVar{n}" for _, _, n in evar_event_cols))
 
+        # customlink 컬럼 동적 인식 — 헤더 prefix 매칭 ("customlink", "customLink (...)" 등)
+        customlink_header = None
+        for hdr in fieldnames:
+            if re.match(CUSTOMLINK_COLUMN_REGEX, hdr.strip(), flags=re.IGNORECASE):
+                customlink_header = hdr
+                break
+        if customlink_header:
+            print(f"  [customlink] 인식된 컬럼: {customlink_header!r}")
+
         # crystallize 컬럼 매핑 — {evarN: (operator, column_name)} (값 있으면 자동 LCS override)
+        # 두 형식 인식:
+        #   1) <cond>_crystallize_evar<N>   (예: starts_crystallize_evar26) — cond 명시
+        #   2) crystallize_evar<N>          (예: crystallize_evar96)         — cond 없음, default starts-with (US 기본)
         crystallize_map: dict[str, tuple[str, str]] = {}
         for hdr in fieldnames:
-            m = re.match(CRYSTALLIZE_COLUMN_REGEX, hdr.strip(), flags=re.IGNORECASE)
+            h = hdr.strip()
+            m = re.match(CRYSTALLIZE_COLUMN_REGEX, h, flags=re.IGNORECASE)
             if m:
                 cond, varname = m.group(1).lower(), m.group(2).lower()
                 op = CRYSTALLIZE_CONDITION_TO_OPERATOR[cond]
                 crystallize_map[varname] = (op, hdr)
+                continue
+            m2 = re.match(CRYSTALLIZE_COLUMN_REGEX_NO_COND, h, flags=re.IGNORECASE)
+            if m2:
+                varname = m2.group(1).lower()
+                crystallize_map[varname] = ("starts-with", hdr)   # default starts-with (US)
         if crystallize_map:
             print(f"  [crystallize] 인식된 override 컬럼: " +
                   ", ".join(f"{v}→{op}({col})" for v, (op, col) in crystallize_map.items()))
@@ -753,12 +784,6 @@ def main() -> int:
             cls = classify_filter_column(hdr)
             if cls:
                 filter_columns[hdr] = cls
-        # eVar<N> 값 컬럼 (메인 evar 블록 대상) 은 filter 에서 제외 — inline_evar_nums 의 N 매칭 evar<N> 헤더만 제외
-        # 그 외 evar<N> 헤더 (예: evar1, evar11 같은 site filter 용) 는 그대로 site filter 로 인식
-        def _is_main_evar_value_col(hdr: str) -> bool:
-            m = re.match(r"^eVar(\d+)$", hdr.strip(), flags=re.IGNORECASE)
-            return bool(m) and int(m.group(1)) in inline_evar_nums
-        filter_columns = {h: c for h, c in filter_columns.items() if not _is_main_evar_value_col(h)}
         if filter_columns:
             descs = ", ".join(
                 f"{h}→{'NOT ' if n else ''}{v} {o}" for h, (n, o, v) in filter_columns.items()
@@ -768,7 +793,7 @@ def main() -> int:
         from collections import defaultdict as _dd
         for row in reader:
             seg_name = (row.get("Segment Name") or "").strip()
-            customlink = (row.get("customlink") or "").strip()
+            customlink = (row.get(customlink_header) or "").strip() if customlink_header else ""
             if not seg_name:
                 skipped.append((seg_name, "name 없음"))
                 continue
@@ -842,7 +867,6 @@ def main() -> int:
             # evar_join 결정 — 우선순위:
             #   1) evar_join 컬럼 명시값 ("OR" / "AND")
             #   2) 컬럼 없거나 값 빈 채 → 자동 default: multi-evar TRUE (>=2) 면 OR, 아니면 AND
-            #      (한 row 에 evar event-exists 2개 이상 = OR 의도로 자동 판단)
             evar_join_col = fieldnames_lower.get(EVAR_JOIN_COLUMN.lower())
             explicit_val = (row.get(evar_join_col) or "").strip().upper() if evar_join_col else ""
             if explicit_val in ("OR", "AND"):
@@ -901,9 +925,9 @@ def main() -> int:
         for m in members:
             customlink_blocks.append(build_customlink_block(
                 m["_customlink"], m["_evar_blocks"],
+                evar_join=m.get("_evar_join") or "AND",
                 site_pos=m.get("_site_pos") or [],
                 site_neg=m.get("_site_neg") or [],
-                evar_join=m.get("_evar_join") or "AND",
             ))
 
         new_name_base = transform_name(raw_seg_name)
@@ -976,7 +1000,6 @@ def main() -> int:
                 print(f"   customlink={cl!r}  → {len(names)} segments{sep_note}:")
                 for nm in names:
                     sf = site_map.get((cl, nm), "")
-                    # site_filter 가 길면 truncate (WARN.csv 에 full 박힘)
                     sf_short = (sf[:60] + "...") if len(sf) > 60 else sf
                     print(f"     - {nm}   site_filter=[{sf_short}]" if sf else f"     - {nm}")
                     warning_rows.append({
