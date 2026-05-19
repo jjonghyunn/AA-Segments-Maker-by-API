@@ -101,6 +101,54 @@ FUNC_TO_DSL: dict[str, str] = {
 CONTEXT_TO_SCOPE = {"hits": "hit", "visits": "visit", "visitors": "visitor"}
 
 
+# ─── Date Range 컴포넌트 GET (datetime-interval-ref 처리용) ────────
+# segment definition 안 'datetime-within' / 'datetime-interval-ref' 토큰은
+# AA Date Range 컴포넌트 id (예: YOUR_ID) reference.
+# decompile 시 name + definition (ISO interval) 까지 같이 보여주려면 별도 GET 필요.
+# module-level cache 로 같은 세션 중복 GET 방지. main() 에서 _set_daterange_auth() 호출.
+
+_DATERANGE_CACHE: dict[str, dict] = {}
+_DATERANGE_HEADERS: dict | None = None
+_DATERANGE_GCID: str = ""
+
+
+def _set_daterange_auth(headers: dict, gcid: str) -> None:
+    """decompile 가 daterange fetch 할 수 있도록 module 변수 셋업."""
+    global _DATERANGE_HEADERS, _DATERANGE_GCID
+    _DATERANGE_HEADERS = headers
+    _DATERANGE_GCID = gcid
+
+
+def _fetch_daterange(dr_id: str) -> dict:
+    """Date Range GET — name + definition (ISO interval string) 반환. 캐시.
+    실패해도 dict 반환 — error 키에 사유 박힘.
+    """
+    if dr_id in _DATERANGE_CACHE:
+        return _DATERANGE_CACHE[dr_id]
+    if _DATERANGE_HEADERS is None or not _DATERANGE_GCID:
+        return {"id": dr_id, "name": "", "definition": "", "error": "auth 미설정"}
+    try:
+        url = f"https://analytics.adobe.io/api/{_DATERANGE_GCID}/dateranges/{dr_id}"
+        r = requests.get(url, headers=_DATERANGE_HEADERS,
+                         params={"expansion": "definition,modified,tags"}, timeout=30)
+        if r.status_code != 200:
+            entry = {"id": dr_id, "name": "", "definition": "",
+                     "error": f"{r.status_code} {r.reason}"}
+        else:
+            data = r.json()
+            entry = {
+                "id": dr_id,
+                "name": data.get("name", ""),
+                "definition": data.get("definition", ""),
+                "modified": data.get("modified", ""),
+                "error": "",
+            }
+    except Exception as e:
+        entry = {"id": dr_id, "name": "", "definition": "", "error": str(e)}
+    _DATERANGE_CACHE[dr_id] = entry
+    return entry
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 변수 역매핑
 # ═══════════════════════════════════════════════════════════════════
@@ -172,9 +220,32 @@ def _decompile_pred(pred: dict, indent: int, parent_context: str) -> list[str]:
         lines.append(f"{pad})")
         return lines
 
-    # sequence (then 로직)
+    # sequence (then 로직) — sequence 자체 context 가 parent 와 다르면 scope wrap 추가
+    # 명명 변환 — raw AA func → AA UI 라벨 (검증된 매핑):
+    #   sequence-prefix → sequence-after   (UI "After Sequence")
+    #   sequence-suffix → sequence-before  (UI "Before Sequence")
+    #   sequence        → sequence-all     (UI "Anywhere Sequence")
+    # 주의: Adobe 의 prefix/suffix 가 UI 의 Before/After 와 교차 매핑 — 직관과 반대.
     if func in ("sequence", "sequence-prefix", "sequence-suffix"):
+        seq_label = {
+            "sequence-prefix": "sequence-after",
+            "sequence-suffix": "sequence-before",
+            "sequence":        "sequence-all",
+        }[func]
         stream = pred.get("stream", pred.get("preds", []))
+        seq_ctx = pred.get("context", parent_context)
+        wrap = bool(seq_ctx and seq_ctx != parent_context)
+        if wrap:
+            scope = CONTEXT_TO_SCOPE.get(seq_ctx, seq_ctx)
+            inner_pad = "  " * (indent + 1)
+            inner_lines: list[str] = []
+            for i, step in enumerate(stream):
+                step_lines = _decompile_pred(step, indent + 1, seq_ctx)
+                if i > 0:
+                    inner_lines.append(f"{inner_pad}THEN")
+                inner_lines.extend(step_lines)
+            return [f"{pad}[{seq_label}] {scope}("] + inner_lines + [f"{pad})"]
+        # context 동일 → 평탄하게 THEN 으로 연결 (기존 동작 유지)
         lines: list[str] = []
         for i, step in enumerate(stream):
             step_lines = _decompile_pred(step, indent, parent_context)
@@ -188,8 +259,47 @@ def _decompile_pred(pred: dict, indent: int, parent_context: str) -> list[str]:
         seg_id = pred.get("segmentId", "?")
         return [f"{pad}@{seg_id}"]
 
+    # datetime-within — sequence step 사이 시간 제약. interval-value 안에 datetime-interval-ref 또는 inline.
+    if func == "datetime-within":
+        iv = pred.get("interval-value") or {}
+        return [f"{pad}WITHIN {_format_datetime_interval(iv)}"]
+
+    # datetime-interval-ref — 단독 등장 시 Date Range 컴포넌트 reference
+    if func == "datetime-interval-ref":
+        return [f"{pad}{_format_datetime_interval(pred)}"]
+
     leaf = _decompile_leaf(pred, parent_context)
     return [f"{pad}{l}" for l in leaf]
+
+
+def _format_datetime_interval(iv: dict) -> str:
+    """datetime-interval-ref 또는 inline interval → 사람이 읽을 수 있는 표현.
+
+    AA 구조:
+      ref:    {"func": "datetime-interval-ref", "id": "<daterange_id>"}
+      inline: {"func": "rolling-days", "num": 30} 같은 형태 (옵션)
+    """
+    if not isinstance(iv, dict):
+        return f"@datetime:({iv!r})"
+    iv_func = iv.get("func", "")
+    if iv_func == "datetime-interval-ref":
+        dr_id = iv.get("id", "?")
+        info = _fetch_daterange(dr_id)
+        name = info.get("name") or ""
+        defn = info.get("definition") or ""
+        err = info.get("error") or ""
+        if err and not name:
+            return f"@daterange:{dr_id} ({err})"
+        # 'name'!datetime( <defn> )  형식 — 사람이 보기 쉽게
+        parts = [f"@daterange:{dr_id}"]
+        if name:
+            parts.append(f"'{name}'")
+        if defn:
+            parts.append(f"({defn})")
+        return " ".join(parts)
+    # inline (rolling-days, calendar-day 등) — 키들 정렬해서 한 줄로
+    items = ", ".join(f"{k}={v!r}" for k, v in iv.items() if k != "func")
+    return f"{iv_func}({items})" if items else iv_func
 
 
 def _decompile_leaf(pred: dict, parent_context: str) -> list[str]:
@@ -509,6 +619,7 @@ def main() -> int:
     # 인증
     print("Authenticating ...")
     headers, gcid = _load_auth_headers()
+    _set_daterange_auth(headers, gcid)   # decompile 시 datetime-interval-ref → Date Range name fetch
     print()
 
     # 조회
