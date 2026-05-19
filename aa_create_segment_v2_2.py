@@ -67,8 +67,10 @@ from aa_create_segment_v2 import (
 # 사용자가 바꿔야 하는 부분
 # ════════════════════════════════════════════════════════════════════
 
-# INPUT_CSV = "segments_input_260518_2232_global.csv"
-INPUT_CSV = "segments_input_260518_2251_scenario.csv"
+# INPUT_CSV = "segments_input_260519_1558_global.csv"
+# INPUT_CSV = "segments_input_260519_1438_scenario.csv"
+# INPUT_CSV = "segments_from_ref_260519_1945_recomm15.csv"
+INPUT_CSV = "segments_from_ref_batch_260519_2112_recomm1to14.csv"
 
 # segment-ref 캐시 파일명 suffix — 캠페인 / 환경 별로 분리 가능.
 #   ""       → segment_ref_cache.json         (기본)
@@ -296,6 +298,45 @@ def _structure_to_dsl(structure: str) -> str:
             stack.append("cont")
     filtered = [t for i, t in enumerate(tokens) if i not in to_remove]
     return "\n".join(filtered)
+
+
+def _fetch_existing_segment(headers: dict, base_endpoint: str, seg_id: str) -> dict | None:
+    """기존 segment GET — noop 비교용. 실패하면 None (PUT 진행 fallback)."""
+    try:
+        r = requests.get(
+            f"{base_endpoint}/{seg_id}",
+            headers=headers,
+            params={"expansion": "definition,name,description,reportSuiteName,tags"},
+            timeout=30,
+        )
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except Exception:
+        return None
+
+
+def _payload_equals_existing(payload: dict, existing: dict) -> bool:
+    """새 payload 와 기존 segment 가 5 필드 (definition, name, description, rsid, tags) 모두 같은지.
+    tags — payload 는 list[str], existing 은 list[dict] (각 dict 의 'name' 키) → set 비교.
+    그 외 — 직접 ==. definition 은 nested dict 동등성.
+    """
+    if (payload.get("name") or "").strip() != (existing.get("name") or "").strip():
+        return False
+    if (payload.get("description") or "").strip() != (existing.get("description") or "").strip():
+        return False
+    if (payload.get("rsid") or "") != (existing.get("rsid") or ""):
+        return False
+    p_tags = set((payload.get("tags") or []))
+    e_tags_raw = existing.get("tags") or []
+    e_tags = set(
+        (t.get("name", "") if isinstance(t, dict) else str(t)) for t in e_tags_raw
+    )
+    if p_tags != e_tags:
+        return False
+    if payload.get("definition") != existing.get("definition"):
+        return False
+    return True
 
 
 def _parse_csv(csv_path: Path) -> list[dict]:
@@ -621,9 +662,20 @@ def main() -> int:
         # PUT (segment_id 있음, update_mode 또는 mixed 모드 + 그 row 가 id 있음) vs POST (없음)
         row_seg_id = (spec.get("segment_id") or "").strip()
         if update_mode or (mixed_mode and row_seg_id):
-            # PUT — 기존 세그먼트 업데이트
+            # PUT 전에 GET 해서 기존과 동일한지 비교 — 5 필드 모두 같으면 noop (PUT 안 보냄)
             seg_id = row_seg_id
             url = f"{base_endpoint}/{seg_id}"
+            existing = _fetch_existing_segment(headers, base_endpoint, seg_id)
+            if existing is not None and _payload_equals_existing(payload, existing):
+                ui_url = UI_URL_TEMPLATE.format(seg_id=seg_id)
+                print(f"  [{i+1}/{len(specs)}] noop '{spec['name']}' ({seg_id}) — 동일 조건")
+                results.append({
+                    "name": spec["name"], "seg_id": seg_id,
+                    "action": "noop",
+                    "status": "NOOP",
+                    "url": ui_url, "error": "",
+                })
+                continue
             action_label = "update"
             print(f"  [{i+1}/{len(specs)}] update '{spec['name']}' ({seg_id}) ...", end=" ")
             r = requests.put(url, headers=headers, json=payload, timeout=60)
@@ -668,13 +720,14 @@ def main() -> int:
 
     def _is_ok(r):
         s = r.get("status", "")
-        return s.startswith("200") or s.startswith("201")
+        return s.startswith("200") or s.startswith("201") or s == "NOOP"
     ok = sum(1 for r in results if _is_ok(r))
     skip = sum(1 for r in results if r.get("status") == "SKIP")
     fail = len(results) - ok - skip
     n_update = sum(1 for r in results if r.get("action") == "update")
     n_create = sum(1 for r in results if r.get("action") == "create")
-    print(f"[summary] 성공: {ok}, 실패: {fail}, skip: {skip}  (update: {n_update} / create: {n_create})")
+    n_noop = sum(1 for r in results if r.get("action") == "noop")
+    print(f"[summary] 성공: {ok}, 실패: {fail}, skip: {skip}  (update: {n_update} / create: {n_create} / noop: {n_noop})")
 
     return 0 if fail == 0 else 1
 

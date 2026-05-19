@@ -85,8 +85,9 @@ COMPANY_ID = "company_id"
 # source = 복제 원본. Workspace URL 의 /workspace/edit/{이부분}
 SOURCE_PROJECT_ID = "YOUR_PROJECT_ID"   # 참고 원본 프로젝트
 # target = 미리 UI 에서 빈 프로젝트로 생성해둔 곳 (user1_login owner)
-TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # recomm 작업용 대상 프로젝트
-
+# TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis (Product Recommendation) | API (user_id)
+TARGET_PROJECT_ID = "YOUR_PROJECT_ID" # team공유용.
+# https://experience.adobe.com/@company_name/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
 # source 의 어느 panel(들) 을 가져올지.
 #   · "all"            → 모든 panel (기본)
 #   · [0]              → 첫 panel 만
@@ -138,7 +139,7 @@ SUB_NUM_PATTERN = re.compile(r"\s-\s(\d+)\.", re.IGNORECASE)
 # 없으면 system / 공용 segment 로 간주하고 target 에서도 같은 ID 그대로 둠
 # (예: "No Data", "PC User (Visit)", "[part_name] Excluded EPP", "[Global] Excluded APP").
 # TODO: OLD_KEYWORDS 와 동일하게 캠페인 prefix 에 맞게 변경.
-SWAP_REQUIRED_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME"]
+SWAP_REQUIRED_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME", "Product Recommendation"]
 
 # ─── Ambiguous tie-breaker (소유자 우선순위) ──────────────────────
 # 같은 키 ((type, num/sub_num, suffix) 등) 에 SW segment 가 2개 이상 매칭될 때,
@@ -152,7 +153,13 @@ PREFERRED_OWNER_ID = "YOUR_LOGIN_ID"  # user2_login
 # segment 들 (예: "recomm" → Product Recommendation - 01. Foo 같은 sub 변형).
 # sub_num 없는 컨테이너 segment (예: "CC_08. Product Recommendation") 는 영향 없이
 # 정상 매칭. 추후 MANUAL_OVERRIDES 또는 별도 도구로 처리.
-SKIP_KEYWORDS = ["recomm"]
+SKIP_KEYWORDS: list[str] = []  # 새 [CAMPAIGN NAME] CC_Product Recommendation 추가됨 → recomm 도 자동 매칭 OK
+
+# ─── candidate 제한 (특정 result csv 의 SegmentId 만 swap 후보) ──────
+# 빈 string 이면 NEW_KEYWORDS 매칭 segment 전체 사용.
+# 박혀있으면 그 csv 의 SegmentId 컬럼 값에 해당하는 segment 만 candidate.
+# (입력 csv 형식: aa_create_segment_v2_2.py 의 result csv — header 에 'SegmentId' 컬럼)
+PREFERRED_SEGMENT_CSV = r"C:\Users\user_name\path\to\auth.json"
 
 # ─── 이름 정규화 패턴 (CC/US_CC 패턴 없는 segment 용 fallback) ─────────
 # segment ID 는 다르지만 "같은 논리적 컨셉" 인 경우 매칭하려고 이름을 정규화해서 비교.
@@ -382,12 +389,29 @@ def _extract_cc_key(name: str) -> tuple[str, str, str] | None:
     """이름에서 (type, number_raw, suffix) 키 추출. US_CC 먼저, 그 다음 CC.
     suffix 는 'visit' / 'delayed' / '' 중 하나.
     type/number 매칭 안 되면 None.
-    number_raw 는 zero-pad 그대로 ("01" vs "1" 구분) — source/target 표기 통일 가정."""
+    number_raw 는 zero-pad 그대로 ("01" vs "1" 구분) — source/target 표기 통일 가정.
+
+    fallback: CC 패턴 없어도 'Product Recommendation - NN.' 형식이면
+    type='PR' + num=sub_num 으로 매칭 키 생성 (source 와 target 둘 다 동일하게 추출됨).
+    이는 source 의 [CAMPAIGN NAME] 없는 'Product Recommendation - 01. ...' 와
+    target 의 '[CAMPAIGN NAME] CC_Product Recommendation - 01. ...' 를 같은 키로 묶기 위함."""
     n = name or ""
+    # 잔재 segment 제외: 'US_CC_[US]' (dedupe 안 된 옛 이름) → 매칭 후보 제외
+    if re.search(r"US_CC_\[US\]", n, re.IGNORECASE):
+        return None
     for type_label, pat in CC_TYPE_PATTERNS:
         m = pat.search(n)
         if m:
             return (type_label, m.group(1), _extract_suffix(n))
+    # fallback — Product Recommendation 패턴 (Global vs US 분리)
+    # US 우선순위: US_CC_Product Recommendation 또는 [US] Product Recommendation
+    has_us = bool(re.search(r"\[US\]\s*Product Recommendation|US_CC_Product Recommendation|US_Product Recommendation", n, re.IGNORECASE))
+    has_pr = bool(re.search(r"Product Recommendation", n, re.IGNORECASE))
+    if has_pr:
+        sub_num = _extract_sub_num(n)
+        if sub_num:
+            type_label = "US_PR" if has_us else "PR"
+            return (type_label, sub_num, _extract_suffix(n))
     return None
 
 
@@ -582,6 +606,22 @@ def main() -> int:
     new_segs = _list_segments_by_keyword(headers, gcid, NEW_KEYWORDS)
     print(f"  → 매칭된 {NEW_KEYWORDS[0]} 계열 segment: {len(new_segs)} 개")
 
+    # candidate 제한 — PREFERRED_SEGMENT_CSV 의 SegmentId 만 candidate 로
+    if PREFERRED_SEGMENT_CSV:
+        preferred_ids: set[str] = set()
+        try:
+            with open(PREFERRED_SEGMENT_CSV, encoding="utf-8-sig", newline="") as f:
+                rdr = csv.DictReader(f)
+                for row in rdr:
+                    sid = (row.get("SegmentId") or row.get("segment_id") or "").strip()
+                    if sid:
+                        preferred_ids.add(sid)
+            print(f"  → PREFERRED_SEGMENT_CSV: {len(preferred_ids)} ids ({Path(PREFERRED_SEGMENT_CSV).name})")
+            new_segs = [s for s in new_segs if s.get("id") in preferred_ids]
+            print(f"  → filtered candidates: {len(new_segs)} (csv 안 SegmentId 만)")
+        except Exception as e:
+            print(f"  ⚠️ PREFERRED_SEGMENT_CSV 로드 실패 — {e}. filter 건너뜀.")
+
     # CC/US_CC 키별 인덱스 분리:
     #   · new_by_sub_key: sub_num 있는 target — (type, sub_num, suffix)
     #   · new_by_cc_key : sub_num 없는 target — (type, primary_num, suffix)
@@ -738,8 +778,14 @@ def main() -> int:
         # 5) primary CC 매칭 — sub_num 없는 컨테이너 segment, 또는 sub_num 매칭 실패 fallback.
         #    SW 의 sub_num 없는 컨테이너 (예: "CC_03. Scenario: Your Daily Sync") 와 매칭.
         #    여기서도 안 잡히면 No Data fallback.
+        #    sub→cc_key fallback 시 중복 방지: 이미 다른 source 에 쓰인 target 은 후보에서
+        #    제외 → No Data 로. (컨테이너 source 가 먼저 처리되어 mapping 에 들어가니까
+        #    그 다음 sub_num 변형들이 fallback 들어올 때 cand 에서 자동 제거됨.)
         if key is not None:
             cand = new_by_cc_key.get(key) or []
+            if sub is not None and cand:
+                used = set(mapping.values()) - ({no_data_sid} if no_data_sid else set())
+                cand = [c for c in cand if c["id"] not in used]
             if len(cand) == 1:
                 new_id = cand[0]["id"]
                 mapping[sid] = new_id

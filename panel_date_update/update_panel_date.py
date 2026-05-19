@@ -48,7 +48,9 @@ AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
 COMPANY_ID = "company_id"
 
 # 대상 Workspace project ID (URL 의 /workspace/edit/<여기> 부분)
-PROJECT_ID = "YOUR_PROJECT_ID"
+PROJECT_ID = "YOUR_PROJECT_ID" # CAMPAIGN NAME Scenario cc09 component only
+# PROJECT_ID = "YOUR_PROJECT_ID" # CAMPAIGN NAME (user_id)플젝
+# PROJECT_ID = "YOUR_PROJECT_ID"   # CAMPAIGN NAME 캠페인 프로젝트
 
 # 패널 이름이 이 정규식에 매칭되는 모든 패널을 일괄 치환한다 (0개면 abort).
 # 1개만 좁히고 싶으면 사이트코드 등으로 좁힐 것.

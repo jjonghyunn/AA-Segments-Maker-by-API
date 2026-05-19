@@ -54,10 +54,11 @@ AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
 # AA 회사(login company) ID.
 COMPANY_ID = "company_id"
 
-# 안전장치 #2 — 실제 segment 이름이 이 prefix로 시작 안 하면 삭제 거부.
-# 일반 운영 segment를 실수로 result CSV에 넣어도 prefix 검증으로 막힘.
-# test_create_segment.py의 SEGMENT_NAME 첫머리와 일치시킬 것.
-SAFE_NAME_PREFIX = "_test_"
+# 안전장치 #2 (선택) — 실제 segment 이름이 이 prefix로 시작 안 하면 삭제 거부.
+# 빈 값 ""이면 prefix 검증 비활성 — csv 의 모든 SegmentId 그대로 삭제 진행.
+# 운영 segment 통째 삭제 안전망이 필요할 때만 prefix 박음 (예: "_test_" / "[CAMPAIGN NAME] CC_").
+# CLI: --safe-prefix "<PREFIX>" 로도 override 가능.
+SAFE_NAME_PREFIX = ""
 
 
 # ─────────────────────────────────────────────────────────────
@@ -135,7 +136,19 @@ def main() -> int:
         action="store_true",
         help="실제 삭제 수행 (없으면 목록만 출력 후 종료)",
     )
+    parser.add_argument(
+        "--safe-prefix",
+        dest="safe_prefix",
+        default=None,
+        help="이름 prefix 검증 override (코드 상단 SAFE_NAME_PREFIX 보다 우선). "
+             "빈 문자열 또는 미지정 시 코드 상단 값 사용. 박힌 값이 빈 문자열이면 검증 비활성.",
+    )
     args = parser.parse_args()
+
+    # CLI override
+    global SAFE_NAME_PREFIX
+    if args.safe_prefix is not None:
+        SAFE_NAME_PREFIX = args.safe_prefix
 
     if args.from_csv:
         csv_path = Path(args.from_csv).resolve()
@@ -162,7 +175,10 @@ def main() -> int:
 
     print(f"CSV       : {csv_path}")
     print(f"검증 대상 : {len(rows)}개")
-    print(f"safe pref : '{SAFE_NAME_PREFIX}' (이 prefix 아니면 skip)")
+    if SAFE_NAME_PREFIX:
+        print(f"safe pref : '{SAFE_NAME_PREFIX}' (이 prefix 아니면 skip)")
+    else:
+        print(f"safe pref : (비활성 — 모든 segment 처리)")
     print()
 
     to_delete = []
@@ -174,7 +190,7 @@ def main() -> int:
             print(f"  WARN  {sid}: GET 실패 ({err}) → skip")
             skip.append({**row, "reason": err})
             continue
-        if not actual_name.startswith(SAFE_NAME_PREFIX):
+        if SAFE_NAME_PREFIX and not actual_name.startswith(SAFE_NAME_PREFIX):
             print(
                 f"  STOP  {sid}: 이름 '{actual_name}' — '{SAFE_NAME_PREFIX}' prefix 아님 → skip"
             )

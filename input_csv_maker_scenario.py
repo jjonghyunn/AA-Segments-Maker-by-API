@@ -162,11 +162,41 @@ def main() -> int:
             f.write("\n\n".join(dsl_blocks))
         print(f"[scenario merge] dsl → {out_dsl.name}")
 
-    # 5) 임시 csv 정리 — auto-pick 시 잘못 잡힘 방지
-    for tmp in (tmp_global, tmp_us):
+    # 5) WARN.csv 통합본 — global/us WARN 합쳐서 scenario_WARN.csv 로 (있을 때만)
+    out_warn = OUTPUT_DIR / f"{OUTPUT_PREFIX}_{ts}_scenario_WARN.csv"
+    merged_warn_rows: list[dict] = []
+    merged_warn_fields: list[str] = []
+    for src in (out_global_csv, out_us_csv):
+        if src is None:
+            continue
+        warn_src = src.with_name(src.stem + "_WARN.csv")
+        if not warn_src.exists():
+            continue
+        with open(warn_src, encoding="utf-8-sig") as f:
+            r = csv.DictReader(f)
+            if not merged_warn_fields and r.fieldnames:
+                merged_warn_fields = list(r.fieldnames)
+            for row in r:
+                merged_warn_rows.append(row)
+    if merged_warn_rows and merged_warn_fields:
+        with open(out_warn, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.DictWriter(f, fieldnames=merged_warn_fields)
+            w.writeheader()
+            w.writerows(merged_warn_rows)
+        print(f"[scenario merge] WARN → {out_warn.name}  ({len(merged_warn_rows)} 행)")
+
+    # 6) 임시 + 부수 파일 정리 — global/us 별도 결과 (csv/dsl/WARN) 모두 삭제, scenario 통합본만 남김
+    to_cleanup: list[Path] = [tmp_global, tmp_us]
+    for src in (out_global_csv, out_us_csv):
+        if src is None:
+            continue
+        to_cleanup.append(src)
+        to_cleanup.append(src.with_suffix(".dsl"))
+        to_cleanup.append(src.with_name(src.stem + "_WARN.csv"))
+    for p in to_cleanup:
         try:
-            if tmp.exists():
-                tmp.unlink()
+            if p.exists():
+                p.unlink()
         except Exception:
             pass
 
