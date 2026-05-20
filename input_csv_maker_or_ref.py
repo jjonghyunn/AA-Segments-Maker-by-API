@@ -37,10 +37,10 @@ from pathlib import Path
 # 사용자가 바꿔야 하는 부분
 # ════════════════════════════════════════════════════════════════════
 
-SEG_MAKE_REF_CSV = ""   # 빈 값이면 폴더의 seg_make_ref_*.csv 사전순 최신 1개 자동
+SEG_MAKE_REF_CSV = "seg_make_ref_recomm_us_1_to14.csv"   # 빈 값이면 폴더의 seg_make_ref_*.csv 사전순 최신 1개 자동
 
-DEFAULT_RSID = "rsid_placeholder"
 # DEFAULT_RSID = "rsid_placeholder"
+DEFAULT_RSID = "rsid_placeholder"
 DEFAULT_TAGS = ""
 
 # scope 단일 — hit container 안 OR 묶음. (필요하면 "visit" 으로 변경)
@@ -49,6 +49,11 @@ SCOPE = "hit"
 # 입력 컬럼 (case-insensitive 매칭) — header 변형 허용
 NAME_COLUMN_CANDIDATES   = ["segment name", "name"]
 OR_REF_COLUMN_CANDIDATES = ["or_seg-id", "or_seg_id", "or_segid", "or-seg-id"]
+SEG_ID_COLUMN_CANDIDATES = ["segment_id", "seg_id", "id"]
+
+# multi-row 형식 csv ('segment_id, name' 14 row → OR 묶음 1 segment) 처리 시 통합 segment 이름.
+# 빈 값이면 첫 row 의 name 의 공통 prefix + " 1~N" suffix 자동 합성 (예: "[US] Product Recommendation 1~14").
+MULTI_ROW_SEG_NAME = ""
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -149,50 +154,95 @@ def main() -> int:
     out_path     = OUTPUT_DIR / OUTPUT_NAME_TEMPLATE.format(ts=ts)
     out_dsl_path = OUTPUT_DIR / OUTPUT_DSL_NAME_TEMPLATE.format(ts=ts)
 
-    # 입력 csv 읽기 — 컬럼 자동 매칭
+    # 입력 csv 읽기 — 두 형식 자동 감지:
+    #   (A) single-row:  name + or_seg-id (한 row 의 cell 안 multi id, row 별 segment)
+    #   (B) multi-row:   segment_id + name (각 row 1 id, 모든 row 합쳐 1 segment)
     with open(src_path, encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         fieldnames = reader.fieldnames or []
         name_col   = _find_column(fieldnames, NAME_COLUMN_CANDIDATES)
         or_ref_col = _find_column(fieldnames, OR_REF_COLUMN_CANDIDATES)
-        if not name_col or not or_ref_col:
-            print(f"ERROR: 필수 컬럼 못 찾음 — name={name_col!r}, or_seg-id={or_ref_col!r}")
-            print(f"  헤더 후보: name={NAME_COLUMN_CANDIDATES}, or_ref={OR_REF_COLUMN_CANDIDATES}")
-            print(f"  실제 헤더: {fieldnames}")
-            return 1
-        print(f"  [columns] name={name_col!r}, or_seg-id={or_ref_col!r}")
+        seg_id_col = _find_column(fieldnames, SEG_ID_COLUMN_CANDIDATES)
         rows = list(reader)
 
     rows_out: list[dict] = []
     dsl_blocks: list[str] = []
     skipped: list[tuple[str, str]] = []
 
-    for r in rows:
-        seg_name = (r.get(name_col) or "").strip()
-        cell = r.get(or_ref_col) or ""
-        seg_ids = _split_seg_ids(cell)
-        if not seg_name:
-            skipped.append(("(no name)", "name 없음"))
-            continue
-        if not seg_ids:
-            skipped.append((seg_name, "or_seg-id 추출 0개"))
-            continue
+    # 모드 결정 — or_seg-id 컬럼 있으면 single-row, 아니면 segment_id 컬럼 있으면 multi-row
+    if or_ref_col:
+        mode = "single-row"
+        print(f"  [mode] single-row — name={name_col!r}, or_seg-id={or_ref_col!r}")
+    elif seg_id_col:
+        mode = "multi-row"
+        print(f"  [mode] multi-row — segment_id={seg_id_col!r}, name={name_col!r}")
+    else:
+        print(f"ERROR: 필수 컬럼 못 찾음")
+        print(f"  single-row 형식: name + or_seg-id 컬럼 필요")
+        print(f"  multi-row 형식:  segment_id + name 컬럼 필요")
+        print(f"  실제 헤더: {fieldnames}")
+        return 1
 
-        dsl = _build_dsl(seg_ids, SCOPE)
-        structure = _build_structure(seg_ids, SCOPE)
+    if mode == "single-row":
+        for r in rows:
+            seg_name = (r.get(name_col) or "").strip() if name_col else ""
+            cell = r.get(or_ref_col) or ""
+            seg_ids = _split_seg_ids(cell)
+            if not seg_name:
+                skipped.append(("(no name)", "name 없음"))
+                continue
+            if not seg_ids:
+                skipped.append((seg_name, "or_seg-id 추출 0개"))
+                continue
+
+            dsl = _build_dsl(seg_ids, SCOPE)
+            structure = _build_structure(seg_ids, SCOPE)
+            rows_out.append({
+                "segment_id": "", "name": seg_name, "description": "",
+                "rsid": DEFAULT_RSID, "tags": DEFAULT_TAGS,
+                "structure": structure, "warning": "",
+            })
+            dsl_blocks.append(
+                f"--- segment\nname: {seg_name}\ndescription: \nrsid: {DEFAULT_RSID}\ntags: []\n\n{dsl}"
+            )
+    else:   # multi-row
+        all_ids: list[str] = []
+        row_names: list[str] = []
+        for r in rows:
+            sid = (r.get(seg_id_col) or "").strip()
+            nm  = (r.get(name_col) or "").strip() if name_col else ""
+            # cell 안에 또 multi id 있을 수도 — split
+            sids = _split_seg_ids(sid) or ([sid] if sid else [])
+            all_ids.extend(sids)
+            if nm:
+                row_names.append(nm)
+        if not all_ids:
+            print(f"ERROR: segment_id 0 개 — input csv 확인")
+            return 1
+
+        # 통합 segment 이름 — MULTI_ROW_SEG_NAME 박혀있으면 그대로, 아니면 자동 합성
+        if MULTI_ROW_SEG_NAME.strip():
+            seg_name = MULTI_ROW_SEG_NAME.strip()
+        elif row_names:
+            # 첫 row name 의 공통 prefix 추출 — "- NN." 또는 " - NN" 패턴 앞까지
+            first = row_names[0]
+            m = re.match(r"^(.+?)\s*-\s*\d+\.?", first)
+            prefix = m.group(1).strip() if m else first
+            seg_name = f"{prefix} 1~{len(all_ids)}"
+        else:
+            seg_name = f"OR group 1~{len(all_ids)}"
+
+        dsl = _build_dsl(all_ids, SCOPE)
+        structure = _build_structure(all_ids, SCOPE)
         rows_out.append({
-            "segment_id": "",
-            "name": seg_name,
-            "description": "",
-            "rsid": DEFAULT_RSID,
-            "tags": DEFAULT_TAGS,
-            "structure": structure,
-            "warning": "",
+            "segment_id": "", "name": seg_name, "description": "",
+            "rsid": DEFAULT_RSID, "tags": DEFAULT_TAGS,
+            "structure": structure, "warning": "",
         })
-
         dsl_blocks.append(
             f"--- segment\nname: {seg_name}\ndescription: \nrsid: {DEFAULT_RSID}\ntags: []\n\n{dsl}"
         )
+        print(f"  [multi-row merge] {len(all_ids)} seg-id → 1 segment '{seg_name}'")
 
     # 출력 csv
     with open(out_path, "w", newline="", encoding="utf-8-sig") as f:

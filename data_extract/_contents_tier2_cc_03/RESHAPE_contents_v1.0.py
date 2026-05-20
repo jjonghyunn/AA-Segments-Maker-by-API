@@ -95,19 +95,30 @@ def _ts_now() -> str:
     return datetime.now().strftime("%y%m%d_%H%M")
 
 
-def find_latest_batch(input_dir: Path) -> tuple[str, list[Path]]:
-    """output/ 안의 column_mapping_*_YYMMDD_HHMM.csv 중 최신 timestamp batch 반환."""
-    by_ts: dict[str, list[Path]] = defaultdict(list)
+def find_latest_per_site(input_dir: Path) -> tuple[list[Path], dict[str, str]]:
+    """site (RE_TS_FILE group 1) 별로 각자 최신 ts column_mapping csv 1 개만 반환.
+    한 시점 batch 강제 안 함 — site 별 ts 가 달라도 각자의 최신 사용.
+
+    return: (paths_list, site_to_ts_dict)
+    """
+    by_site: dict[str, list[tuple[str, Path]]] = defaultdict(list)
     for p in input_dir.glob("column_mapping_*.csv"):
         m = RE_TS_FILE.match(p.name)
         if not m:
             continue
+        site = m.group(1)
         ts = m.group(2)
-        by_ts[ts].append(p)
-    if not by_ts:
+        by_site[site].append((ts, p))
+    if not by_site:
         raise FileNotFoundError(f"{input_dir} 에 column_mapping_*_YYMMDD_HHMM.csv 없음")
-    latest_ts = max(by_ts.keys())
-    return latest_ts, sorted(by_ts[latest_ts])
+    paths: list[Path] = []
+    site_to_ts: dict[str, str] = {}
+    for site, entries in by_site.items():
+        entries.sort(key=lambda x: x[0])
+        latest_ts, latest_path = entries[-1]
+        paths.append(latest_path)
+        site_to_ts[site] = latest_ts
+    return sorted(paths), site_to_ts
 
 
 def load_currency_map(path: Path) -> dict[tuple[str, str], float]:
@@ -245,11 +256,13 @@ def normalize_segments_for_join(segments: str) -> str:
 
 # ────────────────────────────────────────────────────────────────
 def process() -> int:
-    # 1) 최신 batch 파일들
-    latest_ts, files = find_latest_batch(INPUT_DIR)
-    print(f"[batch] 최신 timestamp: {latest_ts}  (파일 {len(files)}개)")
+    # 1) site 별 최신 column_mapping_*.csv 1 개씩 pick
+    files, site_to_ts = find_latest_per_site(INPUT_DIR)
+    print(f"[per-site latest] {len(files)} sites — site 별 ts 다르게 잡힘:")
     for p in files:
-        print(f"   - {p.name}")
+        m = RE_TS_FILE.match(p.name)
+        site = m.group(1) if m else "?"
+        print(f"   - {p.name}  (ts={site_to_ts.get(site, '?')})")
 
     # 2) currency / app_X
     currency = load_currency_map(CURRENCY_CSV)
