@@ -57,11 +57,20 @@ from pathlib import Path
 # ════════════════════════════════════════════════════════════════════
 
 # 입력 csv — segment_id, name, rsid 컬럼 필수 (lookup csv 호환).
-# 빈 값이면 폴더의 from_ref_batch_input.csv → segment_lookup_pjt_*_md.csv 순으로 fallback.
-# 용도: base segment id 14 개 → 새 시즌 visit/delayed_purchase 새로 빌드.
-INPUT_CSV = "segment_lookup_pjt_260519_1948_md.csv"
+# create 모드: input segment_id = SEG_REF (새 segment 안 박힐 @ref)
+# update 모드: input segment_id = update 대상. SEG_REF 는 SEG_REF_SOURCE_CSV 에서 name key 매칭.
+INPUT_CSV = "us_recomm_15_input.csv"
+
+# OUTPUT_MODE — "create" (default, segment_id 빈 채 → POST) / "update" (segment_id 박은 채 → PUT)
+OUTPUT_MODE = "create"
+
+# update 모드에서 SEG_REF 매핑용 source csv (segment_id + name 컬럼 필요).
+# input csv 의 name 의 "Product Recommendation - XX. *" key 와 source 의 name key 매칭으로 SEG_REF 결정.
+# 빈 값이면 self-ref (input 의 segment_id 그대로).
+SEG_REF_SOURCE_CSV = "segment_v2_2_result_260520_1108.csv"
 
 # 한 SEG_REF 로 어떤 segment 만들지 — 콤마 구분.
+# update 모드면 input row 의 name 의 scope suffix (Visit / Delayed Purchase) 자동 감지로 1 개만 빌드.
 SCOPE_MODE = "visit,delayed_purchase"
 
 # region 별 매핑 — COMMON_REF (Campaign Main Page_Evar), ATC ref, NAME_PREFIX 모두 region 자동 분기.
@@ -205,6 +214,41 @@ def _dedupe_us_in_name(name: str) -> str:
     return name
 
 
+def _extract_name_key(name: str) -> str:
+    """name 에서 prefix/scope suffix 다 떼서 핵심 key 추출 — 두 csv 매핑용.
+    예: '[CAMPAIGN NAME] US_CC_Product Recommendation - 01. Top Selling (Visit)' → 'Product Recommendation - 01. Top Selling'
+        '[part_name] US_Product Recommendation - 01. Top Selling'             → 'Product Recommendation - 01. Top Selling'
+    """
+    s = re.sub(r"^\[[^\]]*\]\s*", "", name)         # 대괄호 prefix 제거
+    s = re.sub(r"^(US_CC_|US_|CC_)", "", s)          # 추가 prefix 제거
+    for suf in (" (Visit)", " (Delayed Purchase)", " (Visitor)", " (Hit)"):
+        if s.endswith(suf):
+            s = s[: -len(suf)]
+    return s.strip()
+
+
+def _load_seg_ref_source(path: Path) -> dict[str, str]:
+    """SEG_REF_SOURCE_CSV → {name_key: segment_id} 매핑 dict."""
+    if not path.exists():
+        return {}
+    mapping: dict[str, str] = {}
+    with open(path, encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        fn_lower = {h.strip().lower(): h for h in (reader.fieldnames or [])}
+        id_col   = fn_lower.get("segmentid") or fn_lower.get("segment_id") or fn_lower.get("id")
+        name_col = fn_lower.get("name")
+        if not (id_col and name_col):
+            return {}
+        for row in reader:
+            sid = (row.get(id_col) or "").strip()
+            nm  = (row.get(name_col) or "").strip()
+            if sid and nm:
+                key = _extract_name_key(nm)
+                if key and key not in mapping:
+                    mapping[key] = sid
+    return mapping
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -217,6 +261,12 @@ def main() -> int:
         return 1
     print(f"  [input] {src_path.name}")
 
+    output_mode = (OUTPUT_MODE or "create").strip().lower()
+    if output_mode not in ("create", "update"):
+        print(f"ERROR: OUTPUT_MODE 알 수 없는 값: {output_mode!r} (허용: create / update)")
+        return 1
+    print(f"  [output mode] {output_mode}")
+
     modes_raw = (SCOPE_MODE or "").lower()
     modes = {m.strip() for m in modes_raw.split(",") if m.strip()}
     invalid = modes - {"visit", "delayed_purchase"}
@@ -227,12 +277,19 @@ def main() -> int:
         print("ERROR: SCOPE_MODE 비어있음")
         return 1
 
+    # update 모드: SEG_REF source csv 로딩 (name_key → seg_ref 매핑)
+    seg_ref_map: dict[str, str] = {}
+    if output_mode == "update" and SEG_REF_SOURCE_CSV.strip():
+        ref_path = OUTPUT_DIR / SEG_REF_SOURCE_CSV.strip()
+        seg_ref_map = _load_seg_ref_source(ref_path)
+        print(f"  [seg_ref source] {ref_path.name} → {len(seg_ref_map)} mapping")
+
     out_rows: list[dict] = []
     skipped: list[tuple[str, str]] = []
     with open(src_path, encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         fn_lower = {h.strip().lower(): h for h in (reader.fieldnames or [])}
-        id_col   = fn_lower.get("segment_id") or fn_lower.get("id")
+        id_col   = fn_lower.get("segment_id") or fn_lower.get("segmentid") or fn_lower.get("id")
         name_col = fn_lower.get("name") or fn_lower.get("name_base")
         rsid_col = fn_lower.get("rsid")
         if not (id_col and name_col and rsid_col):
@@ -241,10 +298,17 @@ def main() -> int:
             return 1
 
         for row in reader:
-            seg_ref = (row.get(id_col) or "").strip()
+            input_id = (row.get(id_col) or "").strip()
             raw_name = (row.get(name_col) or "").strip()
             rsid = (row.get(rsid_col) or "").strip()
-            if not seg_ref or not raw_name:
+            # rsid 빈 채면 name 으로 자동 추론
+            if not rsid:
+                if "US_" in raw_name or "[US]" in raw_name:
+                    rsid = "rsid_placeholder"
+                else:
+                    rsid = "rsid_placeholder"
+
+            if not input_id or not raw_name:
                 skipped.append((raw_name or "(no name)", "segment_id 또는 name 빈 채"))
                 continue
 
@@ -253,9 +317,29 @@ def main() -> int:
             if cfg is None:
                 skipped.append((raw_name, f"region '{region}' 매핑 없음"))
                 continue
-            if "delayed_purchase" in modes and not cfg["atc_ref"]:
-                skipped.append((raw_name, f"region '{region}' atc_ref 없음"))
-                continue
+
+            # update / create 모드별 SEG_REF + scope 결정
+            if output_mode == "update":
+                key = _extract_name_key(raw_name)
+                seg_ref = seg_ref_map.get(key, input_id)   # 매핑 없으면 self-ref fallback
+                # scope 자동 감지 — name suffix 보고 1 개만 빌드
+                if raw_name.endswith(" (Visit)") or raw_name.endswith(" (Visitor)"):
+                    row_modes = {"visit"} & modes or {"visit"}
+                elif raw_name.endswith(" (Delayed Purchase)"):
+                    row_modes = {"delayed_purchase"} & modes or {"delayed_purchase"}
+                else:
+                    row_modes = modes
+                if "delayed_purchase" in row_modes and not cfg["atc_ref"]:
+                    skipped.append((raw_name, f"region '{region}' atc_ref 없음"))
+                    continue
+                output_seg_id = input_id   # PUT 대상
+            else:   # create
+                seg_ref = input_id   # input segment_id = inner @ref
+                row_modes = modes
+                if "delayed_purchase" in row_modes and not cfg["atc_ref"]:
+                    skipped.append((raw_name, f"region '{region}' atc_ref 없음"))
+                    continue
+                output_seg_id = ""
 
             # base name — scope suffix 제거 후 region 별 name_prefix 적용
             stripped = _strip_scope_suffix(raw_name)
@@ -263,21 +347,20 @@ def main() -> int:
             base = stripped
             if name_prefix and not base.startswith(name_prefix):
                 base = name_prefix + base
-            # US 중복 dedupe: US_CC_ / US_ 있으면 [US] 제거
             base = _dedupe_us_in_name(base)
 
-            if "visit" in modes:
+            if "visit" in row_modes:
                 v_name = base + " (Visit)"
                 out_rows.append({
-                    "segment_id": "", "name": v_name, "description": "",
+                    "segment_id": output_seg_id, "name": v_name, "description": "",
                     "rsid": rsid, "tags": DEFAULT_TAGS,
                     "structure": build_visit_structure(seg_ref, cfg["common_ref"], cfg["common_name"]),
                     "warning": "",
                 })
-            if "delayed_purchase" in modes:
+            if "delayed_purchase" in row_modes:
                 dp_name = base + " (Delayed Purchase)"
                 out_rows.append({
-                    "segment_id": "", "name": dp_name, "description": "",
+                    "segment_id": output_seg_id, "name": dp_name, "description": "",
                     "rsid": rsid, "tags": DEFAULT_TAGS,
                     "structure": build_delayed_purchase_structure(
                         seg_ref, base,

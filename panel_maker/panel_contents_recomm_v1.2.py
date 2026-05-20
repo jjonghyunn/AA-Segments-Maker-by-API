@@ -1,5 +1,7 @@
-# panel_contents_recomm.py
-# 2026-05-18  Jonghyun Park w/ Claude
+# panel_contents_recomm_v1.2.py
+# 2026-05-20  Jonghyun Park w/ Claude
+# v1.2 변경: Product Recommendation (PR/US_PR) fallback type 추가, SKIP_KEYWORDS 비우기,
+#          PREFERRED_SEGMENT_CSV 옵션 (현재 비활성), US_CC_[US] 잔재 제외 룰 추가
 #
 # panel_contents.py 사본 — recomm (Recommendation) 계열 패널용.
 # SOURCE/TARGET PROJECT_ID 가 본 사본 전용 값으로 박혀있음.
@@ -85,8 +87,8 @@ COMPANY_ID = "company_id"
 # source = 복제 원본. Workspace URL 의 /workspace/edit/{이부분}
 SOURCE_PROJECT_ID = "YOUR_PROJECT_ID"   # 참고 원본 프로젝트
 # target = 미리 UI 에서 빈 프로젝트로 생성해둔 곳 (user1_login owner)
-# TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis (Product Recommendation) | API (user_id)
-TARGET_PROJECT_ID = "YOUR_PROJECT_ID" # team공유용.
+# TARGET_PROJECT_ID = "YOUR_PROJECT_ID" # team공유용.
+TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis (Product Recommendation) | API (user_id)
 # https://experience.adobe.com/@company_name/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
 # source 의 어느 panel(들) 을 가져올지.
 #   · "all"            → 모든 panel (기본)
@@ -159,7 +161,7 @@ SKIP_KEYWORDS: list[str] = []  # 새 [CAMPAIGN NAME] CC_Product Recommendation �
 # 빈 string 이면 NEW_KEYWORDS 매칭 segment 전체 사용.
 # 박혀있으면 그 csv 의 SegmentId 컬럼 값에 해당하는 segment 만 candidate.
 # (입력 csv 형식: aa_create_segment_v2_2.py 의 result csv — header 에 'SegmentId' 컬럼)
-PREFERRED_SEGMENT_CSV = r"C:\Users\user_name\path\to\auth.json"
+PREFERRED_SEGMENT_CSV = ""  # 비활성화 — 중복 segment 삭제 완료, NEW_KEYWORDS 전체에서 매칭
 
 # ─── 이름 정규화 패턴 (CC/US_CC 패턴 없는 segment 용 fallback) ─────────
 # segment ID 는 다르지만 "같은 논리적 컨셉" 인 경우 매칭하려고 이름을 정규화해서 비교.

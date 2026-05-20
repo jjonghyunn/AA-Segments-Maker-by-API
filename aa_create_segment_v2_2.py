@@ -21,9 +21,11 @@ v2.2 변경점 (vs v2.1):
   python aa_create_segment_v2_2.py --input segments.csv --apply             # 실제 POST (CREATE)
   python aa_create_segment_v2_2.py --update --apply                         # 실제 PUT (모두 update, segment_id 컬럼 모두 박혀야)
   python aa_create_segment_v2_2.py --update-or-create --apply               # mixed: id 있으면 PUT, 없으면 POST
-  python aa_create_segment_v2_2.py --update-or-create --lookup-by-name --apply
-       # ↑ 자동: segment_id 빈 row 는 폴더의 최신 segment_lookup_*.csv 에서 name 정확 매칭으로 자동 채움
-       #        매칭되면 PUT (update), 없으면 POST (create). 가장 일반 운영 흐름.
+       # ↑ --lookup-by-name 이 default True 라 segment_id 빈 row 는
+       #   폴더의 segment_lookup_*.csv 에서 name 매칭으로 자동 채움.
+       #   매칭되면 PUT (update), 없으면 POST (create). 가장 일반 운영 흐름.
+  python aa_create_segment_v2_2.py --update-or-create --no-lookup-by-name --apply
+       # ↑ lookup csv 무시하고 강제 POST. lookup csv 에 동일 name 있으면 경고만 출력.
 
 CSV 필수 칼럼:
   · CREATE (POST)               — name, structure
@@ -68,9 +70,12 @@ from aa_create_segment_v2 import (
 # ════════════════════════════════════════════════════════════════════
 
 # INPUT_CSV = "segments_input_260519_1558_global.csv"
-# INPUT_CSV = "segments_input_260519_1438_scenario.csv"
+INPUT_CSV = "segments_input_260520_1610_scenario.csv"
 # INPUT_CSV = "segments_from_ref_260519_1945_recomm15.csv"
-INPUT_CSV = "segments_from_ref_batch_260519_2112_recomm1to14.csv"
+# INPUT_CSV = "segments_from_ref_batch_us_hit_260520_1103.csv"
+# INPUT_CSV = "segments_from_ref_batch_us_hit_260520_1325_hit_only_plus15.csv"
+# INPUT_CSV = "segments_from_ref_batch_260520_1114.csv"
+# INPUT_CSV = "segments_from_ref_batch_260520_1340.csv"
 
 # segment-ref 캐시 파일명 suffix — 캠페인 / 환경 별로 분리 가능.
 #   ""       → segment_ref_cache.json         (기본)
@@ -388,9 +393,10 @@ def main() -> int:
     parser.add_argument("--update-or-create", action="store_true",
                         help="mixed mode: row 별 segment_id 있으면 PUT (update), 없으면 POST (create). "
                              "재실행 시 — 새 segment 는 만들고 기존 segment 는 갱신. --update 와 동시 사용 불가.")
-    parser.add_argument("--lookup-by-name", action="store_true",
-                        help="csv 의 segment_id 빈 row 는 폴더의 segment_lookup_*.csv (가장 최신) 에서 name 정확 매칭으로 segment_id 자동 채움. "
-                             "AA GET 없이 로컬 csv 만 활용. --update-or-create 와 같이 쓰면 매칭되면 PUT, 없으면 POST.")
+    parser.add_argument("--lookup-by-name", action=argparse.BooleanOptionalAction, default=True,
+                        help="csv 의 segment_id 빈 row 는 폴더의 segment_lookup_*.csv 에서 name 매칭으로 자동 채움 (default True). "
+                             "--no-lookup-by-name 으로 비활성 — 강제 POST (lookup csv 안 봄). "
+                             "그래도 POST 시점에 lookup csv 에 동일 name 있으면 중복 생성 경고 출력.")
     parser.add_argument("--lookup-csv", default=LOOKUP_CSV,
                         help=f"--lookup-by-name 의 lookup csv 경로 명시. 빈 값이면 폴더의 모든 segment_lookup_*.csv merge "
                              f"(사전순 reverse, 새 거 우선). 코드 상단 LOOKUP_CSV 로 default 박을 수 있음 (현재 {LOOKUP_CSV!r}).")
@@ -441,40 +447,41 @@ def main() -> int:
         print("ERROR: structure가 있는 행이 없습니다.")
         return 1
 
-    # --lookup-by-name: segment_id 빈 row 는 lookup csv 에서 name 정확 매칭으로 채움
-    if getattr(args, "lookup_by_name", False):
-        # lookup csv 결정 — --lookup-csv 명시 또는 폴더의 가장 최신 segment_lookup_*.csv
-        lookup_csv_arg = (getattr(args, "lookup_csv", "") or "").strip()
-        if lookup_csv_arg:
-            lookup_path = Path(lookup_csv_arg)
-            if not lookup_path.is_absolute() and not lookup_path.exists():
-                fb = OUTPUT_DIR / lookup_path
-                if fb.exists():
-                    lookup_path = fb
-            lookup_paths = [lookup_path] if lookup_path else []
-        else:
-            # 폴더의 모든 segment_lookup_*.csv 사전순 reverse — 새 거 우선, 옛 거 fallback
-            lookup_paths = sorted(OUTPUT_DIR.glob("segment_lookup_*.csv"), reverse=True)
+    # lookup csv 로딩 — 옵션 무관 항상 로드 (name 매핑 dict 빌드).
+    # lookup-by-name=True → segment_id 자동 채움. False → POST 시 동일 name 매칭 경고만.
+    lookup_csv_arg = (getattr(args, "lookup_csv", "") or "").strip()
+    if lookup_csv_arg:
+        lookup_path = Path(lookup_csv_arg)
+        if not lookup_path.is_absolute() and not lookup_path.exists():
+            fb = OUTPUT_DIR / lookup_path
+            if fb.exists():
+                lookup_path = fb
+        lookup_paths = [lookup_path] if lookup_path else []
+    else:
+        lookup_paths = sorted(OUTPUT_DIR.glob("segment_lookup_*.csv"), reverse=True)
+
+    name_to_id: dict[str, str] = {}
+    used_files: list[str] = []
+    for p in lookup_paths:
+        try:
+            added = 0
+            with open(p, encoding="utf-8-sig") as f:
+                for r in csv.DictReader(f):
+                    nm = (r.get("name") or "").strip()
+                    sid = (r.get("segment_id") or "").strip()
+                    if nm and sid and nm not in name_to_id:
+                        name_to_id[nm] = sid
+                        added += 1
+            if added > 0:
+                used_files.append(f"{p.name}(+{added})")
+        except Exception:
+            continue
+
+    if getattr(args, "lookup_by_name", True):
+        # segment_id 빈 row 의 segment_id 를 lookup csv name 매칭으로 자동 채움
         if not lookup_paths:
             print(f"  [lookup-by-name] ⚠️ lookup csv 없음 — segment_id 빈 row 그대로 (POST 처리됨)")
         else:
-            # 여러 lookup csv 의 name → id 매핑 merge (앞 파일 우선 — 새 거가 옛 거 덮어씀)
-            name_to_id: dict[str, str] = {}
-            used_files: list[str] = []
-            for p in lookup_paths:
-                try:
-                    added = 0
-                    with open(p, encoding="utf-8-sig") as f:
-                        for r in csv.DictReader(f):
-                            nm = (r.get("name") or "").strip()
-                            sid = (r.get("segment_id") or "").strip()
-                            if nm and sid and nm not in name_to_id:
-                                name_to_id[nm] = sid
-                                added += 1
-                    if added > 0:
-                        used_files.append(f"{p.name}(+{added})")
-                except Exception:
-                    continue
             n_filled = 0
             for r in rows:
                 if not (r.get("segment_id") or "").strip():
@@ -485,6 +492,21 @@ def main() -> int:
             print(f"  [lookup-by-name] {len(lookup_paths)} lookup csv merge → {n_filled}/{len(rows)} row 의 segment_id 채움")
             if used_files:
                 print(f"    매핑 추가 — {', '.join(used_files[:5])}{'...' if len(used_files)>5 else ''}")
+    else:
+        # --no-lookup-by-name — segment_id 채우지 않음. POST 시 동일 name 매칭되면 경고.
+        dup_warns: list[tuple[str, str]] = []
+        for r in rows:
+            if not (r.get("segment_id") or "").strip():
+                nm = (r.get("name") or "").strip()
+                if nm in name_to_id:
+                    dup_warns.append((nm, name_to_id[nm]))
+        if dup_warns:
+            print(f"  [warn] --no-lookup-by-name (강제 POST) — lookup csv 에 동일 name {len(dup_warns)} 건 존재:")
+            for nm, sid in dup_warns[:5]:
+                print(f"     - {nm}  (existing id={sid})")
+            if len(dup_warns) > 5:
+                print(f"     ... +{len(dup_warns) - 5} 건")
+            print(f"  → 중복 생성됩니다. 의도가 아니면 명령에서 --no-lookup-by-name 제거.")
 
     update_mode = args.update
     mixed_mode  = getattr(args, "update_or_create", False)

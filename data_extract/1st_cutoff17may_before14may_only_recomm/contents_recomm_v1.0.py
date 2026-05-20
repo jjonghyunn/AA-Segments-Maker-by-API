@@ -1,6 +1,14 @@
-# RESHAPE_contents_v1.0.py
-# 2026-05-18  Jonghyun Park w/ Claude
+# contents_recomm_v1.0.py
+# 2026-05-20  Jonghyun Park w/ Claude
 """
+RESHAPE_contents_v1.0.py 사본 — Campaign Main Visit (fallback) row 를 recomm 01~15 로 expand + extra 컬럼.
+
+차이:
+  · ITEM 이 ITEM_PROP_FALLBACK / ITEM_ORDER_NON_DELAY / ITEM_ORDER_DELAY 인 row →
+    "08. - 01. <RECOMM_01_NAME>" ~ "08. - 15. <RECOMM_15_NAME>" 로 15 row expand.
+    VALUE / SITE CODE / TYPE 등 다른 컬럼은 원 row 의 값 그대로 복사.
+  · 모든 row 에 extra 컬럼 = "After 14 May" 박음 (최우측).
+
 extract_data_v2_contents.py 가 떨군 column_mapping_*.csv 들을 union 형태로 정제.
 
 흐름:
@@ -67,7 +75,37 @@ OUTPUT_HEADERS = [
     "VALUE", "VALUE (원본)",
     "origin_only_delayed_value",
     "rsid", "start_date", "end_date", "value_n",
+    "extra",
 ]
+
+# ─── Recomm expand 룰 ─────────────────────────────────────────────
+# Campaign Main Visit (fallback) row → 15 row 로 expand. 각 row 의 ITEM 형식:
+#   "<EXPAND_ITEM_PREFIX><NN>. <RECOMM_NAME>"
+# 예: "08. - 01. Top Selling", "08. - 02. Interested Category", ...
+EXPAND_ITEM_PREFIX = "08. - "
+RECOMM_NAMES: list[str] = [
+    "01. Top Selling",
+    "02. Interested Category",
+    "03. Interested Product",
+    "04. Bought After View",
+    "05. Demographic Popular",
+    "06. Frequently Bought Together",
+    "07. Frequently Replaced By Owner",
+    "08. Frequently Viewed Together",
+    "09. Product Lifetime",
+    "10. Sas",
+    "11. Search After View",
+    "12. Searched By Owner",
+    "13. Similar Owner",
+    "14. Similar Pageview",
+    "15. Theme Category Popular",
+]
+
+# 모든 output row 의 extra 컬럼 값
+EXTRA_VALUE = "Before 14 May"
+
+# fallback ITEM 값 set — 이 값 매칭되는 row 가 expand 대상
+FALLBACK_ITEMS = {"Campaign Main Visit", "Campaign Main Visit > Order (Visit)", "Campaign Main Visit > Order (Visitor)"}
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -435,6 +473,27 @@ def process() -> int:
                 "rsid": rsid, "start_date": start_date, "end_date": end_date,
                 "value_n": value_n,
             })
+
+    # 7.5) Recomm expand — ITEM 이 fallback (Campaign Main Visit 시리즈) 인 row 를 15 row 로 복제.
+    #      각 복제 row 의 ITEM 만 변경: "08. - 01. Top Selling" ... "08. - 15. Theme Category Popular"
+    #      나머지 컬럼 (VALUE / SITE CODE / TYPE / DEVICE 등) 원 값 그대로.
+    expanded_rows: list[dict] = []
+    n_expanded = 0
+    for r in out_rows:
+        if r.get("ITEM") in FALLBACK_ITEMS:
+            for recomm in RECOMM_NAMES:
+                new_r = dict(r)
+                new_r["ITEM"] = f"{EXPAND_ITEM_PREFIX}{recomm}"
+                expanded_rows.append(new_r)
+            n_expanded += 1
+        else:
+            expanded_rows.append(r)
+    out_rows = expanded_rows
+    print(f"[recomm expand] fallback ITEM {n_expanded} row → {n_expanded * len(RECOMM_NAMES)} row 로 expand")
+
+    # 모든 row 에 extra 박음
+    for r in out_rows:
+        r["extra"] = EXTRA_VALUE
 
     # 8) 저장 — numeric 컬럼 일관 포맷 (엑셀 text 인식 방지)
     NUM_COLS = {"VALUE", "VALUE (원본)", "origin_only_delayed_value"}
