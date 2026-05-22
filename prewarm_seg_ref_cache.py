@@ -4,7 +4,7 @@
 segment-ref 캐시 미리 채우기 utility — input csv 없이 segment ID list 만으로
 AA GET /segments/{id} 호출 → segment_ref_cache[_<name>].json 채움.
 
-aa_create_segment_v2_2.py 의 dry-run 으로도 자동 채워지지만, input csv 없이도
+aa_create_segment_v2.2.py 의 dry-run 으로도 자동 채워지지만, input csv 없이도
 미리 cache 준비하고 싶을 때 사용 (예: 새 캠페인 시작 전 reference segment 들 한 번에 받아두기).
 
 사용:
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 # v2.2 의 cache path / load / save helper 재사용
-from aa_create_segment_v2_2 import (
+from aa_create_segment_v2.2 import (
     _resolve_cache_path,
     _load_seg_ref_cache,
     _save_seg_ref_cache,

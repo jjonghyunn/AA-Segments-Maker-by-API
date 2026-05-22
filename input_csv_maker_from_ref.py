@@ -12,7 +12,7 @@ input_csv_maker_cc00.py 변형 — segment-ref 1 개만 기반으로 visit + del
 흐름:
   · SEG_REF (한 개) + SEG_NAME_BASE 박음
   · SCOPE_MODE 에 따라 visit 와 delayed_purchase 둘 다 또는 일부 생성
-  · v2_2 input csv (segment_id, name, description, rsid, tags, structure, warning) 형식
+  · v2.2 input csv (segment_id, name, description, rsid, tags, structure, warning) 형식
 
 DSL 패턴:
   · visit (COMMON_SEGMENT_REF 박혀있을 때):
@@ -46,7 +46,7 @@ DSL 패턴:
 
 사용:
   python input_csv_maker_from_ref.py
-  python aa_create_segment_v2_2.py --input segments_from_ref_<ts>.csv --update-or-create --lookup-by-name --apply
+  python aa_create_segment_v2.2.py --input segments_from_ref_<ts>.csv --update-or-create --lookup-by-name --apply
 """
 from __future__ import annotations
 

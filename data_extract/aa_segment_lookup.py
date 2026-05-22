@@ -2,7 +2,6 @@
 # 2026-05-15  Jonghyun Park w/ Claude
 # updated: 2026-05-15 13:00  — owner_name을 aa_user_id CSV에서 보강
 # updated: 2026-05-18       — --search 키워드 nargs='+' 로 AND 매칭 (공백 구분), 사용법 주석 보완
-# updated: 2026-05-22       — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
 """
 세그먼트 ID 리스트 → 기본 정보 CSV + DSL 구조 파일(.dsl) 출력.
 
@@ -60,7 +59,6 @@ COMPANY_ID = "company_id"
 # ════════════════════════════════════════════════════════════════════
 
 OUTPUT_DIR = Path(__file__).resolve().parent
-LOOKUP_DIR = OUTPUT_DIR / "lookup"          # 결과 CSV/DSL 출력 위치 — 코드 폴더 어지럽지 않게 분리
 RESULT_PREFIX = "segment_lookup_"
 
 # ─── AA user 매핑 CSV (owner_name 보강용) ─────────────────────────
@@ -651,9 +649,8 @@ def main() -> int:
         print(f"  owner_name 보강: aa_user_id CSV ({len(user_map)}명)")
     print()
 
-    # CSV 출력 — lookup/ 하위
-    LOOKUP_DIR.mkdir(parents=True, exist_ok=True)
-    csv_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.csv"
+    # CSV 출력
+    csv_path = OUTPUT_DIR / f"{RESULT_PREFIX}{timestamp}.csv"
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["segment_id", "name", "owner_id", "owner_name", "rsid",
@@ -674,8 +671,8 @@ def main() -> int:
             ])
     print(f"CSV: {csv_path}")
 
-    # DSL 출력 — lookup/ 하위
-    dsl_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.dsl"
+    # DSL 출력
+    dsl_path = OUTPUT_DIR / f"{RESULT_PREFIX}{timestamp}.dsl"
     dsl_blocks: list[str] = []
     for r in results:
         if r["definition"] is None:

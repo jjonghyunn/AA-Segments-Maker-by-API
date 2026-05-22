@@ -42,6 +42,7 @@ import aanalytics2 as api2
 # ════════════════════════════════════════════════════════════════════
 
 # Adobe Developer Console OAuth Server-to-Server 자격증명 json 경로
+# Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
 AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
 
 # AA 회사 ID

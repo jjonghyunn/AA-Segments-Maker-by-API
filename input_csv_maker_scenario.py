@@ -202,7 +202,7 @@ def main() -> int:
 
     print()
     print(f"다음 단계 — v2.2:")
-    print(f"  python aa_create_segment_v2_2.py --input {out_csv.name} --update-or-create --lookup-by-name --apply")
+    print(f"  python aa_create_segment_v2.2.py --input {out_csv.name} --update-or-create --lookup-by-name --apply")
     return 0
 
 

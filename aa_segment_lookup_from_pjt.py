@@ -1,5 +1,6 @@
 # aa_segment_lookup_from_pjt.py
 # 2026-05-19  Jonghyun Park w/ Claude
+# updated: 2026-05-22  — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
 # 특정 AA Workspace project 가 사용하는 모든 segment 들을 일괄 lookup.
 """
 AA project id → project definition GET → 안에 박힌 모든 segment-ref id 추출 →
@@ -35,6 +36,7 @@ from aa_segment_lookup import (
     format_dsl_block,
     _set_daterange_auth,
     OUTPUT_DIR,
+    LOOKUP_DIR,
     COMPANY_ID,
 )
 
@@ -209,11 +211,12 @@ def main() -> int:
         print(f"  owner_name 보강: aa_user_id CSV ({len(user_map)}명)")
     print()
 
-    # 출력 파일명
+    # 출력 파일명 — lookup/ 하위
+    LOOKUP_DIR.mkdir(parents=True, exist_ok=True)
     suffix = (args.suffix or "").strip()
     base_name = f"{RESULT_PREFIX}{timestamp}" + (f"_{suffix}" if suffix else "")
-    csv_path = OUTPUT_DIR / f"{base_name}.csv"
-    dsl_path = OUTPUT_DIR / f"{base_name}.dsl"
+    csv_path = LOOKUP_DIR / f"{base_name}.csv"
+    dsl_path = LOOKUP_DIR / f"{base_name}.dsl"
 
     # CSV
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:

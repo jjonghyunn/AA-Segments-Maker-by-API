@@ -8,7 +8,7 @@ raw csv 예:
 
 처리:
     각 row 의 or_seg-id cell 안 — 줄바꿈 / 콤마 / 세미콜론 / 공백 으로 segment id 분리 →
-    hit container 의 OR pred 에 segment-ref 들 묶음 → v2_2 input csv 빌드.
+    hit container 의 OR pred 에 segment-ref 들 묶음 → v2.2 input csv 빌드.
 
 DSL 출력 예:
     hit(
@@ -99,7 +99,7 @@ def _build_dsl(seg_ids: list[str], scope: str) -> str:
 
 
 def _build_structure(seg_ids: list[str], scope: str) -> str:
-    """v2_2 structure 컬럼 — DSL 한 줄 ('|' 로 줄바꿈 치환)."""
+    """v2.2 structure 컬럼 — DSL 한 줄 ('|' 로 줄바꿈 치환)."""
     container = SCOPE_TO_CONTAINER.get(scope, "hit")
     tokens = [f"{container}("]
     for i, sid in enumerate(seg_ids):
@@ -124,7 +124,7 @@ def main() -> int:
     except Exception:
         pass
 
-    parser = argparse.ArgumentParser(description="or_seg-id 패턴 raw csv → v2_2 input csv 빌드")
+    parser = argparse.ArgumentParser(description="or_seg-id 패턴 raw csv → v2.2 input csv 빌드")
     parser.add_argument("--input", default=SEG_MAKE_REF_CSV,
                         help="input csv (빈 값 → 폴더 사전순 최신).")
     parser.add_argument("--output-ts", dest="output_ts", default="",

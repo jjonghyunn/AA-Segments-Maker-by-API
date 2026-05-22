@@ -12,11 +12,11 @@ input_csv_maker.py 사본 — 단일 segment 1 개만 생성하는 단순 버전
     )
   )
 
-출력 — aa_create_segment_v2_2.py 가 받는 형식의 input CSV + 시각 확인용 dsl.
+출력 — aa_create_segment_v2.2.py 가 받는 형식의 input CSV + 시각 확인용 dsl.
 
 사용:
   python input_csv_maker_cc00.py
-  python aa_create_segment_v2_2.py --input segments_cc00_<ts>.csv --apply
+  python aa_create_segment_v2.2.py --input segments_cc00_<ts>.csv --apply
 """
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def main() -> int:
 
     structure = build_structure()
 
-    # csv 출력 — aa_create_segment_v2_2.py 가 받는 형식 (segment_id, name, description, rsid, tags, structure, warning)
+    # csv 출력 — aa_create_segment_v2.2.py 가 받는 형식 (segment_id, name, description, rsid, tags, structure, warning)
     with open(out_csv, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(
             f, fieldnames=["segment_id", "name", "description", "rsid", "tags", "structure", "warning"]

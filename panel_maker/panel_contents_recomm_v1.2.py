@@ -80,6 +80,7 @@ import aanalytics2 as api2
 # ════════════════════════════════════════════════════════════════════
 
 # ─── 인증 ──────────────────────────────────────────────────────────
+# Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
 AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
 COMPANY_ID = "company_id"
 
@@ -160,7 +161,7 @@ SKIP_KEYWORDS: list[str] = []  # 새 [CAMPAIGN NAME] CC_Product Recommendation �
 # ─── candidate 제한 (특정 result csv 의 SegmentId 만 swap 후보) ──────
 # 빈 string 이면 NEW_KEYWORDS 매칭 segment 전체 사용.
 # 박혀있으면 그 csv 의 SegmentId 컬럼 값에 해당하는 segment 만 candidate.
-# (입력 csv 형식: aa_create_segment_v2_2.py 의 result csv — header 에 'SegmentId' 컬럼)
+# (입력 csv 형식: aa_create_segment_v2.2.py 의 result csv — header 에 'SegmentId' 컬럼)
 PREFERRED_SEGMENT_CSV = ""  # 비활성화 — 중복 segment 삭제 완료, NEW_KEYWORDS 전체에서 매칭
 
 # ─── 이름 정규화 패턴 (CC/US_CC 패턴 없는 segment 용 fallback) ─────────
