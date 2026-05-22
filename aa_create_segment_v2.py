@@ -42,8 +42,8 @@ import aanalytics2 as api2
 # ════════════════════════════════════════════════════════════════════
 
 # ─── 인증 ──────────────────────────────────────────────────────────
+# Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
 AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-# Mac: AUTH_JSON_PATH = str(Path(__file__).resolve().parent.parent / "aa_auth.json")
 COMPANY_ID = "company_id"
 
 # ─── 본인 식별 (segment owner) ────────────────────────────────────

@@ -76,7 +76,7 @@ DEFAULT_TAGS = ""
 # ─── evar 블록 묶음 방식 (row 별 override) ──────────────────────
 # raw csv 에 'evar_join' 컬럼 있고 값이 "OR"/"AND" 면 그 값 우선.
 # 컬럼 없거나 값 빈 채면 → multi-evar TRUE (>=2) 자동 OR (default), 단일이면 AND.
-# named container wrap 으로 OR 묶음 — raw paren 은 v2_2 의 paren strip 에 잡혀 사라지므로.
+# named container wrap 으로 OR 묶음 — raw paren 은 v2.2 의 paren strip 에 잡혀 사라지므로.
 EVAR_JOIN_COLUMN = "evar_join"
 EVAR_JOIN_WRAP_NAME = "evar OR group"
 
@@ -432,7 +432,7 @@ def build_customlink_block(customlink: str, evar_blocks: list[str],
 
     evar_join: "AND" (default) | "OR" — evar_blocks 가 2 개 이상일 때 묶음 방식.
        OR 일 때 named container wrap (EVAR_JOIN_WRAP_NAME) 안 OR 토큰으로 묶음.
-       (raw paren `(...)` 은 v2_2 의 paren strip 에 잡혀 사라지므로 컨테이너 형태로 보존.)
+       (raw paren `(...)` 은 v2.2 의 paren strip 에 잡혀 사라지므로 컨테이너 형태로 보존.)
     """
     parts: list[str] = ["hit("]
     has_first = False
@@ -517,13 +517,13 @@ def build_structure(name: str, customlink_blocks: list[str],
 
 
 def _lookup_visit_seg_from_result_csv(base_name: str) -> tuple[str, str]:
-    """(Visit) segment 의 (id, full name) lookup — 가장 최신 segment_v2_2_result_*.csv (방금 POST 한 visit segments) 만 본다.
+    """(Visit) segment 의 (id, full name) lookup — 가장 최신 segment_v2.2_result_*.csv (방금 POST 한 visit segments) 만 본다.
     lookup csv (segment_lookup_*.csv) 는 의도적으로 안 봄 — 이전 캠페인 같은 name segment 잘못 매칭 방지.
     매칭 없으면 ("", "") → Delayed Purchase 빌더가 fallback (inline content). visit segment 먼저 POST 해야 함."""
     if not base_name:
         return ("", "")
     visit_name = f"{base_name} (Visit)"
-    for path in sorted(OUTPUT_DIR.glob("segment_v2_2_result_*.csv"), reverse=True):
+    for path in sorted(OUTPUT_DIR.glob("segment_v2.2_result_*.csv"), reverse=True):
         if "dryrun" in path.name:
             continue
         try:

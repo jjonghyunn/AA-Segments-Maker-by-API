@@ -1,5 +1,6 @@
 # input_csv_maker_replace.py
 # 2026-05-19  Jonghyun Park w/ Claude
+# updated: 2026-05-22  — lookup csv fallback 경로를 같은 폴더의 lookup/ 하위로 변경
 #
 # 모드: 기존 segment GET → [CAMPAIGN NAME] *_Evar 컨테이너만 [CAMPAIGN NAME] *_Evar 로 swap (inner 보존)
 # 같은 폴더 형제 maker 들과의 차이:
@@ -18,18 +19,18 @@ input csv 의 각 row segment 를 AA GET 으로 받아 inner condition 보존 +
        → description 도 [CAMPAIGN NAME] *_Evar (region 별) 로 변경
   3) name swap — "[CAMPAIGN NAME]" → "[CAMPAIGN NAME]" / 없으면 NAME_PREFIX 자동 추가
   4) decompile_definition 으로 DSL → " | " 구분 structure 컬럼
-  5) v2_2 input csv 형식 출력 (segment_id, name, description, rsid, tags, structure, warning)
+  5) v2.2 input csv 형식 출력 (segment_id, name, description, rsid, tags, structure, warning)
 
 OUTPUT_MODE:
-  · "create" (default) → segment_id 빈 채 출력 (v2_2 가 POST 신규 생성, 기존 [CAMPAIGN NAME] 보존)
-  · "update"           → segment_id 입력 그대로 박은 채 (v2_2 가 PUT, 기존 segment 갱신)
+  · "create" (default) → segment_id 빈 채 출력 (v2.2 가 POST 신규 생성, 기존 [CAMPAIGN NAME] 보존)
+  · "update"           → segment_id 입력 그대로 박은 채 (v2.2 가 PUT, 기존 segment 갱신)
 
 input csv 형식 (lookup csv 호환):
   segment_id, name, rsid    ← 필수 (다른 컬럼 무시)
 
 사용:
   python input_csv_maker_replace.py
-  python aa_create_segment_v2_2.py --input segments_replace_<ts>.csv --update-or-create --apply
+  python aa_create_segment_v2.2.py --input segments_replace_<ts>.csv --update-or-create --apply
 """
 from __future__ import annotations
 
@@ -52,7 +53,7 @@ from aa_segment_lookup import (
 # ════════════════════════════════════════════════════════════════════
 
 # 입력 csv — segment_id, name, rsid 컬럼 필수 (lookup csv 호환).
-# 빈 값이면 폴더의 replace_input.csv → segment_lookup_pjt_*_md.csv 순으로 fallback.
+# 빈 값이면 폴더의 replace_input.csv → lookup/segment_lookup_pjt_*_md.csv → segment_lookup_pjt_*_md.csv 순으로 fallback.
 INPUT_CSV = "replace_input.csv"
 
 # 출력 모드 — "create" (POST 신규, segment_id 빈 채) / "update" (PUT 기존 갱신, segment_id 박힌 채)
@@ -93,6 +94,7 @@ DEFAULT_TAGS = ""
 # ════════════════════════════════════════════════════════════════════
 
 OUTPUT_DIR = Path(__file__).resolve().parent
+LOOKUP_DIR = OUTPUT_DIR / "lookup"          # aa_segment_lookup_from_pjt 결과 csv 위치
 OUTPUT_NAME_TEMPLATE = "segments_replace_{ts}.csv"
 OUTPUT_DSL_NAME_TEMPLATE = "segments_replace_{ts}.dsl"
 
@@ -104,7 +106,10 @@ def _resolve_input_csv() -> Path | None:
     explicit = OUTPUT_DIR / "replace_input.csv"
     if explicit.exists():
         return explicit
-    cands = sorted(OUTPUT_DIR.glob("segment_lookup_pjt_*_md.csv"), reverse=True)
+    # lookup csv fallback — 새 위치 (LOOKUP_DIR) 우선, 구위치 (OUTPUT_DIR) 호환
+    cands = sorted(LOOKUP_DIR.glob("segment_lookup_pjt_*_md.csv"), reverse=True)
+    if not cands:
+        cands = sorted(OUTPUT_DIR.glob("segment_lookup_pjt_*_md.csv"), reverse=True)
     return cands[0] if cands else None
 
 

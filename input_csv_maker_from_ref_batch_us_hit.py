@@ -18,7 +18,7 @@ input csv 형식 (lookup csv 호환):
 
 사용:
   python input_csv_maker_from_ref_batch_us_hit.py
-  python aa_create_segment_v2_2.py --input segments_from_ref_batch_us_hit_<ts>.csv --apply
+  python aa_create_segment_v2.2.py --input segments_from_ref_batch_us_hit_<ts>.csv --apply
 """
 from __future__ import annotations
 

@@ -58,7 +58,8 @@ from site_registry import lookup_site, SiteInfo
 # ════════════════════════════════════════════════════════════════════
 
 # ─── 인증 ──────────────────────────────────────────────────────────
-AUTH_JSON_PATH = str(Path(__file__).resolve().parent.parent.parent.parent / "aa_auth.json")
+# Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
+AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
 COMPANY_ID = "company_id"
 
 # ─── 대상 프로젝트 ──────────────────────────────────────────────────

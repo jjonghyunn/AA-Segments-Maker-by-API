@@ -1,33 +1,25 @@
-# extract_data_v2.py
-# 2026-05-15  Jonghyun Park w/ Claude
+# extract_data_v3.py
+# 2026-05-22  Jonghyun Park w/ Claude
 """
-v1 (extract_data.py) 차이:
-  · 사이트별 RSID + dateRange 를 sites_input.csv 의 (site_code, start_date, end_date) 로 override
-  · site_code → rsid 매핑은 site_registry.py 의 lookup_site() 사용
-  · 결과 CSV 는 사이트별 별도 파일 (파일명 prefix = rsid)
-      output/extract_data_<site_code>_<ts>.csv
-      output/column_mapping_<site_code>_<ts>.csv
+v2 (extract_data_v2.py) 차이:
+  · EXTRA_SEGMENTS 옵션 추가 — 세그먼트 이름 키워드 검색 → globalFilter 로 추가 적용
+  · 매칭 정책:
+      - 1개 매칭 → 진행
+      - 2~5개 매칭 → 콘솔에 ID/이름 나열 + 중단 (lookup CSV/DSL 도 저장)
+      - 6개 이상 → 콘솔에 'lookup CSV 확인' + 중단 (lookup CSV/DSL 저장)
+      - 0개 → 에러 + 중단
+  · 검색 결과는 항상 lookup/segment_lookup_<query>_YYMMDD_HHMM.csv + .dsl 두 파일 저장
+      - CSV columns: segment_id, name, owner_id, owner_name, rsid, description, tags, structure (DSL oneline)
+      - DSL: 모든 매치를 한 파일에 '===' 구분선으로 이어붙임 (들여쓰기 보존)
+  · panel_scope 로 적용 대상 panel 지정:
+      - "all" : 모든 panel 에 적용
+      - ["키워드1", "키워드2"] : panel.name 에 키워드 포함 시 적용 (OR 매칭, case-insensitive)
 
-흐름:
-  1) sites_input.csv 읽음 → [(site_code, start, end), ...]
-  2) 각 row 마다:
-     - site_registry.lookup_site(site_code) → SiteInfo (rsid 등)
-     - PROJECT_ID 의 모든 panel × reportlet 에 대해
-       payload 의 rsid + dateRange 를 그 row 값으로 override
-     - /reports 호출 → site 별 결과 CSV 두 개 저장 (extract_data / column_mapping)
+EXTRA_SEGMENTS = [] 이면 v2 와 100% 동일 동작 (옵트인).
 
-site × panel 룰 (--include-global-for-us 로 us 의 [Global] 추출 토글):
-  · us site            → [US] panel 추출, [Global] panel skip (기본)
-  · non-us site        → [Global] panel 추출, [US] panel skip
-  · --include-global-for-us 주면 us 도 [Global] 같이 추출
-
-사용:
-  python extract_data_v2.py                    # sites_input.csv 의 모든 site
-  python extract_data_v2.py --site us          # us 만, [US] panel 만
-  python extract_data_v2.py --site us --include-global-for-us
-                                               # us 에 [Global] 도 같이
-  python extract_data_v2.py --dry-run          # payload 생성까지만
-  python extract_data_v2.py --workers 8        # 워커 수
+흐름 (v2 동일 + 1단계 추가):
+  0) EXTRA_SEGMENTS 가 있으면 _resolve_extra_segment() 로 ID 확정 + lookup 파일 저장
+  1~) v2 와 동일
 """
 from __future__ import annotations
 
@@ -52,12 +44,13 @@ from site_registry import lookup_site, SiteInfo
 # ════════════════════════════════════════════════════════════════════
 
 # ─── 인증 ──────────────────────────────────────────────────────────
-AUTH_JSON_PATH = str(Path(__file__).resolve().parent.parent.parent / "aa_auth.json")
+# Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
+AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
 COMPANY_ID = "company_id"
 
 # ─── 대상 프로젝트 ──────────────────────────────────────────────────
 # v1 과 동일 — 같은 project 의 panel/reportlet 구조를 여러 site (rsid) 로 추출
-PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME | Contents cc09 cmpnt v26 | API (user_id)
+PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME Campaign Revisit & Repurchase Analysis _(AU)
 # https://experience.adobe.com/#/@company_name/so:company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
 
 # ─── input / 출력 ──────────────────────────────────────────────────
@@ -72,6 +65,15 @@ LIMIT = 50000     # API 1 page 최대 (mktchannel 등 multi-value dimension 대�
 MAX_PAGES = 100   # LIMIT × MAX_PAGES = 500만 row capacity / reportlet
 
 # ─── panel 필터 (v1 동일) ──────────────────────────────────────────
+# 처리 대상 panel 을 이름으로 좁히는 필터.
+#   []        → 모든 panel 처리 (기본)
+#   [kw, ...] → panel.name 에 키워드 하나라도 포함된 panel 만 처리 (OR 매칭, 대소문자 구분),
+#               나머지 panel 은 자동 skip
+# 예: ["[Global]"]         → [Global] 로 시작하는 panel 만
+#     ["Revisit", "EPP"]   → 이름에 Revisit OR EPP 포함된 panel 만
+# 참고: EXTRA_SEGMENTS 의 panel_scope 와 역할이 다름.
+#   - REQUIRED_PANEL_KEYWORDS : 그 panel 자체를 "처리할지 말지"
+#   - panel_scope             : 처리되는 panel 중 추가 segment 를 "적용할지 말지"
 REQUIRED_PANEL_KEYWORDS: list[str] = []
 
 # ─── site × panel prefix 룰 ─────────────────────────────────────────
@@ -82,6 +84,42 @@ US_SITE_CODE         = "us"
 US_PANEL_PREFIX      = "[US]"
 GLOBAL_PANEL_PREFIX  = "[Global]"
 INCLUDE_GLOBAL_FOR_US = False  # CLI --include-global-for-us 로 override
+
+# ─── 추가 세그먼트 (이름 검색 → globalFilter 적용) ─────────────────
+# 비어있으면 v2 와 동일 동작. 항목 하나 = 추가 segment 1개.
+# 항목은 segment_id (직접 지정) 또는 name_keywords (이름 검색) 둘 중 하나 사용.
+#   segment_id    : 세그먼트 ID 직접 지정 — "segment_id_placeholder"
+#                   검색 단계 생략, 바로 globalFilter 에 추가. lookup CSV/DSL 도 생성 안 함.
+#                   (이미 lookup 으로 ID 확정한 경우 이게 가장 빠름)
+#   name_keywords : 세그먼트 이름 검색. 두 가지 형식 지원:
+#                   1) 풀네임 문자열 — "visitor id = d=mid, null (Exclude)"
+#                      Adobe `name` 필터 = case-insensitive substring contains.
+#                      이 문자열을 포함하는 모든 세그 반환 (완전 일치 + 더 긴 이름도).
+#                   2) AND 키워드 리스트 — ["visitor id", "d=mid", "null", "Exclude"]
+#                      첫 키워드 = server-side `name` 필터,
+#                      나머지 = client-side AND (name + description, case-insensitive).
+#                      가장 specific 한 키워드를 앞에 두는 게 효율적.
+#   panel_scope   : "all"  → 모든 panel 에 적용 (생략 시 기본값)
+#                   ["키워드1", ...] → panel.name 에 키워드 포함 시 적용 (OR, case-insensitive)
+EXTRA_SEGMENTS: list[dict] = [
+    # 예시 1 — ID 직접 지정 (이름 검색 생략):
+    {"segment_id": "segment_id_placeholder", "panel_scope": "all"},
+    # 예시 2 — 풀네임 substring 검색:
+    # {"name_keywords": "visitor id = d=mid, null (Exclude)"},
+    # 예시 3 — AND 키워드 형식 / panel 일부 적용:
+    # {
+    #     "name_keywords": ["visitor id", "d=mid", "null", "Exclude"],
+    #     "panel_scope": "all",
+    # },
+    # {
+    #     "name_keywords": ["[Global] Excluded EPP"],
+    #     "panel_scope": ["[Global]"],
+    # },
+]
+
+# 세그먼트 검색 결과 lookup 파일 출력 (CSV + DSL)
+LOOKUP_OUTPUT_DIR = Path(__file__).resolve().parent / "lookup"
+LOOKUP_SEARCH_LIMIT = 500   # search API 최대 결과 (client-side AND 필터링 전 기준)
 
 SETTINGS_FALLBACK = {
     "countRepeatInstances": True,
@@ -97,6 +135,19 @@ SETTINGS_FALLBACK = {
 SEG_ID_RE = re.compile(r"^s\d+_[0-9a-f]+$")
 _DATE_RANGE_CACHE: dict[str, str] = {}
 _SEG_NAME_CACHE: dict[str, str] = {}    # segment_id → fresh name (via /segments/{id} GET)
+
+# ─── aa_segment_lookup.py 헬퍼 import (search + decompile) ─────────
+# 같은 폴더의 aa_segment_lookup.py 사본을 import — fork 시 별도 경로 손볼 필요 없음.
+# 원본은 ...\260504_AA_segment_maker\segment_maker\aa_segment_lookup.py.
+_SEG_LOOKUP_DIR = Path(__file__).resolve().parent
+if str(_SEG_LOOKUP_DIR) not in sys.path:
+    sys.path.insert(0, str(_SEG_LOOKUP_DIR))
+from aa_segment_lookup import (   # noqa: E402
+    _search_segments,
+    decompile_definition,
+    format_dsl_block,
+    _set_daterange_auth,
+)
 
 
 # ─── auth / project / panel / column tree — v1 과 동일 ─────────────
@@ -345,8 +396,140 @@ def _build_date_range_definition(start_date: str, end_date: str) -> str:
     return f"{start_dt:%Y-%m-%dT}00:00:00.000/{end_dt:%Y-%m-%dT}00:00:00.000"
 
 
+# ─── EXTRA_SEGMENTS resolver (이름 → ID) ──────────────────────────
+def _slugify_query(keywords: list[str]) -> str:
+    """파일명용 슬러그. 키워드 각각 [A-Za-z0-9]+ 만 남기고 `__` 로 join.
+    예: ['visitor id', 'd=mid', 'null', 'Exclude'] → 'visitor_id__d_mid__null__Exclude'"""
+    slugs: list[str] = []
+    for kw in keywords:
+        s = re.sub(r"[^A-Za-z0-9]+", "_", kw).strip("_")
+        if s:
+            slugs.append(s)
+    out = "__".join(slugs) if slugs else "query"
+    return out[:120]
+
+
+def _write_lookup_outputs(query_keywords: list[str], matches: list[dict], ts_str: str) -> tuple[Path, Path]:
+    """매칭 결과를 CSV + DSL 두 파일로 저장. (csv_path, dsl_path) 반환.
+    matches 는 aa_segment_lookup._search_segments() 반환 포맷."""
+    LOOKUP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    slug = _slugify_query(query_keywords)
+    csv_path = LOOKUP_OUTPUT_DIR / f"segment_lookup_{slug}_{ts_str}.csv"
+    dsl_path = LOOKUP_OUTPUT_DIR / f"segment_lookup_{slug}_{ts_str}.dsl"
+
+    # CSV — aa_segment_lookup 의 컬럼 셋과 동일
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        w.writerow(["segment_id", "name", "owner_id", "owner_name", "rsid",
+                    "description", "tags", "structure", "error"])
+        for r in matches:
+            structure = ""
+            if r.get("definition"):
+                try:
+                    dsl_text = decompile_definition(r["definition"])
+                    structure = dsl_text.replace('"', "'").replace("\n", " | ")
+                except Exception:
+                    structure = "(decompile error)"
+            w.writerow([
+                r.get("segment_id", ""), r.get("name", ""),
+                r.get("owner_id", ""), r.get("owner_name", ""),
+                r.get("rsid", ""), r.get("description", ""),
+                r.get("tags", ""), structure, r.get("error", ""),
+            ])
+
+    # DSL — 한 파일에 전부 이어서 '===' 구분선
+    dsl_blocks: list[str] = []
+    for r in matches:
+        if not r.get("definition"):
+            continue
+        try:
+            tag_list = [t.strip() for t in (r.get("tags") or "").split(",") if t.strip()]
+            block = format_dsl_block(
+                name=r.get("name", ""),
+                description=r.get("description", ""),
+                rsid=r.get("rsid", ""),
+                tags=tag_list,
+                definition=r["definition"],
+            )
+            dsl_blocks.append(block)
+        except Exception as e:
+            dsl_blocks.append(f"--- segment\nname: {r.get('name','')}\nerror: decompile 실패 — {e}\n")
+    separator = "\n\n" + ("=" * 78) + "\n\n"
+    dsl_path.write_text(separator.join(dsl_blocks) + "\n" if dsl_blocks else "", encoding="utf-8")
+    return csv_path, dsl_path
+
+
+def _resolve_extra_segment(spec: dict, headers: dict, gcid: str, ts_str: str) -> str | None:
+    """EXTRA_SEGMENTS 한 항목 → segment_id (1개 확정 시). 모호하거나 0개면 SystemExit.
+    검색 케이스는 lookup CSV/DSL 항상 저장 (디버깅/공유용).
+
+    spec 형식 (둘 중 하나):
+      · {"segment_id": "s...."}                 → 검색 생략, 바로 사용
+      · {"name_keywords": str | list[str]}      → 이름 검색
+    """
+    # ─── 1) segment_id 직접 지정 케이스 ───
+    sid_raw = spec.get("segment_id")
+    if sid_raw:
+        sid = str(sid_raw).strip()
+        if not SEG_ID_RE.match(sid):
+            raise SystemExit(f"EXTRA_SEGMENTS segment_id 형식 오류: {sid!r} (예: segment_id_placeholder)")
+        # 이름 fetch — 캐시에 박아 _build_global_filters 의 segment_names 에 활용
+        name = _fetch_segment_name(headers, gcid, sid)
+        print(f"\n[segment by id] {sid}  '{name or '(name 조회 실패)'}'")
+        return sid
+
+    # ─── 2) name_keywords 검색 케이스 ───
+    raw = spec.get("name_keywords")
+    if not raw:
+        raise SystemExit("EXTRA_SEGMENTS 항목에 segment_id 또는 name_keywords 가 없음")
+    keywords = [raw] if isinstance(raw, str) else [k for k in raw if k]
+    if not keywords:
+        raise SystemExit("EXTRA_SEGMENTS 항목의 name_keywords 가 비어있음")
+
+    kw_disp = " AND ".join(repr(k) for k in keywords)
+    print(f"\n[segment search] {kw_disp}")
+    matches = _search_segments(headers, gcid, keywords, rsid="", limit=LOOKUP_SEARCH_LIMIT)
+    n = len(matches)
+    print(f"  매칭 결과: {n}건")
+
+    # 항상 lookup 파일 저장
+    csv_path, dsl_path = _write_lookup_outputs(keywords, matches, ts_str)
+    print(f"  → CSV: {csv_path}")
+    print(f"  → DSL: {dsl_path}")
+
+    if n == 0:
+        raise SystemExit(f"❌ 매칭 0건 — 키워드 확인 필요: {kw_disp}")
+
+    if n == 1:
+        m = matches[0]
+        sid = m.get("segment_id", "")
+        name = m.get("name", "")
+        # 캐시에 박아서 _build_global_filters / segment_names 에 활용
+        if sid:
+            _SEG_NAME_CACHE[sid] = name
+        print(f"  ✓ 단일 매칭: {sid}  '{name}'  (owner: {m.get('owner_name','')})")
+        return sid
+
+    if 2 <= n <= 5:
+        print(f"  ⚠ 다중 매칭 ({n}건) — 하나로 좁혀서 다시 실행:")
+        for i, m in enumerate(matches, 1):
+            print(f"    {i:2}. {m.get('segment_id',''):40}  '{m.get('name','')}'"
+                  f"  rsid={m.get('rsid','')}  owner={m.get('owner_name','')}")
+        raise SystemExit("다중 매칭으로 중단. name_keywords 를 더 specific 하게 수정.")
+
+    # n > 5
+    print(f"  ⚠ 매칭 너무 많음 ({n}건) — 위 lookup CSV 확인 후 키워드 좁히기:")
+    print(f"    {csv_path}")
+    raise SystemExit("다중 매칭으로 중단.")
+
+
 # ─── panel 의 dateRange + rsid override + global filter 구성 ───────
-def _build_global_filters(panel: dict, *, override_date_range: str | None = None) -> tuple[list[dict], list[str]]:
+def _build_global_filters(
+    panel: dict,
+    *,
+    override_date_range: str | None = None,
+    extra_segment_ids: list[str] | None = None,
+) -> tuple[list[dict], list[str]]:
     filters: list[dict] = []
     segment_names: list[str] = []
     for grp in panel.get("segmentGroups") or []:
@@ -358,6 +541,13 @@ def _build_global_filters(panel: dict, *, override_date_range: str | None = None
             if isinstance(sid, str) and SEG_ID_RE.match(sid):
                 filters.append({"type": "segment", "segmentId": sid})
                 segment_names.append(_comp_name(comp))
+    # extra segments (이름 검색으로 확정된 추가 filter)
+    if extra_segment_ids:
+        for sid in extra_segment_ids:
+            if not (isinstance(sid, str) and SEG_ID_RE.match(sid)):
+                continue
+            filters.append({"type": "segment", "segmentId": sid})
+            segment_names.append(_SEG_NAME_CACHE.get(sid, "") or sid)
     # dateRange — override 우선
     if override_date_range:
         filters.append({"type": "dateRange", "dateRange": override_date_range})
@@ -501,11 +691,17 @@ def _build_metric_container(reportlet: dict) -> tuple[dict, list[list[str]], lis
 
 
 def _build_report_payload(project: dict, panel: dict, reportlet: dict, *,
-                          override_rsid: str, override_date_range: str
+                          override_rsid: str, override_date_range: str,
+                          extra_segment_ids: list[str] | None = None
                           ) -> tuple[dict, list[list[str]], list[str], list[str], str, str]:
-    """v1 과 달리 rsid + dateRange override 필수."""
+    """v1 과 달리 rsid + dateRange override 필수.
+    v3: extra_segment_ids 로 panel globalFilter 에 segment 추가 적용."""
     rsid = override_rsid
-    global_filters, panel_seg_names = _build_global_filters(panel, override_date_range=override_date_range)
+    global_filters, panel_seg_names = _build_global_filters(
+        panel,
+        override_date_range=override_date_range,
+        extra_segment_ids=extra_segment_ids,
+    )
     metric_container, seg_names_per_metric, metric_names = _build_metric_container(reportlet)
     ff = reportlet.get("freeformTable") or {}
     dim_settings = ff.get("dimensionSettings") or []
@@ -674,14 +870,33 @@ def _should_skip_panel(panel_name: str, site_code: str, include_global_for_us: b
     return False, ""
 
 
+def _extras_for_panel(panel_name: str, resolved_extras: list[tuple[str, object]]) -> list[str]:
+    """resolved_extras = [(segment_id, panel_scope), ...] → 해당 panel 에 적용할 segment_id 목록."""
+    out: list[str] = []
+    pname_lower = (panel_name or "").lower()
+    for sid, scope in resolved_extras:
+        if scope == "all":
+            out.append(sid)
+        elif isinstance(scope, list) and any(str(kw).lower() in pname_lower for kw in scope):
+            out.append(sid)
+    return out
+
+
 # ─── site 단위 처리 ────────────────────────────────────────────────
 def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                   site: SiteInfo, start_date: str, end_date: str,
                   *, workers: int, limit: int, dry_run: bool, ts: str,
-                  include_global_for_us: bool) -> dict:
-    """한 site 의 모든 panel × reportlet 추출 + CSV 저장."""
+                  include_global_for_us: bool,
+                  resolved_extras: list[tuple[str, object]] | None = None) -> dict:
+    """한 site 의 모든 panel × reportlet 추출 + CSV 저장.
+    resolved_extras: [(segment_id, panel_scope), ...] — v3 신규."""
     date_range_def = _build_date_range_definition(start_date, end_date)
     print(f"\n{'═'*78}\nSITE: {site.site_code}  →  rsid={site.rsid}  ({start_date} ~ {end_date})\n{'═'*78}")
+    if resolved_extras:
+        print(f"  extra segments ({len(resolved_extras)}):")
+        for sid, scope in resolved_extras:
+            scope_str = "all panels" if scope == "all" else f"panel keyword {scope}"
+            print(f"    + {sid}  '{_SEG_NAME_CACHE.get(sid, '')}'  → {scope_str}")
 
     tasks: list[dict] = []
     task_order = 0
@@ -693,6 +908,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
         if skip:
             print(f"  ⊘ panel skip: {p_name}  ({reason})")
             continue
+        extra_ids_for_panel = _extras_for_panel(p_name, resolved_extras or [])
         rep_iter = list(_iter_panel_reportlets(panel))
         for r_idx, (assigned_num, rep) in enumerate(rep_iter):
             r_name = rep.get("name", f"(reportlet-{r_idx})")
@@ -704,7 +920,8 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             payload, seg_names_per_metric, metric_names, panel_seg_names, dim_id, dim_name = \
                 _build_report_payload(project, panel, rep,
                                       override_rsid=site.rsid,
-                                      override_date_range=date_range_def)
+                                      override_date_range=date_range_def,
+                                      extra_segment_ids=extra_ids_for_panel)
             payload["settings"]["limit"] = min(limit, 100000)
             tasks.append({
                 "order": task_order,
@@ -838,7 +1055,7 @@ def main() -> int:
     except Exception:
         pass
 
-    parser = argparse.ArgumentParser(description="사이트별 RSID + dateRange override 데이터 추출")
+    parser = argparse.ArgumentParser(description="사이트별 RSID + dateRange override 데이터 추출 (v3: EXTRA_SEGMENTS 옵션)")
     parser.add_argument("--dry-run", action="store_true", help="payload 생성까지만")
     parser.add_argument("--workers", type=int, default=MAX_WORKERS, help=f"병렬 워커 수 (default {MAX_WORKERS})")
     parser.add_argument("--limit", type=int, default=LIMIT, help=f"dimension row 제한 (default {LIMIT})")
@@ -851,11 +1068,12 @@ def main() -> int:
     args = parser.parse_args()
 
     ts = datetime.now().strftime("%y%m%d_%H%M")
-    print(f"[{ts}] extract_data_v2.py")
-    print(f"  project : {PROJECT_ID}")
-    print(f"  input   : {SITES_INPUT_CSV.name}")
-    print(f"  workers : {args.workers}")
-    print(f"  limit   : {args.limit}")
+    print(f"[{ts}] extract_data_v3.py")
+    print(f"  project       : {PROJECT_ID}")
+    print(f"  input         : {SITES_INPUT_CSV.name}")
+    print(f"  workers       : {args.workers}")
+    print(f"  limit         : {args.limit}")
+    print(f"  EXTRA_SEGMENTS: {len(EXTRA_SEGMENTS)}건")
 
     # sites_input.csv 로드
     sites_rows = _load_sites_input(SITES_INPUT_CSV)
@@ -876,11 +1094,20 @@ def main() -> int:
 
     # 인증 + project 한 번만
     headers, gcid = _load_auth_headers()
+    # decompile_definition 안에서 datetime-interval-ref 만나면 dateranges API 호출 가능 → 인증 셋업
+    _set_daterange_auth(headers, gcid)
     project = _fetch_project(headers, gcid, PROJECT_ID)
     panels = _list_panels(project)
     print(f"Project panels: {len(panels)}개")
     _prefetch_date_ranges(headers, gcid, panels)
     _prefetch_segment_names(headers, gcid, panels)
+
+    # v3: EXTRA_SEGMENTS resolve (이름 → ID 1개씩 확정. 모호하면 SystemExit)
+    resolved_extras: list[tuple[str, object]] = []
+    for spec in EXTRA_SEGMENTS:
+        sid = _resolve_extra_segment(spec, headers, gcid, ts)
+        if sid:
+            resolved_extras.append((sid, spec.get("panel_scope", "all")))
 
     # 사이트별 처리
     results = []
@@ -890,7 +1117,8 @@ def main() -> int:
                                 site_info, start_date, end_date,
                                 workers=args.workers, limit=args.limit,
                                 dry_run=args.dry_run, ts=ts,
-                                include_global_for_us=args.include_global_for_us)
+                                include_global_for_us=args.include_global_for_us,
+                                resolved_extras=resolved_extras)
         results.append(result)
 
     # 전체 요약
@@ -900,6 +1128,8 @@ def main() -> int:
     print(f"  처리 site : {len(results)}")
     print(f"  성공 task : {total_ok}")
     print(f"  실패 task : {total_fail}")
+    if resolved_extras:
+        print(f"  extra seg : {len(resolved_extras)}건 적용")
     print(f"\n사이트별:")
     for r in results:
         s = r["site"]

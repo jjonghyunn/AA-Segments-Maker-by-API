@@ -1,5 +1,6 @@
 # input_csv_maker_from_ref_batch.py
 # 2026-05-19  Jonghyun Park w/ Claude
+# updated: 2026-05-22  — lookup csv fallback 경로를 같은 폴더의 lookup/ 하위로 변경
 """
 input_csv_maker_from_ref.py 의 batch 버전 — 여러 SEG_REF 를 한 번에 처리.
 
@@ -42,7 +43,7 @@ DSL 패턴 (input_csv_maker_from_ref.py 와 동일):
 
 사용:
   python input_csv_maker_from_ref_batch.py
-  python aa_create_segment_v2_2.py --input segments_from_ref_batch_<ts>.csv --apply
+  python aa_create_segment_v2.2.py --input segments_from_ref_batch_<ts>.csv --apply
 """
 from __future__ import annotations
 
@@ -67,7 +68,7 @@ OUTPUT_MODE = "create"
 # update 모드에서 SEG_REF 매핑용 source csv (segment_id + name 컬럼 필요).
 # input csv 의 name 의 "Product Recommendation - XX. *" key 와 source 의 name key 매칭으로 SEG_REF 결정.
 # 빈 값이면 self-ref (input 의 segment_id 그대로).
-SEG_REF_SOURCE_CSV = "segment_v2_2_result_260520_1108.csv"
+SEG_REF_SOURCE_CSV = "segment_v2.2_result_260520_1108.csv"
 
 # 한 SEG_REF 로 어떤 segment 만들지 — 콤마 구분.
 # update 모드면 input row 의 name 의 scope suffix (Visit / Delayed Purchase) 자동 감지로 1 개만 빌드.
@@ -102,6 +103,7 @@ DEFAULT_TAGS = ""
 # ════════════════════════════════════════════════════════════════════
 
 OUTPUT_DIR = Path(__file__).resolve().parent
+LOOKUP_DIR = OUTPUT_DIR / "lookup"          # aa_segment_lookup_from_pjt 결과 csv 위치
 OUTPUT_NAME_TEMPLATE     = "segments_from_ref_batch_{ts}.csv"
 OUTPUT_DSL_NAME_TEMPLATE = "segments_from_ref_batch_{ts}.dsl"
 
@@ -113,7 +115,10 @@ def _resolve_input_csv() -> Path | None:
     explicit = OUTPUT_DIR / "from_ref_batch_input.csv"
     if explicit.exists():
         return explicit
-    cands = sorted(OUTPUT_DIR.glob("segment_lookup_pjt_*_md.csv"), reverse=True)
+    # lookup csv fallback — 새 위치 (LOOKUP_DIR) 우선, 구위치 (OUTPUT_DIR) 호환
+    cands = sorted(LOOKUP_DIR.glob("segment_lookup_pjt_*_md.csv"), reverse=True)
+    if not cands:
+        cands = sorted(OUTPUT_DIR.glob("segment_lookup_pjt_*_md.csv"), reverse=True)
     return cands[0] if cands else None
 
 

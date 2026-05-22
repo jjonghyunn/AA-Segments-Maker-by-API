@@ -37,6 +37,7 @@ import aanalytics2 as api2
 # 사용자가 바꿔야 하는 부분
 # ════════════════════════════════════════════════════════════════════
 
+# Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
 AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
 COMPANY_ID     = "company_id"
 
