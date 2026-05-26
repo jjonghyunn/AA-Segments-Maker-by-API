@@ -1,5 +1,6 @@
 # input_csv_maker.py
 # 2026-05-15  Jonghyun Park w/ Claude
+# updated: 2026-05-26       — crystallize: regex 에 hyphen 변형 (starts-with / contains-any-of) 매칭 추가, contains-any-of multi-value 처리 (build_evar_block)
 """
 seg_make_ref_*.csv → aa_create_segment_v2_1.py 가 받는 input CSV 자동 변환.
 
@@ -29,7 +30,7 @@ from pathlib import Path
 # 사용자가 바꿔야 하는 부분
 # ════════════════════════════════════════════════════════════════════
 
-SEG_MAKE_REF_CSV = "seg_make_ref_260515_1554.csv"   # 빈 값이면 폴더 내 seg_make_ref_*.csv 파일명 사전순 최신 1개 자동 선택. 특정 파일 강제 지정 시 파일명 박기.
+SEG_MAKE_REF_CSV = "seg_make_ref_260526_1121.csv"   # 빈 값이면 폴더 내 seg_make_ref_*.csv 파일명 사전순 최신 1개 자동 선택. 특정 파일 강제 지정 시 파일명 박기.
 
 # 공통 컨테이너 segment ID (segment-ref 로 참조될 ID)
 # 두 가지 방법 (둘 다 동작, COMMON_SEGMENT_REF 가 우선):
@@ -76,7 +77,7 @@ DEFAULT_TAGS = ""
 # raw csv 에 'evar_join' 컬럼 있고 값이 "OR" (case-insensitive) 이면
 # 그 row 의 evar_blocks 들을 named container wrap 안에 OR 로 묶음.
 # 빈 값 / "AND" / 컬럼 없음 → 기본 AND 동작 (모든 evar_block 사이 AND).
-# OR 그루핑이 raw paren `(...)` 으로는 v2.2 의 paren strip 에 잡혀 사라지므로
+# OR 그루핑이 raw paren `(...)` 으로는 v2_2 의 paren strip 에 잡혀 사라지므로
 # named container wrap 으로 self-contained 형태로 보존.
 EVAR_JOIN_COLUMN = "evar_join"
 EVAR_JOIN_WRAP_NAME = "evar OR group"
@@ -112,11 +113,12 @@ SITE_CONTAINER_NAME = "site"   # site 양수/음수 컨테이너 (prop/evar 의 
 # 값이 있으면 그 row 의 자동 LCS 무시하고 사용자가 박은 키워드로 해당 evar 블록 강제.
 CRYSTALLIZE_CONDITION_TO_OPERATOR: dict[str, str] = {
     "starts": "starts-with",
-    "starts-with": "starts-with",   # hyphen 형식도 매칭
+    "starts-with": "starts-with",       # hyphen 형식도 매칭
     "contains": "contains",
+    "contains-any-of": "contains-any-of",  # hyphen 형식 (multi-value)
     "equals": "equals",
 }
-CRYSTALLIZE_COLUMN_REGEX = r"^(starts|contains|equals)_crystallize_(evar\d+)$"
+CRYSTALLIZE_COLUMN_REGEX = r"^(starts-with|starts|contains-any-of|contains|equals)_crystallize_(evar\d+)$"
 
 # Generic site / evar 필터 컬럼 — {not_있으면제외 없으면 포함}{조건}_{prop/evar}{#}
 # 예: starts_prop1, not_starts_evar1, contains_evar26, not_contains_evar26
@@ -313,12 +315,46 @@ def build_evar_block(evar_num: int, values: list[str],
     tokens: list[str]
     if crystallize_override:
         op, val = crystallize_override
-        tokens = [
-            f"'v{evar_num}'!hit(",
-            f"event{evar_num} event-exists",
-            "AND",
-            f"evar{evar_num} {op} '{val}'",
-        ]
+        if op == "contains-any-of":
+            # multi-value — 줄바꿈/CR 으로 split (split_evar_values 룰 그대로)
+            # multi-value 면 'contains-any-of' named container wrap 안에 OR-of-contains
+            # (AA reference: hit-scope container 안에 or pred, paren 안 씀 — paren 은 AA validator 가
+            # attribute 이름 일부로 잘못 인식)
+            vals = split_evar_values(val)
+            if not vals:
+                tokens = [
+                    f"'v{evar_num}'!hit(",
+                    f"event{evar_num} event-exists",
+                    "AND",
+                    f"evar{evar_num} contains-any-of []",
+                ]
+            elif len(vals) == 1:
+                tokens = [
+                    f"'v{evar_num}'!hit(",
+                    f"event{evar_num} event-exists",
+                    "AND",
+                    f"evar{evar_num} contains '{vals[0]}'",
+                ]
+            else:
+                or_lines = [f"evar{evar_num} contains '{vals[0]}'"]
+                for v in vals[1:]:
+                    or_lines.append("OR")
+                    or_lines.append(f"evar{evar_num} contains '{v}'")
+                tokens = [
+                    f"'v{evar_num}'!hit(",
+                    f"event{evar_num} event-exists",
+                    "AND",
+                    "'contains-any-of'!hit(",
+                    *or_lines,
+                    ")",
+                ]
+        else:
+            tokens = [
+                f"'v{evar_num}'!hit(",
+                f"event{evar_num} event-exists",
+                "AND",
+                f"evar{evar_num} {op} '{val}'",
+            ]
     elif not values:
         # 값 없고 event-exists 만 TRUE 인 case — reference 패턴 따라 `evar<N> exists AND event<N> event-exists`
         # (예: CC_00. Contents Click Total 의 evar25/26/35 — 값 없이 event-exists 만 TRUE)
@@ -338,14 +374,28 @@ def build_evar_block(evar_num: int, values: list[str],
                 f"evar{evar_num} contains '{lcs}'",
             ]
         else:
-            # 공통 없음 → 특이사항 컨테이너
-            values_str = ", ".join(f"'{v}'" for v in values)
-            tokens = [
-                "'특이사항'!hit(",
-                f"event{evar_num} event-exists",
-                "AND",
-                f"evar{evar_num} contains-any-of [{values_str}]",
-            ]
+            # 공통 LCS 없음 → 이름 컨테이너 'v<N>', multi-value 는 'contains-any-of' named container wrap 안에 OR
+            # (AA reference: hit-scope container, paren 안 씀 — paren 은 AA validator 가 attribute 일부로 잘못 인식)
+            if len(values) == 1:
+                tokens = [
+                    f"'v{evar_num}'!hit(",
+                    f"event{evar_num} event-exists",
+                    "AND",
+                    f"evar{evar_num} contains '{values[0]}'",
+                ]
+            else:
+                or_lines = [f"evar{evar_num} contains '{values[0]}'"]
+                for v in values[1:]:
+                    or_lines.append("OR")
+                    or_lines.append(f"evar{evar_num} contains '{v}'")
+                tokens = [
+                    f"'v{evar_num}'!hit(",
+                    f"event{evar_num} event-exists",
+                    "AND",
+                    "'contains-any-of'!hit(",
+                    *or_lines,
+                    ")",
+                ]
 
     # inline extra_conditions — 메인 블록 안에 AND / AND NOT 추가
     if extra_conditions:
@@ -430,7 +480,7 @@ def build_customlink_block(customlink: str, evar_blocks: list[str],
 
     evar_join: "AND" (default) | "OR" — evar_blocks 가 2 개 이상일 때 묶음 방식.
        OR 일 때 named container wrap (EVAR_JOIN_WRAP_NAME) 안에 OR 토큰으로 묶음.
-       (raw paren `(...)` 은 v2.2 의 paren strip 에 잡혀 사라지므로 컨테이너 형태로 보존.)
+       (raw paren `(...)` 은 v2_2 의 paren strip 에 잡혀 사라지므로 컨테이너 형태로 보존.)
     """
     parts: list[str] = ["hit("]
     has_first = False
@@ -523,13 +573,13 @@ def build_structure(name: str, customlink_blocks: list[str],
 
 
 def _lookup_visit_seg_id(base_name: str) -> tuple[str, str]:
-    """(Visit) segment 의 (id, full name) lookup — 가장 최신 segment_v2.2_result_*.csv (방금 POST 한 visit segments) 만 본다.
+    """(Visit) segment 의 (id, full name) lookup — 가장 최신 segment_v2_2_result_*.csv (방금 POST 한 visit segments) 만 본다.
     lookup csv (segment_lookup_*.csv) 는 의도적으로 안 봄 — 이전 캠페인 같은 name segment 잘못 매칭 방지.
     매칭 없으면 ("", "") → Delayed Purchase 빌더가 fallback (inline content). visit segment 먼저 POST 해야 함."""
     if not base_name:
         return ("", "")
     visit_name = f"{base_name} (Visit)"
-    for path in sorted(OUTPUT_DIR.glob("segment_v2.2_result_*.csv"), reverse=True):
+    for path in sorted(OUTPUT_DIR.glob("segment_v2_2_result_*.csv"), reverse=True):
         if "dryrun" in path.name:
             continue
         try:
@@ -564,9 +614,12 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
             inner_parts.append("OR")
         inner_parts.extend(inner)
 
-    # outermost = hit — reference dsl. v2.2 가 root sequence → sequence-prefix 자동 변환 (hit-scope 허용)
+    # outermost = hit, 그 안 [sequence-after] visitor( visit(...) THEN visit(orders) )
+    # — lookup decompile 형식 그대로 (reference: lookup CSV 의 Delayed Purchase segment)
+    # [sequence-after] 라벨로 종류 명시 (AA UI "After Sequence" = AA raw sequence-prefix)
     parts: list[str] = [
         "hit(",
+        "[sequence-after] visitor(",
         "visit(",
         f"'{base_name}'!hit(",
     ]
@@ -587,10 +640,11 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
     parts.extend([
         "AND",
         "hit(", "NOT orders event-exists", ")",
-        ")",
+        ")",          # close visit-scope (inner visit)
         "THEN",
         "visit(", "orders event-exists", ")",
-        ")",
+        ")",          # close [sequence-after] visitor
+        ")",          # close outermost hit
     ])
     return " | ".join(parts)
 
@@ -734,17 +788,25 @@ def main() -> int:
             print(f"  [evar-event] 인식된 evar 블록 대상: " +
                   ", ".join(f"eVar{n}" for _, _, n in evar_event_cols))
 
-        # crystallize 컬럼 매핑 — {evarN: (operator, column_name)} (값 있으면 자동 LCS override)
-        crystallize_map: dict[str, tuple[str, str]] = {}
+        # crystallize 컬럼 매핑 — {evarN: [(operator, column_name), ...]} (같은 evar 에 여러 컬럼 가능)
+        # 우선순위: starts-with > equals > contains-any-of > contains  (specific > generic)
+        # row 마다 우선순위 순으로 값 있는 첫 컬럼 사용 (없으면 자동 LCS 폴백)
+        CRYSTALLIZE_OP_PRIORITY = {"starts-with": 0, "equals": 1, "contains-any-of": 2, "contains": 3}
+        crystallize_map: dict[str, list[tuple[str, str]]] = {}
         for hdr in fieldnames:
             m = re.match(CRYSTALLIZE_COLUMN_REGEX, hdr.strip(), flags=re.IGNORECASE)
             if m:
                 cond, varname = m.group(1).lower(), m.group(2).lower()
                 op = CRYSTALLIZE_CONDITION_TO_OPERATOR[cond]
-                crystallize_map[varname] = (op, hdr)
+                crystallize_map.setdefault(varname, []).append((op, hdr))
+        for var in crystallize_map:
+            crystallize_map[var].sort(key=lambda x: CRYSTALLIZE_OP_PRIORITY.get(x[0], 99))
         if crystallize_map:
-            print(f"  [crystallize] 인식된 override 컬럼: " +
-                  ", ".join(f"{v}→{op}({col})" for v, (op, col) in crystallize_map.items()))
+            summary = ", ".join(
+                f"{v}→[{' > '.join(op for op, _ in entries)}]"
+                for v, entries in crystallize_map.items()
+            )
+            print(f"  [crystallize] 인식된 override 컬럼 (우선순위 순): {summary}")
 
         # site/evar 필터 컬럼 분류 — {header: (is_neg, operator, var_name)}
         # 옛 (prop<N>/evar<N>/not_prop<N>/not_evar<N>, default starts-with) + 새 ({not_}<cond>_(prop|evar)<#>)
@@ -810,12 +872,12 @@ def main() -> int:
                     continue
                 values = split_evar_values(row.get(val_col) or "")
                 cry_override: tuple[str, str] | None = None
-                cry_entry = crystallize_map.get(f"evar{num}")
-                if cry_entry:
-                    op, col_name = cry_entry
+                # 우선순위 순으로 (starts-with > equals > contains-any-of > contains) 값 있는 첫 컬럼 사용
+                for op, col_name in crystallize_map.get(f"evar{num}", []):
                     cry_val = (row.get(col_name) or "").strip()
                     if cry_val:
                         cry_override = (op, cry_val)
+                        break
                 # 통계 — 공통/특이/override 추적 + LCS 저장 (검수 combo_key 용)
                 if cry_override:
                     n_with_common[num] = n_with_common.get(num, 0) + 1

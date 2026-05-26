@@ -54,10 +54,10 @@ OWN_LOGIN_ID = 000000001
 # server-side `name` 필터는 KEYWORDS[0] 만 사용 (가장 specific 한 키워드를 앞에 둘 것).
 # client-side 에서 나머지 키워드들도 다 매칭하는 segment 만 통과 (AND).
 KEYWORDS: list[str] = [
-    # "[CAMPAIGN NAME]",
+    "[CAMPAIGN NAME]",
     # "& order",
     # "[part_name] US_",
-    "visit",
+    # "visit",
 ]
 
 # owner.id 화이트리스트 (numeric loginId). 비어있으면 미사용.
@@ -93,6 +93,138 @@ segment_id_placeholder
 segment_id_placeholder
 segment_id_placeholder
 segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+segment_id_placeholder
+
 """
 
 TARGET_SEGMENT_IDS: list[str] = [

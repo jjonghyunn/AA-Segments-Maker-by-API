@@ -110,8 +110,8 @@ _SITE_MASTER: dict[str, tuple[str | None, str | None, str]] = {
     "ca": ("FRPN", "Canada", "rsid_placeholder"),
     "ca_fr": ("FRPN", "Canada", "rsid_placeholder"),  
     "mx": ("FRZ", "Mexico", "rsid_placeholder"),
-    "us": ("FRN", "US", "rsid_placeholder"), # ~ 2026-05-18
-    # "us": ("FRN", "US", "rsid_placeholder"), # 2026-05-19 ~
+    "us_old": ("FRN", "US", "rsid_placeholder"), # ~ 2026-05-18
+    "us": ("FRN", "US", "rsid_placeholder"), # 2026-05-19 ~
 }
 
 def lookup_site(site_code: str) -> SiteInfo:

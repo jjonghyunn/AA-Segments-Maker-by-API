@@ -3,6 +3,7 @@
 # updated: 2026-05-15 13:00  — owner_name을 aa_user_id CSV에서 보강
 # updated: 2026-05-18       — --search 키워드 nargs='+' 로 AND 매칭 (공백 구분), 사용법 주석 보완
 # updated: 2026-05-22       — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
+# updated: 2026-05-26       — sequence 처리: wrap 분기 제거, 모든 sequence/prefix/suffix 에 [sequence-after/before/all] 라벨 + scope 감쌈
 """
 세그먼트 ID 리스트 → 기본 정보 CSV + DSL 구조 파일(.dsl) 출력.
 
@@ -222,7 +223,7 @@ def _decompile_pred(pred: dict, indent: int, parent_context: str) -> list[str]:
         lines.append(f"{pad})")
         return lines
 
-    # sequence (then 로직) — sequence 자체 context 가 parent 와 다르면 scope wrap 추가
+    # sequence (then 로직) — sequence/prefix/suffix 항상 [sequence-after/before/all] 라벨 + scope 감쌈
     # 명명 변환 — raw AA func → AA UI 라벨 (검증된 매핑):
     #   sequence-prefix → sequence-after   (UI "After Sequence")
     #   sequence-suffix → sequence-before  (UI "Before Sequence")
@@ -235,26 +236,16 @@ def _decompile_pred(pred: dict, indent: int, parent_context: str) -> list[str]:
             "sequence":        "sequence-all",
         }[func]
         stream = pred.get("stream", pred.get("preds", []))
-        seq_ctx = pred.get("context", parent_context)
-        wrap = bool(seq_ctx and seq_ctx != parent_context)
-        if wrap:
-            scope = CONTEXT_TO_SCOPE.get(seq_ctx, seq_ctx)
-            inner_pad = "  " * (indent + 1)
-            inner_lines: list[str] = []
-            for i, step in enumerate(stream):
-                step_lines = _decompile_pred(step, indent + 1, seq_ctx)
-                if i > 0:
-                    inner_lines.append(f"{inner_pad}THEN")
-                inner_lines.extend(step_lines)
-            return [f"{pad}[{seq_label}] {scope}("] + inner_lines + [f"{pad})"]
-        # context 동일 → 평탄하게 THEN 으로 연결 (기존 동작 유지)
-        lines: list[str] = []
+        seq_ctx = pred.get("context", parent_context) or parent_context
+        scope = CONTEXT_TO_SCOPE.get(seq_ctx, seq_ctx)
+        inner_pad = "  " * (indent + 1)
+        inner_lines: list[str] = []
         for i, step in enumerate(stream):
-            step_lines = _decompile_pred(step, indent, parent_context)
+            step_lines = _decompile_pred(step, indent + 1, seq_ctx)
             if i > 0:
-                lines.append(f"{pad}THEN")
-            lines.extend(step_lines)
-        return lines
+                inner_lines.append(f"{inner_pad}THEN")
+            inner_lines.extend(step_lines)
+        return [f"{pad}[{seq_label}] {scope}("] + inner_lines + [f"{pad})"]
 
     # segment-ref
     if func == "segment-ref":

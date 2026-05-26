@@ -49,8 +49,8 @@ AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
 COMPANY_ID = "company_id"
 
 # 대상 Workspace project ID (URL 의 /workspace/edit/<여기> 부분)
-# PROJECT_ID = "YOUR_PROJECT_ID" # team 공유 Product Recommendation
-PROJECT_ID = "YOUR_PROJECT_ID" # user_id Product Recommendation
+PROJECT_ID = "YOUR_PROJECT_ID" # team 공유 Product Recommendation
+# PROJECT_ID = "YOUR_PROJECT_ID" # user_id Product Recommendation
 # PROJECT_ID = "YOUR_PROJECT_ID" # CAMPAIGN NAME Scenario cc09 component only
 # PROJECT_ID = "YOUR_PROJECT_ID" # CAMPAIGN NAME (user_id)플젝
 # PROJECT_ID = "YOUR_PROJECT_ID"   # CAMPAIGN NAME 캠페인 프로젝트
@@ -65,11 +65,11 @@ PROJECT_ID = "YOUR_PROJECT_ID" # user_id Product Recommendation
 #   r"\[AU\]\s*campaign_name'?s\s*Day\s*Campaign" — 특정 사이트 1개만
 #   r"\[Global\]\s*Content Analysis"       — Global 사이트의 Content Analysis 만
 # PANEL_NAME_PATTERN = r"\bContent Analysis\b"
-PANEL_NAME_PATTERN = r"\b\b"
+PANEL_NAME_PATTERN = r"\bGlobal\b"
 
 # 시작/종료일 — 트리 안 start*/end* 키의 값을 이 값으로 교체 (기존 값 무관).
 NEW_START_DATE = "2026-05-11"
-NEW_END_DATE   = "2026-05-17"
+NEW_END_DATE   = "2026-05-24"
 
 # (선택) 패널 name 텍스트 안의 옛 날짜 substring 치환용. 비워두면 name 안 건드림.
 # 트리 안 dateRange / reportRange 등은 위 NEW_*_DATE 로 키 기반 교체되므로 무관.

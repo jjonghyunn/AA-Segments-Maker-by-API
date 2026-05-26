@@ -1,6 +1,7 @@
 # input_csv_maker_us.py
 # 2026-05-18  Jonghyun Park w/ Claude
 # input_csv_maker.py 의 US 캠페인 파생 — RSID, flat 구조, evar<N>instances event-exists 패턴
+# updated: 2026-05-26       — crystallize: regex 에 hyphen 변형 (starts-with / contains-any-of) 매칭 추가, map → list 구조 + 우선순위 (starts-with > equals > contains-any-of > contains), row 마다 값 있는 첫 컬럼 사용
 """
 seg_make_ref_us_*.csv → aa_create_segment_v2_1.py 가 받는 input CSV 자동 변환.
 
@@ -30,7 +31,7 @@ from pathlib import Path
 # 사용자가 바꿔야 하는 부분
 # ════════════════════════════════════════════════════════════════════
 
-seg_make_ref_us_CSV = ""   # 빈 값이면 폴더 내 seg_make_ref_us_*.csv 파일명 사전순 최신 1개 자동 선택. 특정 파일 강제 지정 시 파일명 박기.
+seg_make_ref_us_CSV = "seg_make_ref_us_260526_1308.csv"   # 빈 값이면 폴더 내 seg_make_ref_us_*.csv 파일명 사전순 최신 1개 자동 선택. 특정 파일 강제 지정 시 파일명 박기.
 
 # US 버전 — visit/visitor 모드에서 AND 로 묶을 US 캠페인 segment-ref ID.
 # 두 가지 방법 (둘 다 동작, 둘 다 박혀 있으면 COMMON_SEGMENT_REF 가 우선):
@@ -76,7 +77,7 @@ DEFAULT_TAGS = ""
 # ─── evar 블록 묶음 방식 (row 별 override) ──────────────────────
 # raw csv 에 'evar_join' 컬럼 있고 값이 "OR"/"AND" 면 그 값 우선.
 # 컬럼 없거나 값 빈 채면 → multi-evar TRUE (>=2) 자동 OR (default), 단일이면 AND.
-# named container wrap 으로 OR 묶음 — raw paren 은 v2.2 의 paren strip 에 잡혀 사라지므로.
+# named container wrap 으로 OR 묶음 — raw paren 은 v2_2 의 paren strip 에 잡혀 사라지므로.
 EVAR_JOIN_COLUMN = "evar_join"
 EVAR_JOIN_WRAP_NAME = "evar OR group"
 
@@ -113,9 +114,10 @@ CRYSTALLIZE_CONDITION_TO_OPERATOR: dict[str, str] = {
     "starts": "starts-with",
     "starts-with": "starts-with",   # hyphen 형식 (예: starts-with_evar105) 도 매칭
     "contains": "contains",
+    "contains-any-of": "contains-any-of",  # hyphen 형식 (multi-value)
     "equals": "equals",
 }
-CRYSTALLIZE_COLUMN_REGEX = r"^(starts|contains|equals)_crystallize_(evar\d+)$"
+CRYSTALLIZE_COLUMN_REGEX = r"^(starts-with|starts|contains-any-of|contains|equals)_crystallize_(evar\d+)$"
 # US 패턴 — cond prefix 없는 'crystallize_evar<N>' 형식. default operator = starts-with (US 기본).
 CRYSTALLIZE_COLUMN_REGEX_NO_COND = r"^crystallize_(evar\d+)$"
 
@@ -317,29 +319,34 @@ def build_evar_block(evar_num: int, values: list[str],
 
     if crystallize_override:
         op, val = crystallize_override
-        # crystallize val 도 줄바꿈으로 multi 가능 → OR 묶음 (US reference 패턴)
+        # crystallize val 도 줄바꿈으로 multi 가능 → '<op>-any-of' named container wrap 안에 OR
+        # (AA reference: paren 안 씀 — paren 은 AA validator 가 attribute 일부로 잘못 인식)
         cry_vals = split_evar_values(val)
         if len(cry_vals) <= 1:
             tokens.append("AND")
             tokens.append(f'{var} {op} "{cry_vals[0] if cry_vals else val}"')
         else:
             tokens.append("AND")
+            tokens.append(f"'{op}-any-of'!hit(")
             for i, v in enumerate(cry_vals):
                 if i > 0:
                     tokens.append("OR")
                 tokens.append(f'{var} {op} "{v}"')
+            tokens.append(")")
     elif values:
         lcs = find_longest_common_substring(values).strip()
         if len(lcs) >= MIN_LCS_LENGTH:
             tokens.append("AND")
             tokens.append(f'{var} starts-with "{lcs}"')
         else:
-            # 공통 없음 → 각 값 starts-with OR 묶음 (reference 패턴)
+            # 공통 없음 → 'starts-with-any-of' named container wrap 안에 OR (AA reference: paren 안 씀)
             tokens.append("AND")
+            tokens.append("'starts-with-any-of'!hit(")
             for i, v in enumerate(values):
                 if i > 0:
                     tokens.append("OR")
                 tokens.append(f'{var} starts-with "{v}"')
+            tokens.append(")")
 
     # inline extra_conditions — 큰따옴표 사용 (US 패턴)
     if extra_conditions:
@@ -432,7 +439,7 @@ def build_customlink_block(customlink: str, evar_blocks: list[str],
 
     evar_join: "AND" (default) | "OR" — evar_blocks 가 2 개 이상일 때 묶음 방식.
        OR 일 때 named container wrap (EVAR_JOIN_WRAP_NAME) 안 OR 토큰으로 묶음.
-       (raw paren `(...)` 은 v2.2 의 paren strip 에 잡혀 사라지므로 컨테이너 형태로 보존.)
+       (raw paren `(...)` 은 v2_2 의 paren strip 에 잡혀 사라지므로 컨테이너 형태로 보존.)
     """
     parts: list[str] = ["hit("]
     has_first = False
@@ -517,13 +524,13 @@ def build_structure(name: str, customlink_blocks: list[str],
 
 
 def _lookup_visit_seg_from_result_csv(base_name: str) -> tuple[str, str]:
-    """(Visit) segment 의 (id, full name) lookup — 가장 최신 segment_v2.2_result_*.csv (방금 POST 한 visit segments) 만 본다.
+    """(Visit) segment 의 (id, full name) lookup — 가장 최신 segment_v2_2_result_*.csv (방금 POST 한 visit segments) 만 본다.
     lookup csv (segment_lookup_*.csv) 는 의도적으로 안 봄 — 이전 캠페인 같은 name segment 잘못 매칭 방지.
     매칭 없으면 ("", "") → Delayed Purchase 빌더가 fallback (inline content). visit segment 먼저 POST 해야 함."""
     if not base_name:
         return ("", "")
     visit_name = f"{base_name} (Visit)"
-    for path in sorted(OUTPUT_DIR.glob("segment_v2.2_result_*.csv"), reverse=True):
+    for path in sorted(OUTPUT_DIR.glob("segment_v2_2_result_*.csv"), reverse=True):
         if "dryrun" in path.name:
             continue
         try:
@@ -758,24 +765,31 @@ def main() -> int:
 
         # crystallize 컬럼 매핑 — {evarN: (operator, column_name)} (값 있으면 자동 LCS override)
         # 두 형식 인식:
-        #   1) <cond>_crystallize_evar<N>   (예: starts_crystallize_evar26) — cond 명시
-        #   2) crystallize_evar<N>          (예: crystallize_evar96)         — cond 없음, default starts-with (US 기본)
-        crystallize_map: dict[str, tuple[str, str]] = {}
+        #   1) <cond>_crystallize_evar<N>   (예: starts-with_crystallize_evar26) — cond 명시
+        #   2) crystallize_evar<N>          (예: crystallize_evar96)             — cond 없음, default starts-with (US 기본)
+        # 같은 evar 에 여러 컬럼 가능 → 우선순위 (starts-with > equals > contains-any-of > contains) 로 값 있는 첫 컬럼 사용
+        CRYSTALLIZE_OP_PRIORITY = {"starts-with": 0, "equals": 1, "contains-any-of": 2, "contains": 3}
+        crystallize_map: dict[str, list[tuple[str, str]]] = {}
         for hdr in fieldnames:
             h = hdr.strip()
             m = re.match(CRYSTALLIZE_COLUMN_REGEX, h, flags=re.IGNORECASE)
             if m:
                 cond, varname = m.group(1).lower(), m.group(2).lower()
                 op = CRYSTALLIZE_CONDITION_TO_OPERATOR[cond]
-                crystallize_map[varname] = (op, hdr)
+                crystallize_map.setdefault(varname, []).append((op, hdr))
                 continue
             m2 = re.match(CRYSTALLIZE_COLUMN_REGEX_NO_COND, h, flags=re.IGNORECASE)
             if m2:
                 varname = m2.group(1).lower()
-                crystallize_map[varname] = ("starts-with", hdr)   # default starts-with (US)
+                crystallize_map.setdefault(varname, []).append(("starts-with", hdr))   # default starts-with (US)
+        for var in crystallize_map:
+            crystallize_map[var].sort(key=lambda x: CRYSTALLIZE_OP_PRIORITY.get(x[0], 99))
         if crystallize_map:
-            print(f"  [crystallize] 인식된 override 컬럼: " +
-                  ", ".join(f"{v}→{op}({col})" for v, (op, col) in crystallize_map.items()))
+            summary = ", ".join(
+                f"{v}→[{' > '.join(op for op, _ in entries)}]"
+                for v, entries in crystallize_map.items()
+            )
+            print(f"  [crystallize] 인식된 override 컬럼 (우선순위 순): {summary}")
 
         # site/evar 필터 컬럼 분류 — {header: (is_neg, operator, var_name)}
         # 옛 (prop<N>/evar<N>/not_prop<N>/not_evar<N>, default starts-with) + 새 ({not_}<cond>_(prop|evar)<#>)
@@ -835,12 +849,12 @@ def main() -> int:
                     continue
                 values = split_evar_values(row.get(val_col) or "")
                 cry_override: tuple[str, str] | None = None
-                cry_entry = crystallize_map.get(f"evar{num}")
-                if cry_entry:
-                    op, col_name = cry_entry
+                # 우선순위 순으로 (starts-with > equals > contains-any-of > contains) 값 있는 첫 컬럼 사용
+                for op, col_name in crystallize_map.get(f"evar{num}", []):
                     cry_val = (row.get(col_name) or "").strip()
                     if cry_val:
                         cry_override = (op, cry_val)
+                        break
                 # 통계 — 공통/특이/override 추적 + LCS 저장 (검수 combo_key 용)
                 if cry_override:
                     n_with_common[num] = n_with_common.get(num, 0) + 1
