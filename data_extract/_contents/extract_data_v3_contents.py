@@ -1,5 +1,5 @@
 # extract_data_v3_contents.py
-# 2026-05-21  Jonghyun Park w/ Claude
+# 2026-05-26  Jonghyun Park w/ Claude
 """
 extract_data_v2_contents.py 베이스 + site 단위 병렬 처리 옵션.
 
@@ -26,19 +26,23 @@ v2 차이:
      - /reports 호출 (site × device × reportlet 만큼)
      - site 단위로 CSV 2개 저장 (device 컬럼으로 구분)
 
-site × panel 룰 (--include-global-for-us 로 us 의 [Global] 추출 토글):
-  · us site            → [US] panel 추출, [Global] panel skip (기본)
-  · non-us site        → [Global] panel 추출, [US] panel skip
-  · --include-global-for-us 주면 us 도 [Global] 같이 추출
+site × panel 룰 (--include-global-for-us 로 us_old 의 [Global] 추출 토글):
+  · us_old site        → [US] panel 추출, [Global] panel skip (기본)
+  · 기타 site (us 포함) → [Global] panel 추출, [US] panel skip
+  · --include-global-for-us 주면 us_old 도 [Global] 같이 추출
+
+  ※ 2026-05-19 부로 US 의 RSID 가 rsid_placeholder → rsid_placeholder 로 갈렸고,
+    그에 맞춰 패널도 분리됨: [US] = 옛 us_old (~5-18), [Global] = 신규 us (5-19~).
 
 사용:
-  python extract_data_v2_contents.py                              # 전체 site × 5 device
-  python extract_data_v2_contents.py --site us                    # us 만, [US] panel 만
-  python extract_data_v2_contents.py --site us --include-global-for-us
-                                                                  # us 에 [Global] 도 같이
-  python extract_data_v2_contents.py --device pc mobile           # 일부 device 만
-  python extract_data_v2_contents.py --dry-run
-  python extract_data_v2_contents.py --workers 8
+  python extract_data_v3_contents.py                              # 전체 site × 5 device
+  python extract_data_v3_contents.py --site us_old                # us_old 만, [US] panel 만
+  python extract_data_v3_contents.py --site us_old --include-global-for-us
+                                                                  # us_old 에 [Global] 도 같이
+  python extract_data_v3_contents.py --site us                    # us 만, [Global] panel 만
+  python extract_data_v3_contents.py --device pc mobile           # 일부 device 만
+  python extract_data_v3_contents.py --dry-run
+  python extract_data_v3_contents.py --workers 8
 """
 from __future__ import annotations
 
@@ -88,10 +92,11 @@ MAX_PAGES = 100
 REQUIRED_PANEL_KEYWORDS: list[str] = []
 
 # ─── site × panel prefix 룰 ─────────────────────────────────────────
-# [US] panel 은 us site 에서만 추출 (다른 site 일 땐 자동 skip).
-# [Global] panel 은 기본 모든 site 에서 추출. 단 us 에서는 [US] 와 중복되니
+# [US] panel 은 us_old site 에서만 추출 (다른 site 일 땐 자동 skip).
+# [Global] panel 은 기본 모든 site 에서 추출. 단 us_old 에서는 [US] 와 중복되니
 # 기본 skip — 같이 뽑고 싶으면 --include-global-for-us flag.
-US_SITE_CODE         = "us"
+# (신규 us site 는 [Global] panel 에서 자연스럽게 추출됨 — 별도 옵션 불필요.)
+US_SITE_CODE         = "us_old"
 US_PANEL_PREFIX      = "[US]"
 GLOBAL_PANEL_PREFIX  = "[Global]"
 INCLUDE_GLOBAL_FOR_US = False  # CLI --include-global-for-us 로 override
@@ -743,9 +748,9 @@ def _should_skip_panel(panel_name: str, site_code: str, include_global_for_us: b
     """site × panel prefix 룰 적용. (skip, reason) 반환."""
     is_us = site_code.lower() == US_SITE_CODE
     if panel_name.startswith(US_PANEL_PREFIX) and not is_us:
-        return True, f"non-us site → {US_PANEL_PREFIX} panel skip"
+        return True, f"non-{US_SITE_CODE} site → {US_PANEL_PREFIX} panel skip"
     if panel_name.startswith(GLOBAL_PANEL_PREFIX) and is_us and not include_global_for_us:
-        return True, f"us site → {GLOBAL_PANEL_PREFIX} panel skip (use --include-global-for-us to keep)"
+        return True, f"{US_SITE_CODE} site → {GLOBAL_PANEL_PREFIX} panel skip (use --include-global-for-us to keep)"
     return False, ""
 
 
@@ -905,14 +910,14 @@ def main() -> int:
                         help=f"특정 device 만 처리. 없으면 전체 {list(DEVICES.keys())}")
     parser.add_argument("--include-global-for-us", action="store_true",
                         default=INCLUDE_GLOBAL_FOR_US,
-                        help=f"us site 일 때도 {GLOBAL_PANEL_PREFIX} panel 추출 "
+                        help=f"{US_SITE_CODE} site 일 때도 {GLOBAL_PANEL_PREFIX} panel 추출 "
                              f"(기본 skip, [US] panel 과 중복 방지)")
     args = parser.parse_args()
 
     devices = args.device if args.device else list(DEVICES.keys())
 
     ts = datetime.now().strftime("%y%m%d_%H%M")
-    print(f"[{ts}] extract_data_v2_contents.py")
+    print(f"[{ts}] extract_data_v3_contents.py")
     print(f"  project : {PROJECT_ID}")
     print(f"  input   : {SITES_INPUT_CSV.name}")
     print(f"  workers : {args.workers}")

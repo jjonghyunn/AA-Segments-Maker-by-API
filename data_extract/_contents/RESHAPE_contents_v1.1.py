@@ -1,7 +1,7 @@
-# RESHAPE_contents_v1.0.py
-# 2026-05-18  Jonghyun Park w/ Claude
+# RESHAPE_contents_v1.1.py
+# 2026-05-26  Jonghyun Park w/ Claude
 """
-extract_data_v2_contents.py 가 떨군 column_mapping_*.csv 들을 union 형태로 정제.
+extract_data_v3_contents.py 가 떨군 column_mapping_*.csv 들을 union 형태로 정제.
 
 흐름:
   1) output 폴더 스캔 → 최신 YYMMDD_HHMM batch 의 column_mapping_*.csv 만 로드
@@ -11,10 +11,19 @@ extract_data_v2_contents.py 가 떨군 column_mapping_*.csv 들을 union 형태�
   5) Order ↔ Delayed Order, Revenue ↔ Delayed Revenue 합산 → origin_only_delayed_value 따로 보존
   6) Revenue 만 환율 적용 (currency.csv, end_date 년도 기준)
   7) ITEM 추출 (segments 마지막 토큰)
-  8) 출력 컬럼 재배치 → _union_contents_{ts}.csv
+  8) 출력 컬럼 재배치
+  9) [v1.1] 출력 직전 SITE CODE 정규화 (SITE_CODE_NORMALIZE 표 적용 — us_old → us 등)
+ 10) → _union_contents_{ts}.csv 저장
 
 TYPE 5종 모두 보존: Visits / Order / Revenue / Order+Delayed Order / Revenue+Delayed Revenue
 SUBS, TIER 컬럼은 빈 값 (나중에 수기 채움)
+
+변경 이력:
+  v1.1 (2026-05-26) — 출력 SITE CODE 정규화 단계 추가 (us_old → us).
+                      rsid / start_date / end_date 는 원본 유지 → 데이터 출처 구분 정보 보존.
+                      정규화는 합산·환율·ITEM 정제 모두 끝난 출력 직전 단계에서만 적용
+                      (us_old 와 us 가 분리된 채 join 되어야 RSID 다른 데이터끼리 cross-매칭 없음).
+  v1.0 (2026-05-18) — initial.
 """
 from __future__ import annotations
 
@@ -43,6 +52,14 @@ SITES_FILTER: list[str] = []
 
 # 출력 파일명
 OUTPUT_BASENAME = "_union_contents"  # → _union_contents_{yymmdd_hhmm}.csv
+
+# 출력 직전 SITE CODE 정규화 표 — 분리된 RSID 데이터(us_old / us 등)를 동일 SITE CODE 로 통합.
+# 예) us_old (rsid_placeholder, ~5-18) + us (rsid_placeholder, 5-19~) → 모두 "us" 로.
+# rsid / start_date / end_date 는 원본 유지 → 데이터 출처 구분 가능.
+# 향후 다른 RSID 분리 케이스 생기면 여기 한 줄만 추가.
+SITE_CODE_NORMALIZE: dict[str, str] = {
+    "us_old": "us",
+}
 
 # ─── 라벨 / 매핑 ────────────────────────────────────────────────────
 DEVICE_LABEL: dict[str, str] = {
@@ -436,7 +453,25 @@ def process() -> int:
                 "value_n": value_n,
             })
 
-    # 8) 저장 — numeric 컬럼 일관 포맷 (엑셀 text 인식 방지)
+    # 8) [v1.1] SITE CODE 정규화 — 모든 join·합산·환율 끝난 출력 직전 단계에서만 적용
+    #     us_old (옛 RSID) + us (신규 RSID) row 들을 모두 SITE CODE="us" 로 통합.
+    #     rsid / start_date / end_date 는 원본 그대로 → 출처 구분 가능.
+    norm_cnt = 0
+    norm_by_src: dict[str, int] = defaultdict(int)
+    for r in out_rows:
+        sc = r.get("SITE CODE", "")
+        new_sc = SITE_CODE_NORMALIZE.get(sc)
+        if new_sc and new_sc != sc:
+            r["SITE CODE"] = new_sc
+            norm_cnt += 1
+            norm_by_src[sc] += 1
+    if norm_cnt:
+        detail = ", ".join(f"{src}→{SITE_CODE_NORMALIZE[src]}({n})" for src, n in norm_by_src.items())
+        print(f"[normalize] SITE CODE 정규화: {norm_cnt} rows ({detail})")
+    else:
+        print(f"[normalize] SITE CODE 정규화 대상 row 없음 (rules={SITE_CODE_NORMALIZE})")
+
+    # 9) 저장 — numeric 컬럼 일관 포맷 (엑셀 text 인식 방지)
     NUM_COLS = {"VALUE", "VALUE (원본)", "origin_only_delayed_value"}
     def _fmt_num(v):
         if v == "" or v is None:
