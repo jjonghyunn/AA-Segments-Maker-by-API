@@ -339,18 +339,6 @@ data_extract/
 3. `--dry-run --site us` 로 한 site payload 확인
 4. 전체 실행 — `python extract_data_v3.py`
 
-## 운영 사본 위치
-
-같은 v3 가 아래 3 폴더에 사본 존재 (캠페인별 PROJECT_ID 만 다름):
-
-| 폴더 | 비고 |
-|---|---|
-| `260413_CAMPAIGN NAME/data_extract/` | CAMPAIGN NAME (베이스) |
-| `260504_AA_segment_maker/data_extract/` | segment maker 베이스 (PROJECT_ID 캠페인별 변경) |
-| `260515_campaign_name/data_extract/` | CAMPAIGN NAME |
-
-각 폴더에 `aa_segment_lookup.py` 사본도 같이 있음.
-
 ---
 
 # extract_data_v3_contents*.py — site 단위 병렬 처리
