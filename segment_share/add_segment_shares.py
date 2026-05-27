@@ -75,10 +75,10 @@ OWNER_ID_FILTER: list[int] = [
 # owner.name (fullName) substring 매칭 (case-insensitive). 빈 리스트면 미사용.
 # AA API 의 owner.login 은 안정적으로 안 채워져서 이메일 substring 은 못 씀.
 # 대신 fullName 으로 매칭 — CSV (segments_matched_*.csv) 의 OwnerName 컬럼 보고 박기.
-# 예: ["user1", "User 2"] → 두 fullName substring 매칭되는 owner 의 segment 만
+# 예: ["user1", "User2"] → 두 fullName substring 매칭되는 owner 의 segment 만
 OWNER_FULLNAME_INCLUDES: list[str] = [
     # "user1",
-    # "User 2",
+    # "User2",
 ]
 
 # 매칭 segment 중 이 id 들만 PUT 대상으로 좁힘. 빈 리스트면 매칭 전체 대상.
