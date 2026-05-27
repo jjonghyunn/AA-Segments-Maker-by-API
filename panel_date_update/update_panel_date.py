@@ -1,5 +1,5 @@
 # update_panel_date.py
-# 2026-05-18  Jonghyun Park w/ Claude
+# 2026-05-27  Jonghyun Park w/ Claude
 """
 Adobe Analytics Workspace 프로젝트의 PANEL_NAME_PATTERN 에 매칭되는 모든 패널에
 대해 시작일/종료일을 일괄 치환하는 도구.
@@ -49,11 +49,18 @@ AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
 COMPANY_ID = "company_id"
 
 # 대상 Workspace project ID (URL 의 /workspace/edit/<여기> 부분)
-PROJECT_ID = "YOUR_PROJECT_ID" # team 공유 Product Recommendation
-# PROJECT_ID = "YOUR_PROJECT_ID" # user_id Product Recommendation
-# PROJECT_ID = "YOUR_PROJECT_ID" # CAMPAIGN NAME Scenario cc09 component only
-# PROJECT_ID = "YOUR_PROJECT_ID" # CAMPAIGN NAME (user_id)플젝
-# PROJECT_ID = "YOUR_PROJECT_ID"   # CAMPAIGN NAME 캠페인 프로젝트
+# 여러 프로젝트를 한 번에 처리하려면 엔터 단위로 나열. 주석(#)으로 프로젝트명 메모 가능.
+PROJECT_IDS = """
+YOUR_PROJECT_ID  # team 공유 Product Recommendation
+YOUR_PROJECT_ID  # user_id Product Recommendation
+
+YOUR_ID # [part_name] 2026 CAMPAIGN NAME | Contents cc_03 | API_260527 (user_id)
+YOUR_PROJECT_ID  # CAMPAIGN NAME (user_id)플젝
+YOUR_PROJECT_ID  # CAMPAIGN NAME 캠페인 프로젝트
+
+YOUR_PROJECT_ID  # [part_name] 2026 CAMPAIGN NAME | Contents cc09 cmpnt v26 | API (user_id)
+YOUR_ID # [part_name] 2026 CAMPAIGN NAME | Contents cc09 cmpnt V26 | API https://experience.adobe.com/@company_name/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
+"""
 
 # 패널 이름이 이 정규식에 매칭되는 모든 패널을 일괄 치환한다 (0개면 abort).
 # 1개만 좁히고 싶으면 사이트코드 등으로 좁힐 것.
@@ -82,6 +89,20 @@ OLD_END_DATE   = ""   # 예: "2026-05-11"
 
 API_BASE = "https://analytics.adobe.io/api"
 SCRIPT_DIR = Path(__file__).parent
+
+
+def parse_project_ids(text: str) -> list[str]:
+    """PROJECT_IDS 텍스트에서 유효한 project ID 추출.
+    형식: `6a0c3007...  # 프로젝트명` — 줄 앞 # 은 주석(무시), 인라인 # 뒤는 메모."""
+    ids = []
+    for line in text.strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        pid = line.split("#")[0].strip()
+        if pid:
+            ids.append(pid)
+    return ids
 
 # 날짜 key 패턴 — 트리 워크 중 이 패턴에 매칭되는 key 의 값을 교체.
 # 매칭 예: start, startDate, startDateTime, startTimestamp, end, endDate, ...
@@ -243,60 +264,46 @@ def collect_date_strings(node, found: list[str]) -> None:
             collect_date_strings(item, found)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="AA Workspace 패널 1개의 종료일 치환 도구"
-    )
-    parser.add_argument(
-        "--apply", action="store_true",
-        help="실제 PUT 실행 (기본은 dry-run)"
-    )
-    parser.add_argument(
-        "--dump", action="store_true",
-        help="매칭 패널의 JSON 을 SCRIPT_DIR 에 timestamp 붙여 저장 (디버그)"
-    )
-    args = parser.parse_args()
+def process_one_project(project_id: str, headers: dict, gcid: str,
+                        *, apply: bool, dump: bool, timestamp: str) -> bool:
+    """단일 프로젝트 처리. 성공 True, 스킵/실패 False."""
+    print(f"\n{'═'*78}")
+    print(f"GET project {project_id} ...")
+    try:
+        project = get_project(headers, gcid, project_id)
+    except Exception as e:
+        print(f"  ❌ GET 실패: {e}")
+        return False
 
-    now = datetime.now()
-    timestamp = now.strftime("%y%m%d_%H%M")
-
-    headers, gcid = load_auth_headers()
-
-    print(f"[{now:%Y-%m-%d %H:%M:%S}] GET project {PROJECT_ID} ...")
-    project = get_project(headers, gcid, PROJECT_ID)
-
-    print(f"\n프로젝트: {project.get('name', '(no name)')}")
+    print(f"프로젝트: {project.get('name', '(no name)')}")
     print(f"  owner    : {project.get('ownerFullName', '?')}")
     print(f"  modified : {project.get('modified', '?')}")
 
     all_panels = list(iter_panels(project))
     if not all_panels:
-        print("\n❌ 프로젝트 definition.workspaces[].panels[] 가 비어있습니다 — abort")
-        ws_count = len((project.get("definition") or {}).get("workspaces") or [])
-        print(f"   (workspaces 수: {ws_count})")
-        return 1
+        print("  ❌ panels 비어있음 — skip")
+        return False
 
-    print(f"\n전체 패널 {len(all_panels)}개 (워크스페이스 × 패널):")
+    print(f"\n전체 패널 {len(all_panels)}개:")
     for ws_idx, p_idx, p in all_panels:
         print(f"  [ws{ws_idx} p{p_idx:2d}] {p.get('name', '(no name)')}")
 
     matches = find_matching_panels(project, PANEL_NAME_PATTERN)
     if not matches:
-        print(f"\n❌ 패턴 r\"{PANEL_NAME_PATTERN}\" 에 매칭되는 패널 없음 — abort")
-        return 1
+        print(f"  ❌ 패턴 r\"{PANEL_NAME_PATTERN}\" 매칭 패널 없음 — skip")
+        return False
 
     print(f"\n✅ {len(matches)}개 매칭 패널:")
     for ws_idx, p_idx, p in matches:
         print(f"     [ws{ws_idx} p{p_idx}] {p.get('name')}")
 
-    # 각 매칭 패널 처리 — deepcopy + 치환 후 project tree 에 반영, 마지막에 1회 PUT
     total_interval = 0
     total_start = 0
     total_end = 0
     total_name = 0
     for ws_idx, p_idx, panel in matches:
-        if args.dump:
-            dump_path = SCRIPT_DIR / f"panel_dump_{PROJECT_ID[:8]}_ws{ws_idx}_p{p_idx}_{timestamp}.json"
+        if dump:
+            dump_path = SCRIPT_DIR / f"panel_dump_{project_id[:8]}_ws{ws_idx}_p{p_idx}_{timestamp}.json"
             dump_path.write_text(
                 json.dumps(panel, ensure_ascii=False, indent=2), encoding="utf-8"
             )
@@ -314,7 +321,6 @@ def main() -> int:
 
         panel_after = copy.deepcopy(panel)
 
-        # 1) 트리 교체 — interval 형식 "<ISO>/<ISO>" 값 + start*/end* 키 값
         n_interval, n_start, n_end, samples = replace_date_fields(
             panel_after, NEW_START_DATE, NEW_END_DATE
         )
@@ -325,9 +331,8 @@ def main() -> int:
             if len(samples) > 20:
                 print(f"    ... ({len(samples) - 20}개 더)")
         else:
-            print(f"  트리 교체: 변경 없음 (interval / start* / end* 매칭 없음)")
+            print(f"  트리 교체: 변경 없음")
 
-        # 2) (선택) name 안 OLD substring 치환 — OLD_*_DATE 비어있으면 건너뜀
         n_name_this = 0
         nm = panel_after.get("name", "") or ""
         if OLD_START_DATE and OLD_START_DATE in nm:
@@ -348,28 +353,59 @@ def main() -> int:
 
         project["definition"]["workspaces"][ws_idx]["panels"][p_idx] = panel_after
 
-    print(f"\n--- 합계 ---")
-    print(f"  NEW_START_DATE    : {NEW_START_DATE}")
-    print(f"  NEW_END_DATE      : {NEW_END_DATE}")
-    print(f"  매칭 패널         : {len(matches)}개")
-    print(f"  interval 교체     : {total_interval}건 (<ISO>/<ISO> 형식)")
-    print(f"  start 키 교체     : {total_start}건")
-    print(f"  end 키 교체       : {total_end}건")
-    print(f"  name substring    : {total_name}건 (OLD_*_DATE 비어있으면 0)")
+    print(f"\n  --- 합계 ---")
+    print(f"  interval={total_interval}  start={total_start}  end={total_end}  name={total_name}")
 
     if total_interval + total_start + total_end + total_name == 0:
-        print(f"\n⚠️ 매칭된 어느 패널에도 교체할 날짜 값이 없습니다.")
-        print(f"   --dump 로 패널 JSON 떠서 start/end 키 구조 확인해보세요.")
+        print(f"  ⚠️ 교체할 날짜 값 없음 — skip")
+        return False
+
+    if not apply:
+        print(f"  ℹ️ Dry-run — PUT 안 함")
+        return True
+
+    print(f"  PUT project {project_id} ...")
+    put_project(headers, gcid, project_id, project)
+    print(f"  ✅ 완료")
+    return True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="AA Workspace 패널 날짜 일괄 치환 도구 (여러 프로젝트 지원)"
+    )
+    parser.add_argument("--apply", action="store_true", help="실제 PUT 실행 (기본은 dry-run)")
+    parser.add_argument("--dump", action="store_true", help="매칭 패널 JSON 덤프 저장")
+    args = parser.parse_args()
+
+    project_ids = parse_project_ids(PROJECT_IDS)
+    if not project_ids:
+        print("❌ PROJECT_IDS 에 유효한 project ID 없음")
         return 1
 
-    if not args.apply:
-        print("\nℹ️ Dry-run 모드 — 실제 PUT 안 함. 적용하려면 --apply")
-        return 0
+    now = datetime.now()
+    timestamp = now.strftime("%y%m%d_%H%M")
 
-    print(f"\nPUT project {PROJECT_ID} ...")
-    put_project(headers, gcid, PROJECT_ID, project)
-    print(f"\n✅ 완료 — start={NEW_START_DATE} end={NEW_END_DATE} ({len(matches)}개 패널)")
-    print(f"   AA Workspace 에서 새로고침해서 확인하세요.")
+    print(f"[{now:%Y-%m-%d %H:%M:%S}]")
+    print(f"  대상 프로젝트 : {len(project_ids)}개")
+    print(f"  패널 패턴     : r\"{PANEL_NAME_PATTERN}\"")
+    print(f"  NEW_START     : {NEW_START_DATE}")
+    print(f"  NEW_END       : {NEW_END_DATE}")
+    print(f"  모드          : {'--apply (실제 PUT)' if args.apply else 'dry-run'}")
+
+    headers, gcid = load_auth_headers()
+
+    ok_count = 0
+    for pid in project_ids:
+        ok = process_one_project(pid, headers, gcid,
+                                 apply=args.apply, dump=args.dump, timestamp=timestamp)
+        if ok:
+            ok_count += 1
+
+    print(f"\n{'═'*78}")
+    print(f"[전체 summary] {ok_count}/{len(project_ids)} 프로젝트 처리 완료")
+    if not args.apply and ok_count > 0:
+        print(f"ℹ️ 실제 반영하려면 --apply")
     return 0
 
 
