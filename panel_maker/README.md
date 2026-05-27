@@ -137,7 +137,7 @@ dry-run 결과 CSV:
 1. `SOURCE_PROJECT_ID` / `TARGET_PROJECT_ID` 교체 (target 은 미리 UI 에서 본인 계정으로 빈 프로젝트 생성)
 2. `OLD_KEYWORDS` / `NEW_KEYWORDS` 교체 (예: `[CAMPAIGN NAME]` → `[26 BF]`)
 3. dry-run 실행 → 결과 CSV 의 `MatchStatus = NO_MATCH` / `AMBIGUOUS` 항목 확인
-4. 의미상 맞지만 자동 매칭 안 된 건 → `MANUAL_OVERRIDES` 에 `source_id → target_id` 박기 (clone_project_first_panel) 또는 NEW segment 자체를 만들기 (segment_maker/v2.2)
+4. 의미상 맞지만 자동 매칭 안 된 건 → `MANUAL_OVERRIDES` 에 `source_id → target_id` 박기 (clone_project_first_panel) 또는 NEW segment 자체를 만들기 (`aa_create_segment_v2.3.py`)
 5. 다시 dry-run → 모두 OK 면 `--apply`
 
 ## 안전장치
