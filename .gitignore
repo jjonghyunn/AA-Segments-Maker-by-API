@@ -1,0 +1,27 @@
+# Auth credentials — never commit
+*aanalytics_auth*.json
+*auth*.json
+
+# Result CSVs (run-specific outputs)
+result_*.csv
+test_result_*.csv
+compare_panel_segments_*.csv
+users_*.csv
+
+# Debug dumps
+_debug_*.json
+_debug_*.csv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
