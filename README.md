@@ -1,129 +1,110 @@
-# AA_segment_maker
+# AA-Segments-Maker-by-API  
+<sub>2026-05-27  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
-작성: 2026-05-04  Jonghyun Park w/ Claude  
-최종 업데이트: 2026-05-21
-
 ---
 
-## 폴더 구조
+## 핵심 도구
 
-```
-260504_AA_segment_maker/
-├── segment_maker/          # 세그먼트 생성·조회·삭제
-│   ├── aa_create_segment_v2.py     (v2 — 구조(DSL) 텍스트 기반, 다중 일괄 생성)
-│   ├── aa_create_segment_v2.2.py   (v2.2 — CSV 입력, 생성+업데이트, AA validator patch. **현재 권장**)
-│   ├── aa_segment_lookup.py        (ID/이름 검색 → CSV + .dsl 역변환)
-│   ├── aa_segment_lookup_from_pjt.py (project 안 panel 의 segment 들 일괄 lookup)
-│   ├── aa_delete_segment.py        (안전 삭제, 3중 안전장치)
-│   ├── input_csv_maker.py          (raw seg_make_ref → v2.2 input CSV 자동 변환)
-│   ├── input_csv_maker_*.py        (us / cc00 / or_ref / scenario / replace / from_ref(_batch / _us_hit) variant)
-│   ├── prewarm_seg_ref_cache.py    (segment-ref inline cache 사전 갱신)
-│   ├── example_segment_campaign_main_page.py
-│   └── old/  (v1 aa_create_segment.py, v2.1 aa_create_segment_v2_1.py)
-├── utils/                  # 유틸리티
-│   ├── _probe_segment.py           (세그먼트 구조 GET)
-│   ├── compare_panel_segments.py   (panel 세그먼트 차집합 비교)
-│   ├── extract_panel_tables_json_v2.0.py  (panel→JSON 추출)
-│   └── find_user_id.py             (AA 사용자 numeric loginId 검색)
-├── data_extract/           # Workspace 리포트 데이터 추출
-│   ├── extract_data.py             (v1 — 단일 project, panel 의 RSID/dateRange 그대로)
-│   ├── extract_data_v2.py          (v2 — 사이트별 RSID + dateRange override, sites_input.csv 기반)
-│   ├── site_registry.py            (site_code ↔ rsid 매핑)
-│   └── sites_input.csv             (v2 입력 — site_code/start/end 3컬럼)
-├── dateranges/             # Date Range 일괄 도구 (list / update / create / upsert)
-├── panel_collapse/         # panel 안 subPanel 일괄 collapse=True
-├── panel_date_update/      # panel 시작/종료일 일괄 치환
-├── panel_maker/            # 첫 panel/전체 panel 복제 + segment swap (MD/JH/SW/recomm variant)
-├── segment_share/          # 본인 owner segment 키워드 매칭 → 일괄 share 추가
-└── extract_panel_tables_json_v2.0.md  (extract 상세 문서)
+### 세그먼트 생성 — `aa_create_segment_v2.3.py` ★
+
+CSV 입력 → AA 세그먼트 일괄 생성/업데이트. DSL preprocess, self-contained.
+
+```bash
+python aa_create_segment_v2.3.py --input segments.csv                  # dry-run
+python aa_create_segment_v2.3.py --input segments.csv --apply          # 실제 생성
+python aa_create_segment_v2.3.py --update-or-create --apply            # id 있으면 PUT, 없으면 POST
 ```
 
-> 참고: `data_extract_test/` 폴더는 일회성 테스트 잔재 — 운영 아님.
+주요 기능: `--update-or-create`, `--lookup-by-name`, segment-ref cache, event-exists patch, NOT container 자동 처리.
 
----
-
-## 핵심 도구 요약
-
-### segment_maker/ — 세그먼트 생성·관리
+### 세그먼트 조회·삭제
 
 | 도구 | 설명 |
 |---|---|
-| **v2 (구조 텍스트)** | SQL-like DSL → AA JSON 자동 변환. 다중 일괄 생성, `@segment_id` 참조, THEN/NOT 복합 |
-| **v2.2 (CSV) — 권장** | CSV 입력 (structure 칼럼) → 생성(POST) / 업데이트(PUT). dry-run CSV 자동, AA validator patch (event-exists / segment-ref auto-fetch + cache / NOT container) |
-| `input_csv_maker(_*).py` | raw `seg_make_ref_*.csv` → v2.2 input CSV + `.dsl` + `_WARN.csv` 자동 변환. variant 별로 us / cc00 / or_ref / scenario / replace / from_ref 룰 차이 |
-| `aa_segment_lookup.py` | ID 또는 이름 키워드로 검색 → CSV (structure 포함) + `.dsl` 역변환 |
-| `aa_segment_lookup_from_pjt.py` | project 의 panel 들이 참조하는 segment 목록 일괄 lookup |
-| `aa_delete_segment.py` | result CSV 기반 안전 삭제 (3중 안전장치: CSV 강제 / 이름 prefix / `--yes`) |
-| `prewarm_seg_ref_cache.py` | `segment_ref_cache.json` 사전 갱신 — dry-run 빠르게 |
+| `aa_segment_lookup.py` | ID/이름 키워드 검색 → CSV + `.dsl` 역변환 |
+| `aa_segment_lookup_from_pjt.py` | project 내 panel segment 일괄 lookup |
+| `segment_lookup.py` | segment 검색 유틸 |
+| `aa_delete_segment.py` | result CSV 기반 안전 삭제 (3중 안전장치) |
+| `prewarm_seg_ref_cache.py` | segment-ref cache 사전 갱신 |
+| `input_csv_maker(_*).py` | raw ref CSV → v2.3 input CSV 변환 (us/cc00/or_ref/scenario/replace/from_ref 등) |
 
-### utils/ — 유틸리티
+### Workspace 데이터 추출 — `data_extract/`
+
+| 버전 | 파일 | 설명 |
+|---|---|---|
+| **v3 ★** | `extract_data_v3.py` | site 단위 병렬 처리 (SITE_WORKERS) |
+| v2 | `extract_data_v2.py` | sites_input.csv 기반 site별 RSID + dateRange override |
+| | `_contents/` | contents 특화 추출 + RESHAPE v1.1 |
+| | `_contents_tier2_cc_03/` | tier2 CC03 특화 |
+| | `1st_cutoff17may_*/` | cutoff 기준 before/after 분리 추출 (recomm) |
+
+### Panel 도구
 
 | 도구 | 설명 |
 |---|---|
-| `_probe_segment.py` | 세그먼트 GET → definition 구조 확인 |
-| `compare_panel_segments.py` | 두 panel의 세그먼트 차집합 비교 |
-| `extract_panel_tables_json_v2.0.py` | panel × reportlet → `/reports` JSON 추출 + 매핑 CSV |
+| `extract_panel_tables_json_v2.0.py` | panel × reportlet → /reports JSON 추출 + 매핑 CSV |
+| `panel_maker/clone_project_first_panel.py` | panel 복제 + segment swap |
+| `panel_maker/panel_contents_recomm_v1.2.py` | recomm panel 복제 ★최신 |
+| `panel_collapse/collapse_panel_tables.py` | subPanel collapse=True 강제 |
+| `panel_date_update/update_panel_date.py` | panel 시작/종료일 일괄 치환 |
+| `segment_share/add_segment_shares.py` | 본인 owner segment → 일괄 share 추가 |
+
+### Date Range 도구
+
+| 도구 | 설명 |
+|---|---|
+| `aa_daterange.py` | 단건 CRUD (ID 비우면 CREATE, 채우면 UPDATE) |
+| `dateranges/` | 일괄 도구 (list / update / create / upsert) + 입력 CSV |
+
+### 유틸리티
+
+| 도구 | 설명 |
+|---|---|
 | `find_user_id.py` | AA 사용자 numeric loginId 검색 |
-
-### data_extract/ — Workspace 리포트 데이터 추출
-
-Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 포함.
-
-- **v1** (`extract_data.py`) — 단일 project, panel 의 RSID·dateRange 그대로
-- **v2** (`extract_data_v2.py`) — `sites_input.csv` 의 row 별로 RSID + dateRange override → 같은 panel 구조를 여러 site 에 적용. site 별 별도 CSV (`extract_data_<rsid>_<ts>.csv`)
-
-상세: `data_extract/extract_data.md`
-
-### Panel 운영 도구 (운영 사본 모음)
-
-코드 상단에 실제 PROJECT_ID·키워드가 박혀있는 운영 작업본. 캠페인 바꿀 때 상수만 교체. generic 변경은 repo 사본에도 동기화.
-
-| 폴더 | 용도 |
-|---|---|
-| `panel_collapse/` | panel 안 모든 subPanel `collapsed=True` 강제 (panel 자체 헤더는 유지) |
-| `panel_date_update/` | panel 시작/종료일 일괄 치환 — ISO interval / start*·end* 키 자동 탐지 |
-| `panel_maker/` | source project 의 panel(들) 을 빈 target project 로 복제 + segment ID 자동 swap. clone_project_first_panel (이름 정규화) / panel_contents (CC 패턴) / panel_contents_recomm (recomm fallback) / panel_contents_target_seg variant |
-| `segment_share/` | 본인 owner segment 중 키워드 매칭된 것에 SHARE_USER_IDS 일괄 추가 (PUT) |
+| `_probe_segment.py` | 세그먼트 GET → definition 구조 확인 |
+| `_inspect_panel.py` | panel 구조 검사 |
+| `compare_panel_segments.py` | 두 panel 세그먼트 차집합 비교 |
+| `cleanup_recent_json.py` | extract 재실행 전 최근 JSON 일괄 삭제 |
+| `site_registry.py` | site_code ↔ rsid 매핑 |
+| `column_filler/fill_column_by_similarity.py` | tb_column_name_mapping 빈 칼럼 자동 채움 |
 
 ---
 
 ## 인증
-
-모든 스크립트 공통: `aanalytics2` 라이브러리 + OAuth Server-to-Server auth JSON.
 
 ```python
 AUTH_JSON_PATH = "path/to/aanalytics_auth.json"
 COMPANY_ID = "your_aa_company_id"
 ```
 
----
-
-## Segment 조건 빠른 참조
-
-| 어도비 UI 라벨 | API func | 보조 필드 |
-|---|---|---|
-| equals | `streq` | `"str": "값"` |
-| contains | `contains` | `"str": "값"` |
-| contains any of | `contains-any-of` | `"list": [...]` |
-| contains all of | `contains-all-of` | `"list": [...]` |
-| equals any of | `streq-in` | `"list": [...]` |
-| starts with | `starts-with` | `"str": "값"` |
-| ends with | `ends-with` | `"str": "값"` |
-| matches (정규식) | `matches-regex` | `"regex": "패턴"` |
-| exists | `exists` | (없음) |
-| event<N> exists | `event-exists` | `"evt": event` (metric 컨테이너) |
-| 숫자 비교 | `eq` / `gt` / `lt` / `ge` / `le` | `"num": 숫자` |
-| NOT (부정) | `without` wrapper | `"pred": {...}` |
-| AND / OR | `and` / `or` | `"preds": [{...}]` |
-
-Container 스코프: `"hits"` / `"visits"` / `"visitors"`
-
----
-
 ## 의존성
 
 ```
 pip install aanalytics2 pandas requests
 ```
+
+---
+
+## 변경 이력
+
+| 날짜 | 내용 |
+|---|---|
+| 2026-05-27 | 구버전 코드 `old/` 이동, README 최신화 |
+| 2026-05-26 | v2.3: DSL preprocess, v2 의존성 제거 (self-contained) |
+| 2026-05-22 | extract_data v3: site 단위 병렬 처리 |
+| 2026-05-20 | panel_contents_recomm v1.2: recomm 개선 |
+| 2026-05-18 | input_csv_maker 시리즈 추가 (scenario/or_ref/from_ref 등) |
+| 2026-05-15 | v2.2: CSV 입력, AA validator patch |
+| 2026-05-13 | segment_share, panel_collapse 추가 |
+| 2026-05-08 | dateranges 일괄 도구, extract_panel_tables v2.0 |
+| 2026-05-04 | 초기 생성 — v2, _probe_segment, compare_panel_segments, find_user_id |
+
+> 구버전 코드는 `old/`, `panel_maker/old/`, `data_extract/old/` 등에 보존.
+
+---
+
+## License
+
+MIT
