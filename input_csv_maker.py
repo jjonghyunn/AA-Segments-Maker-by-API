@@ -1,6 +1,14 @@
 # input_csv_maker.py
-# 2026-05-15  Jonghyun Park w/ Claude
+# 2026-05-29  Jonghyun Park w/ Claude
+# updated: 2026-05-29  v1.2 — _build_delayed_purchase_structure 재작성: mixed-AND 패턴 + 'Order (All Products)' named container + [sequence-after]/[sequence-all] 라벨 명시. CAMPAIGN NAME US_CC_xx DP 컨벤션 따름.
+# updated: 2026-05-29  v1.3 — build_structure (visit) 의 inner hit 에 'page+content' description 박음. aa_create_segment_v2.3 의 _lift_inner_hit_into_visit_root 후처리가 description 없는 단일 inner hit 을 벗기는 문제 우회 — visit(hit(AND(@page, named_content))) 구조 보존.
 # updated: 2026-05-26       — crystallize: regex 에 hyphen 변형 (starts-with / contains-any-of) 매칭 추가, contains-any-of multi-value 처리 (build_evar_block)
+# updated: 2026-05-27       — CRYSTALLIZE_COLUMN_REGEX_OR 추가: `or_starts-with_evar105` 같이 `_crystallize_` 키워드 없는 form 도 evar block 의 crystallize_override 로 인식 (OR group evar value condition 명시용)
+# updated: 2026-05-27  v1.1 — `set_pair` 컬럼 추가. 회사 특성 (event+evar AND set) 처리.
+#                              format: `e<event_num>+v<evar_num>[<operator>]` (operator 생략시 contains, default 가 contains 아닌 starts-with 인 케이스는 명시).
+#                              세미콜론 multi: `e45+v33;e44+v55[starts-with]`. 빈 값 = 처리 안 함 (회귀 안전).
+#                              지정된 row 에서 v<M> named container wrap 안 event<N> event-exists AND evar<M> <op> '<val>' 자동 생성 + 다른 evar_block 과 AND 강제.
+#                              같은 row 의 `eVar<M>` column 값을 set block 의 value 로 재사용 (그 evar<M> 은 site filter 분류에서 제외).
 """
 seg_make_ref_*.csv → aa_create_segment_v2_1.py 가 받는 input CSV 자동 변환.
 
@@ -119,6 +127,17 @@ CRYSTALLIZE_CONDITION_TO_OPERATOR: dict[str, str] = {
     "equals": "equals",
 }
 CRYSTALLIZE_COLUMN_REGEX = r"^(starts-with|starts|contains-any-of|contains|equals)_crystallize_(evar\d+)$"
+# or_/and_ prefix + condition + evarN 형식도 crystallize_override 로 처리 (crystallize 키워드 없는 form).
+# 예: or_starts-with_evar105 → starts-with 조건으로 evar105 block 에 강제 박음.
+# `_crystallize_` 키워드 없이 사용자가 OR group 의 evar value condition 직접 명시할 때 사용.
+CRYSTALLIZE_COLUMN_REGEX_OR = r"^(?:or_|and_)?(starts-with|starts|contains-any-of|contains|equals)_(evar\d+)$"
+
+# v1.1 — set_pair 컬럼 (회사 특성 event+evar AND set 명시)
+#   format: `e<event_num>+v<evar_num>[<operator>]` (operator 생략시 contains)
+#   세미콜론 multi: `e45+v33;e44+v55[starts-with]`
+SET_PAIR_COLUMN = "set_pair"
+SET_PAIR_REGEX = re.compile(r"e(\d+)\+v(\d+)(?:\[([\w-]+)\])?", re.IGNORECASE)
+SET_PAIR_DEFAULT_OP = "contains"
 
 # Generic site / evar 필터 컬럼 — {not_있으면제외 없으면 포함}{조건}_{prop/evar}{#}
 # 예: starts_prop1, not_starts_evar1, contains_evar26, not_contains_evar26
@@ -412,6 +431,41 @@ def build_evar_block(evar_num: int, values: list[str],
     return " | ".join(tokens)
 
 
+def parse_set_pair(raw: str) -> list[tuple[int, int, str]]:
+    """`set_pair` 컬럼 값 parse → [(event_num, evar_num, operator), ...]
+    format: `e<event_num>+v<evar_num>[<operator>]`, 세미콜론 multi.
+    operator 생략시 SET_PAIR_DEFAULT_OP (contains).
+    """
+    if not raw or not raw.strip():
+        return []
+    results: list[tuple[int, int, str]] = []
+    for piece in raw.split(";"):
+        piece = piece.strip()
+        if not piece:
+            continue
+        m = SET_PAIR_REGEX.search(piece)
+        if m:
+            event_num = int(m.group(1))
+            evar_num  = int(m.group(2))
+            op        = m.group(3) or SET_PAIR_DEFAULT_OP
+            results.append((event_num, evar_num, op))
+    return results
+
+
+def build_set_block(event_num: int, evar_num: int, operator: str, value: str) -> str:
+    """`'v<M>'!hit( event<N> event-exists AND evar<M> <op> '<val>' )` 토큰 한 라인.
+    set_pair (회사 특성 event+evar AND set) 처리용. build_evar_block 의 crystallize_override 패턴 fork.
+    """
+    tokens = [
+        f"'v{evar_num}'!hit(",
+        f"event{event_num} event-exists",
+        "AND",
+        f"evar{evar_num} {operator} '{value}'",
+        ")",
+    ]
+    return " | ".join(tokens)
+
+
 def structure_oneline_to_multiline(s: str) -> str:
     """한 줄 ' | ' → 멀티라인 + 들여쓰기. dsl 출력용."""
     parts = [p.strip() for p in s.split(" | ") if p.strip()]
@@ -549,7 +603,10 @@ def build_structure(name: str, customlink_blocks: list[str],
         closing = [")", ")"]
     else:
         parts.append(f"{root_scope}(")
-        parts.append("hit(")
+        # [v1.3] inner hit 에 'page+content' description 박음 — v2.3 의 _lift_inner_hit_into_visit_root 가
+        # description 없는 단일 inner hit wrap 을 벗기는 동작 우회. description 채워두면 그 조건 (no_desc) 실패 →
+        # _lift 트리거 안 됨 → visit(hit(AND(...))) 구조 보존.
+        parts.append("'page+content'!hit(")
         # COMMON_SEGMENT_REF_NAME 있으면 named container wrap ('<name>'!hit(@<id>)), 없으면 @<id> 단독
         if COMMON_SEGMENT_REF_NAME:
             parts.append(f"'{COMMON_SEGMENT_REF_NAME}'!hit(")
@@ -597,10 +654,40 @@ def _lookup_visit_seg_id(base_name: str) -> tuple[str, str]:
 
 
 def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_blocks: list[str]) -> str:
-    """[Global] Delayed Purchase wrap — visit 안에 [본 segment content (visit-seg 동일 의미: @<MAIN_REF> AND <inner>) + ATC + NOT orders] THEN visit(orders).
+    """[Global] Delayed Purchase wrap — mixed-AND 패턴 (다른 사람 / [CAMPAIGN NAME] 컨벤션 따름).
 
-    visit segment 의 segment-ref `@<visit_id>` 가져오지 않음 — visit segment 가 없는 경우도 있고 매칭 모호.
-    대신 visit segment 의 inner content 와 동일하게 inline (Campaign Main Page filter 와 AND 묶음).
+    구조:
+      hit(
+        [sequence-after] visitor(
+          visit(                                    ← outer visit (AND wrapping)
+            [sequence-all] visit(                   ← inner visit (sequence container)
+              '<base_name> (Visit)'!hit(            ← Step A — named container
+                '<COMMON_NAME>'!hit(@COMMON_REF)    ← page block (안쪽)
+                AND
+                <inner content>
+              )
+              THEN
+              '<ATC_NAME>'!hit(@ATC_REF)            ← Step B
+            )
+            AND
+            'Order (All Products)'!hit(             ← NOT orders (visit-level AND child)
+              NOT orders event-exists
+            )
+          )
+          THEN
+          visit(                                    ← Stream 2
+            'Order (All Products)'!hit(
+              orders event-exists
+            )
+          )
+        )
+      )
+
+    변경 이력 (v1.2 2026-05-29):
+      · 기존 unified 구조 (Step B + NOT orders 가 한 hit) → mixed-AND 패턴 (AND child 분리)
+      · `'Order (All Products)'!hit(...)` named container 로 NOT orders / Stream 2 orders 둘 다 wrap
+      · Step A wrapper 를 `'<base_name>'` → `'<base_name> (Visit)'` 로 변경 (Visit segment 의 inline content 임을 명시)
+      · `[sequence-all] visit(...)` inner wrap 추가 (sequence container 명시)
     """
     # customlink_blocks 의 inner content 추출 (각 hit(...) 의 안쪽)
     inner_parts: list[str] = []
@@ -614,22 +701,29 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
             inner_parts.append("OR")
         inner_parts.extend(inner)
 
-    # outermost = hit, 그 안 [sequence-after] visitor( visit(...) THEN visit(orders) )
-    # — lookup decompile 형식 그대로 (reference: lookup CSV 의 Delayed Purchase segment)
-    # [sequence-after] 라벨로 종류 명시 (AA UI "After Sequence" = AA raw sequence-prefix)
+    # Step A 의 wrapper 이름 — base_name + " (Visit)" (Visit segment inline)
+    step_a_wrapper = f"{base_name} (Visit)"
+
     parts: list[str] = [
         "hit(",
         "[sequence-after] visitor(",
-        "visit(",
-        f"'{base_name}'!hit(",
+        "visit(",                        # outer visit (AND wrapping)
+        "visit(",                         # inner visit (sequence container) — [sequence-all] 라벨 안 박음 (parser 미인식)
+        f"'{step_a_wrapper}'!hit(",      # Step A wrapper
     ]
-    # 본 segment 의 name container 안 — visit segment 의 inner 와 동일: @<COMMON_REF> AND <inner content>
+    # @COMMON_REF (page 블록) 은 Step A wrapper 안 (named hit 안) 으로 들어감
     if COMMON_SEGMENT_REF:
-        parts.append(f"@{COMMON_SEGMENT_REF}")
+        if COMMON_SEGMENT_REF_NAME:
+            parts.append(f"'{COMMON_SEGMENT_REF_NAME}'!hit(")
+            parts.append(f"@{COMMON_SEGMENT_REF}")
+            parts.append(")")
+        else:
+            parts.append(f"@{COMMON_SEGMENT_REF}")
         parts.append("AND")
     parts.extend(inner_parts)
-    parts.append(")")
+    parts.append(")")                    # close Step A wrapper
     parts.append("THEN")
+    # Step B — ATC (NOT orders 는 여기 안 들어감)
     if ATC_VISIT_SEGMENT_REF:
         if ATC_VISIT_SEGMENT_NAME:
             parts.append(f"'{ATC_VISIT_SEGMENT_NAME}'!hit(")
@@ -638,13 +732,16 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
         else:
             parts.append(f"@{ATC_VISIT_SEGMENT_REF}")
     parts.extend([
+        ")",                              # close [sequence-all] visit (sequence)
         "AND",
-        "hit(", "NOT orders event-exists", ")",
-        ")",          # close visit-scope (inner visit)
+        # NOT orders — 'Order (All Products)' named container 으로 wrap
+        "'Order (All Products)'!hit(", "NOT orders event-exists", ")",
+        ")",                              # close outer visit (AND wrapping)
         "THEN",
-        "visit(", "orders event-exists", ")",
-        ")",          # close [sequence-after] visitor
-        ")",          # close outermost hit
+        # Stream 2 — visit 안 'Order (All Products)' named container
+        "visit(", "'Order (All Products)'!hit(", "orders event-exists", ")", ")",
+        ")",                              # close [sequence-after] visitor
+        ")",                              # close outermost hit
     ])
     return " | ".join(parts)
 
@@ -795,6 +892,8 @@ def main() -> int:
         crystallize_map: dict[str, list[tuple[str, str]]] = {}
         for hdr in fieldnames:
             m = re.match(CRYSTALLIZE_COLUMN_REGEX, hdr.strip(), flags=re.IGNORECASE)
+            if not m:
+                m = re.match(CRYSTALLIZE_COLUMN_REGEX_OR, hdr.strip(), flags=re.IGNORECASE)
             if m:
                 cond, varname = m.group(1).lower(), m.group(2).lower()
                 op = CRYSTALLIZE_CONDITION_TO_OPERATOR[cond]
@@ -835,6 +934,10 @@ def main() -> int:
                 skipped.append((seg_name, "name 없음"))
                 continue
 
+            # v1.1 — set_pair 컬럼 parse (회사 특성 event+evar AND set)
+            set_pairs = parse_set_pair(row.get(SET_PAIR_COLUMN, ""))
+            set_pair_evar_nums: set[int] = {evar_num for _, evar_num, _ in set_pairs}
+
             # 각 row 의 filter 컬럼 값 분류 → site_pos / site_neg / evar_extras
             #   site_pos / site_neg : list of (operator, var_name, values_list)
             #   evar_extras         : dict[evar_num → list of (is_neg, operator, values_list)] (inline 추가 조건)
@@ -855,6 +958,9 @@ def main() -> int:
                         num = int(var[4:])
                     except ValueError:
                         continue
+                    if num in set_pair_evar_nums:
+                        # v1.1 — set_pair 의 evar<M> 은 set block 의 value 로 사용됨 → site filter 분류 skip
+                        continue
                     if num in inline_evar_nums:
                         # evar<N> with event-exists 컬럼 → 메인 evar 블록 안에 inline AND/AND NOT
                         evar_extras[num].append((is_neg, op, vals))
@@ -866,7 +972,12 @@ def main() -> int:
             # _event-exists TRUE 인 eVar 수집 (crystallize + evar_extras 같이 전달)
             evar_blocks: list[str] = []
             evar_lcs_per_row: dict[int, str] = {}   # 검수 combo_key 용 — 각 evar 의 LCS 또는 override 표시
+            # v1.1 — set_pair 의 event_num 과 매칭되는 evar<num> 은 set 의 일부로 처리 → 별도 evar block 빌드 skip
+            set_pair_event_nums: set[int] = {event_num for event_num, _, _ in set_pairs}
             for exists_col, val_col, num in evar_event_cols:
+                if num in set_pair_event_nums:
+                    # set_pair 의 event_num 이 evar<num> 와 매칭 — set block 안 들어가니 별도 block 안 만듬
+                    continue
                 flag = (row.get(exists_col) or "").strip().upper()
                 if flag != "TRUE":
                     continue
@@ -894,6 +1005,17 @@ def main() -> int:
                     evar_lcs_per_row[num] = "(no-vals)"
                 evar_blocks.append(build_evar_block(num, values, cry_override, evar_extras.get(num)))
 
+            # v1.1 — set_pair block 추가 (회사 특성 event+evar AND set)
+            #   같은 row 의 `eVar<evar_num>` column 값을 set block 의 value 로 사용
+            for event_num, evar_num, op in set_pairs:
+                val_col = EVAR_VALUE_COLUMN_TEMPLATE.format(num=evar_num)
+                set_val_col = fieldnames_lower.get(val_col.lower())
+                value = (row.get(set_val_col, "") or "").strip() if set_val_col else ""
+                if not value:
+                    print(f"  [set_pair] WARN — row '{seg_name}' set_pair e{event_num}+v{evar_num} 의 eVar{evar_num} 값 없음 → 이 set 건너뜀")
+                    continue
+                evar_blocks.append(build_set_block(event_num, evar_num, op, value))
+
             if not evar_blocks:
                 skipped.append((seg_name, "_event-exists TRUE 컬럼 0 개"))
                 continue
@@ -907,7 +1029,10 @@ def main() -> int:
             #      (한 row 에 evar event-exists 2개 이상 = OR 의도로 자동 판단)
             evar_join_col = fieldnames_lower.get(EVAR_JOIN_COLUMN.lower())
             explicit_val = (row.get(evar_join_col) or "").strip().upper() if evar_join_col else ""
-            if explicit_val in ("OR", "AND"):
+            if set_pairs:
+                # v1.1 — set_pair 있으면 AND 강제 (회사 특성 set 의도 — explicit OR 도 덮어씀)
+                evar_join_val = "AND"
+            elif explicit_val in ("OR", "AND"):
                 evar_join_val = explicit_val
             else:
                 evar_join_val = "OR" if len(evar_blocks) >= 2 else "AND"
