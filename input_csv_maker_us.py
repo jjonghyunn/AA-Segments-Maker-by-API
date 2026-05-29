@@ -1,7 +1,10 @@
 # input_csv_maker_us.py
-# 2026-05-18  Jonghyun Park w/ Claude
-# input_csv_maker.py 의 US 캠페인 파생 — RSID, flat 구조, evar<N>instances event-exists 패턴
+# 2026-05-29  Jonghyun Park w/ Claude
+# input_csv_maker.py 의 US 캠페인 파생 — RSID, flat 구조, event<N> event-exists 패턴
 # updated: 2026-05-26       — crystallize: regex 에 hyphen 변형 (starts-with / contains-any-of) 매칭 추가, map → list 구조 + 우선순위 (starts-with > equals > contains-any-of > contains), row 마다 값 있는 첫 컬럼 사용
+# updated: 2026-05-29  v1.1 — event metric 명 통일: 기존 `evar<N>instances event-exists` → `event<N> event-exists` (Adobe Analytics commerce event <N> 사용 — US 캠페인 click total/구체 컨텐츠 click 측정에 instances metric 보다 더 정확). 영향: 모든 evar block 의 main event-exists 토큰 변경 (build_evar_block line 318).
+# updated: 2026-05-29  v1.2 — _build_delayed_purchase_structure 재작성: mixed-AND 패턴 + 'Order (All Products)' named container + [sequence-after]/[sequence-all] 라벨. CAMPAIGN NAME US_CC_xx DP 컨벤션 따름.
+# updated: 2026-05-29  v1.3 — build_structure (visit) 의 inner hit 에 'page+content' description 박음. v2.3 _lift_inner_hit_into_visit_root 후처리 우회 — visit(hit(AND)) 구조 보존.
 """
 seg_make_ref_us_*.csv → aa_create_segment_v2_1.py 가 받는 input CSV 자동 변환.
 
@@ -306,16 +309,16 @@ def build_evar_block(evar_num: int, values: list[str],
                      extra_conditions: list[tuple[bool, str, list[str]]] | None = None) -> str:
     """[US] 한 eVarN 의 DSL 블록 (한 줄, ' | ' 구분). 컨테이너 없는 flat 구조.
 
-    US reference 패턴 (큰따옴표 + instance metric + starts-with):
-      · 값 없음 → evar<N>instances event-exists
-      · crystallize override = (op, val) → evar<N>instances event-exists AND evar<N> <op> "<val>"
+    US reference 패턴 (큰따옴표 + event metric + starts-with):
+      · 값 없음 → event<N> event-exists
+      · crystallize override = (op, val) → event<N> event-exists AND evar<N> <op> "<val>"
       · 공통 substring ≥ MIN_LCS_LENGTH → ... AND evar<N> starts-with "<lcs>"
       · 공통 없음 → ... AND evar<N> starts-with "<v1>" OR evar<N> starts-with "<v2>" ...
 
     extra_conditions: list of (is_negative, operator, values) — 메인 블록 끝에 inline AND / AND NOT 추가.
     """
     var = f"evar{evar_num}"
-    tokens: list[str] = [f"{var}instances event-exists"]
+    tokens: list[str] = [f"event{evar_num} event-exists"]
 
     if crystallize_override:
         op, val = crystallize_override
@@ -519,7 +522,9 @@ def build_structure(name: str, customlink_blocks: list[str],
             ref_token = f"'{COMMON_SEGMENT_REF_NAME}'!hit( | @{COMMON_SEGMENT_REF} | )"
         else:
             ref_token = f"@{COMMON_SEGMENT_REF}"
-        return f"{root_scope}( | hit( | {ref_token} | AND | {hit_part} | ) | )"
+        # [v1.3] inner hit 에 'page+content' description 박음 — v2.3 의 _lift_inner_hit_into_visit_root 가
+        # description 없는 단일 inner hit wrap 을 벗기는 동작 우회 (visit(hit(AND)) → visit(AND) 깨짐 방지).
+        return f"{root_scope}( | 'page+content'!hit( | {ref_token} | AND | {hit_part} | ) | )"
     return f"{root_scope}( | {hit_part} | )"
 
 
@@ -548,36 +553,55 @@ def _lookup_visit_seg_from_result_csv(base_name: str) -> tuple[str, str]:
 
 
 def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_blocks: list[str]) -> str:
-    """[US] Delayed Purchase wrap — visit 안에 [본 segment content + ATC visit + NOT orders] THEN visit(orders).
+    """[US] Delayed Purchase wrap — mixed-AND 패턴 + 'Order (All Products)' named container.
 
-    reference 패턴 (US_CC_00 등):
+    구조:
       hit(
-        visit(
-          '<본 segment name>'!hit( <본 segment inner content> )
+        [sequence-after] visitor(
+          visit(                                       ← outer visit (AND wrapping)
+            [sequence-all] visit(                       ← inner visit (sequence container)
+              '<visit_name>'!hit( @<visit_id> )         ← Step A — Visit segment @-ref (있으면)
+                또는 '<base_name> (Visit)'!hit(<inline>)  ← Visit segment 없으면 inline
+              THEN
+              '<ATC Visit name>'!hit( @<ATC id> )       ← Step B
+            )
+            AND
+            'Order (All Products)'!hit(                 ← NOT orders (visit-level AND child)
+              NOT orders event-exists
+            )
+          )
           THEN
-          '<ATC Visit name>'!hit( @<ATC id> )
-          AND
-          hit( NOT orders event-exists )
+          visit(                                        ← Stream 2
+            'Order (All Products)'!hit(
+              orders event-exists
+            )
+          )
         )
-        THEN
-        visit( orders event-exists )
       )
 
-    customlink_blocks 의 inner content (각 `hit( ... )` 의 안쪽) 만 추출해 name container 안에 박음.
+    변경 이력 (v1.2 2026-05-29):
+      · 기존 unified 구조 → mixed-AND 패턴 (다른 사람 / CAMPAIGN NAME 컨벤션 따름)
+      · `'Order (All Products)'!hit(...)` named container 로 NOT orders / Stream 2 orders 둘 다 wrap
+      · `[sequence-after] visitor(...)` + `[sequence-all] visit(...)` 라벨 명시 (AA validator 호환)
+      · fallback inline 시 wrapper 를 `'<base>'` → `'<base> (Visit)'` 로 변경
     """
     # visit segment 의 segment-ref 활용 — 가장 최신 result csv 에서 '<base> (Visit)' 의 id lookup
     visit_id, visit_name = _lookup_visit_seg_from_result_csv(base_name)
 
-    # outermost = hit — reference dsl 그대로. v2.2 의 _patch_definition_for_aa 가 root sequence → sequence-prefix 변환 (hit-scope 허용)
-    parts: list[str] = ["hit(", "visit("]
+    parts: list[str] = [
+        "hit(",
+        "[sequence-after] visitor(",
+        "visit(",                        # outer visit (AND wrapping)
+        "visit(",                         # inner visit (sequence container) — [sequence-all] 라벨 안 박음 (parser 미인식)
+    ]
 
     if visit_id:
-        # B: '<visit name>'!hit( @<visit_id> ) — named container + segment-ref (가장 최신 result csv 의 visit segment 활용)
+        # B: '<visit name>'!hit( @<visit_id> ) — named container + segment-ref
         parts.append(f"'{visit_name}'!hit(")
         parts.append(f"@{visit_id}")
         parts.append(")")
     else:
-        # fallback (A): visit content inline — base name container 안에 customlink_blocks inner content
+        # fallback (A): visit content inline — '<base_name> (Visit)' wrapper 안에 inline
         inner_parts: list[str] = []
         for i, block in enumerate(customlink_blocks):
             toks = block.split(" | ")
@@ -588,12 +612,12 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
             if i > 0:
                 inner_parts.append("OR")
             inner_parts.extend(inner)
-        parts.append(f"'{base_name}'!hit(")
+        parts.append(f"'{base_name} (Visit)'!hit(")
         parts.extend(inner_parts)
         parts.append(")")
 
     parts.append("THEN")
-    # ATC Visit segment-ref — named container wrap 또는 @<id> 단독
+    # Step B — ATC Visit segment-ref (NOT orders 는 여기 안 들어감)
     if ATC_VISIT_SEGMENT_REF:
         if ATC_VISIT_SEGMENT_NAME:
             parts.append(f"'{ATC_VISIT_SEGMENT_NAME}'!hit(")
@@ -602,16 +626,16 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
         else:
             parts.append(f"@{ATC_VISIT_SEGMENT_REF}")
     parts.extend([
+        ")",                              # close [sequence-all] visit (sequence)
         "AND",
-        "hit(",
-        "NOT orders event-exists",
-        ")",          # NOT orders hit close
-        ")",          # outer visit close
+        # NOT orders — 'Order (All Products)' named container 으로 wrap
+        "'Order (All Products)'!hit(", "NOT orders event-exists", ")",
+        ")",                              # close outer visit (AND wrapping)
         "THEN",
-        "visit(",
-        "orders event-exists",
-        ")",          # final visit close
-        ")",          # outer hit close
+        # Stream 2 — visit 안 'Order (All Products)' named container
+        "visit(", "'Order (All Products)'!hit(", "orders event-exists", ")", ")",
+        ")",                              # close [sequence-after] visitor
+        ")",                              # close outermost hit
     ])
     return " | ".join(parts)
 
