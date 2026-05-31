@@ -1,5 +1,5 @@
 # AA-Segments-Maker-by-API  
-<sub>2026-05-27  Jonghyun Park w/ Claude</sub>  
+<sub>2026-05-30  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
@@ -32,13 +32,17 @@ python aa_create_segment_v2.3.py --update-or-create --apply            # id 있�
 
 ### Workspace 데이터 추출 — `data_extract/`
 
+> 가이드: [`data_extract/extract_data.md`](data_extract/extract_data.md) — v1~v3.1 전체 사용법·옵션·출력 형식 문서
+
 | 버전 | 파일 | 설명 |
 |---|---|---|
-| **v3 ★** | `extract_data_v3.py` | site 단위 병렬 처리 (SITE_WORKERS) |
+| **v3.1 ★** | `extract_data_v3.1.py` | v3 + SKIP_PANEL_SEGMENTS 옵션 (패널 기존 세그 무시 토글) |
+| v3 | `extract_data_v3.py` | v2 + EXTRA_SEGMENTS 옵션 (세그 이름 검색 → globalFilter 추가) |
 | v2 | `extract_data_v2.py` | sites_input.csv 기반 site별 RSID + dateRange override |
-| | `_contents/` | contents 특화 추출 + RESHAPE v1.1 |
-| | `_contents_tier2_cc_03/` | tier2 CC03 특화 |
-| | `1st_cutoff17may_*/` | cutoff 기준 before/after 분리 추출 (recomm) |
+| | `_contents/` | contents 특화 추출 (v3.1 포함) + RESHAPE v1.1 |
+| | `_contents_tier2_cc_03/` | tier2 CC03 특화 (v3.1 포함) |
+| | `1st_cutoff17may_*/` | cutoff 기준 before/after 분리 추출 — recomm (v3.1 포함) |
+| | `RESHAPE_contents_v1.3for_evar26.py` | evar26 dimension 전용 정제 (v1.1 → v1.3: ref CSV 매칭 추가) |
 
 ### Panel 도구
 
@@ -91,6 +95,7 @@ pip install aanalytics2 pandas requests
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-05-30 | extract_data v3.1 추가 (SKIP_PANEL_SEGMENTS) + extract_data.md 문서, RESHAPE v1.3 |
 | 2026-05-27 | 구버전 코드 `old/` 이동, README 최신화 |
 | 2026-05-26 | v2.3: DSL preprocess, v2 의존성 제거 (self-contained) |
 | 2026-05-22 | extract_data v3: site 단위 병렬 처리 |
