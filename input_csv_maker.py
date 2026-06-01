@@ -1,5 +1,8 @@
 # input_csv_maker.py
-# 2026-05-29  Jonghyun Park w/ Claude
+# 2026-06-01  Jonghyun Park w/ Claude
+# updated: 2026-06-01  v1.6 — 컨테이너 라벨 정렬: 바깥 segment 컨테이너를 customlink 코드 ' or ' 조합('pd25 or co78 component')으로(build_structure container_label). DP 는 '<base>(Visit)'!visit( hit( @common AND ( '<label>'!hit( hit(A) OR hit(B) ) ) ) ) 구조 — '<label>' 이 모든 브랜치를 감쌈(hit/visit 와 동일 대칭). customlink 서브컨테이너 'pd25 component'/'co78 component' 유지.
+# updated: 2026-06-01  v1.5 — build_customlink_block: COMPONENT_LABEL_FROM_CUSTOMLINK(기본 True) 면 브랜치 컨테이너를 customlink 선두코드('pd25 component'/'co78 component')로 명명 + customlink inline (무명 hit() 래퍼 제거). hit/visit/DP 전 변형 공통 적용. False 면 기존 hit('Component'!hit(customlink)...) 구조.
+# updated: 2026-06-01  v1.4 — _build_delayed_purchase_structure: customlink_block 2 개+ (OR 브랜치) 일 때 각 hit() 래퍼 유지하고 ( hit(A) OR hit(B) ) 괄호 그룹으로 묶음. 기존엔 래퍼 벗겨 평탄화 → @COMMON_REF AND A OR B 로 그룹 경계가 사라져 B 가 @ref/THEN 시퀀스에서 빠지는 버그 수정. 1 개일 땐 기존 inline 유지.
 # updated: 2026-05-29  v1.2 — _build_delayed_purchase_structure 재작성: mixed-AND 패턴 + 'Order (All Products)' named container + [sequence-after]/[sequence-all] 라벨 명시. CAMPAIGN NAME US_CC_xx DP 컨벤션 따름.
 # updated: 2026-05-29  v1.3 — build_structure (visit) 의 inner hit 에 'page+content' description 박음. aa_create_segment_v2.3 의 _lift_inner_hit_into_visit_root 후처리가 description 없는 단일 inner hit 을 벗기는 문제 우회 — visit(hit(AND(@page, named_content))) 구조 보존.
 # updated: 2026-05-26       — crystallize: regex 에 hyphen 변형 (starts-with / contains-any-of) 매칭 추가, contains-any-of multi-value 처리 (build_evar_block)
@@ -113,6 +116,11 @@ EVAR_VALUE_COLUMN_TEMPLATE = "eVar{num}"           # value 컬럼 이름 (case-i
 ALLOWED_VAR_NUM_RANGE = range(1, 201)              # evar/prop 인식 번호 상한 (1~200, 넉넉히)
 
 SITE_CONTAINER_NAME = "site"   # site 양수/음수 컨테이너 (prop/evar 의 hit-scope 묶음) 이름
+
+# customlink 컨테이너 라벨 — True 면 customlink 선두코드(pd25, co78 ...) + ' component'
+#   (예: 'pd25_product recommendation' → 'pd25 component', 'co78_recommended product' → 'co78 component').
+#   코드(영문+숫자) 못 잡으면 'Component' 로 fallback. False 면 항상 'Component'.
+COMPONENT_LABEL_FROM_CUSTOMLINK = True
 
 # crystallize 컬럼 — 자동 LCS 가 못 잡거나 짧을 때 사용자가 직접 keyword 박을 수 있게 함.
 # 컬럼명 패턴: <condition>_crystallize_<varname>  (예: starts_crystallize_evar26)
@@ -539,8 +547,14 @@ def build_customlink_block(customlink: str, evar_blocks: list[str],
     parts: list[str] = ["hit("]
     has_first = False
     if customlink:
+        # customlink 서브컨테이너 라벨 — toggle True 면 선두코드(pd25, co78 ...) + ' component'
+        if COMPONENT_LABEL_FROM_CUSTOMLINK:
+            _m = re.match(r"^([A-Za-z]+\d+)", customlink.strip())
+            _label = f"{_m.group(1)} component" if _m else "Component"
+        else:
+            _label = "Component"
         parts.extend([
-            "'Component'!hit(",
+            f"'{_label}'!hit(",
             f"customlink starts-with '{customlink}'",
             ")",
         ])
@@ -585,7 +599,7 @@ def build_customlink_block(customlink: str, evar_blocks: list[str],
 
 
 def build_structure(name: str, customlink_blocks: list[str],
-                    root_scope: str = "visit") -> str:
+                    root_scope: str = "visit", container_label: str = "") -> str:
     """전체 structure 한 줄 ' | ' 구분.
 
     customlink_blocks 가 1 개여도 (안전성·시각 일관성 위해) 항상 paren grouping 으로 감쌈.
@@ -595,11 +609,12 @@ def build_structure(name: str, customlink_blocks: list[str],
       · "visit" / "visitor" → 공통 ref AND ( '<name>'!hit( <blocks 또는 OR> ) ) 로 묶음
                               → visit( hit( @공통ref AND ( '<name>'!hit( ... ) ) ) )
       · "hit"               → 공통 ref 없이 단독 → hit( '<name>'!hit( <blocks 또는 OR> ) )"""
+    label = container_label or name   # 바깥 named container 라벨 (빈 값이면 segment name)
     parts: list[str] = []
     closing: list[str] = []
     if root_scope == "hit":
         parts.append("hit(")
-        parts.append(f"'{name}'!hit(")
+        parts.append(f"'{label}'!hit(")
         closing = [")", ")"]
     else:
         parts.append(f"{root_scope}(")
@@ -616,7 +631,7 @@ def build_structure(name: str, customlink_blocks: list[str],
             parts.append(f"@{COMMON_SEGMENT_REF}")
         parts.append("AND")
         parts.append("(")                       # ← 추가 paren grouping 열기 (수동편집예시 .dsl 형식)
-        parts.append(f"'{name}'!hit(")
+        parts.append(f"'{label}'!hit(")
         closing = [")", ")", ")", ")"]          # ← name-container 닫기 + paren grouping 닫기 + hit 닫기 + root 닫기
 
     # customlink 블록들 — 1 개면 그대로, 2+ 면 OR 로 엮음
@@ -653,7 +668,8 @@ def _lookup_visit_seg_id(base_name: str) -> tuple[str, str]:
     return ("", "")
 
 
-def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_blocks: list[str]) -> str:
+def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_blocks: list[str],
+                                      container_label: str = "") -> str:
     """[Global] Delayed Purchase wrap — mixed-AND 패턴 (다른 사람 / [CAMPAIGN NAME] 컨벤션 따름).
 
     구조:
@@ -689,17 +705,20 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
       · Step A wrapper 를 `'<base_name>'` → `'<base_name> (Visit)'` 로 변경 (Visit segment 의 inline content 임을 명시)
       · `[sequence-all] visit(...)` inner wrap 추가 (sequence container 명시)
     """
-    # customlink_blocks 의 inner content 추출 (각 hit(...) 의 안쪽)
-    inner_parts: list[str] = []
+    # customlink_blocks → Step A inner content.
+    #  · 1 개: 기존처럼 hit(...) 래퍼 벗겨 inline (@COMMON_REF AND <inner>)
+    #  · 2 개+: 각 블록 hit(...) 유지하고 ( hit(A) OR hit(B) ) 괄호 그룹으로 묶음
+    #          → @COMMON_REF AND ( hit(A) OR hit(B) ). 벗겨 평탄화하면
+    #            @ref AND A OR B 로 그룹 경계가 사라져 B 가 @ref/THEN 시퀀스에서 빠짐.
+    # 바깥 그룹: ( '<label>'!hit( hit(A) OR hit(B) ... ) ) — '<label>' 이 모든 브랜치를 감쌈 (hit/visit 와 동일 대칭).
+    dp_label = container_label or base_name
+    inner_parts: list[str] = ["(", f"'{dp_label}'!hit("]
     for i, block in enumerate(customlink_blocks):
-        toks = block.split(" | ")
-        if len(toks) >= 3 and toks[0].strip() == "hit(" and toks[-1].strip() == ")":
-            inner = toks[1:-1]
-        else:
-            inner = toks
         if i > 0:
             inner_parts.append("OR")
-        inner_parts.extend(inner)
+        inner_parts.extend(block.split(" | "))   # 각 브랜치 full hit() 유지
+    inner_parts.append(")")                       # close '<label>'!hit
+    inner_parts.append(")")                       # close paren group
 
     # Step A 의 wrapper 이름 — base_name + " (Visit)" (Visit segment inline)
     step_a_wrapper = f"{base_name} (Visit)"
@@ -708,8 +727,8 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
         "hit(",
         "[sequence-after] visitor(",
         "visit(",                        # outer visit (AND wrapping)
-        "visit(",                         # inner visit (sequence container) — [sequence-all] 라벨 안 박음 (parser 미인식)
-        f"'{step_a_wrapper}'!hit(",      # Step A wrapper
+        f"'{step_a_wrapper}'!visit(",    # Step A — named visit (sequence container)
+        "hit(",                           # inner hit
     ]
     # @COMMON_REF (page 블록) 은 Step A wrapper 안 (named hit 안) 으로 들어감
     if COMMON_SEGMENT_REF:
@@ -721,7 +740,7 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
             parts.append(f"@{COMMON_SEGMENT_REF}")
         parts.append("AND")
     parts.extend(inner_parts)
-    parts.append(")")                    # close Step A wrapper
+    parts.append(")")                    # close inner hit
     parts.append("THEN")
     # Step B — ATC (NOT orders 는 여기 안 들어감)
     if ATC_VISIT_SEGMENT_REF:
@@ -732,7 +751,7 @@ def _build_delayed_purchase_structure(dp_name: str, base_name: str, customlink_b
         else:
             parts.append(f"@{ATC_VISIT_SEGMENT_REF}")
     parts.extend([
-        ")",                              # close [sequence-all] visit (sequence)
+        ")",                              # close Step A wrapper (named visit)
         "AND",
         # NOT orders — 'Order (All Products)' named container 으로 wrap
         "'Order (All Products)'!hit(", "NOT orders event-exists", ")",
@@ -1096,10 +1115,21 @@ def main() -> int:
         new_name_base = transform_name(raw_seg_name)
         warning_text  = " ; ".join(warnings_by_name.get(raw_seg_name, []))
 
+        # 바깥 named container 라벨 — customlink 선두코드 ' or ' 조합 + ' component' (toggle True), 아니면 세그명
+        if COMPONENT_LABEL_FROM_CUSTOMLINK:
+            _codes: list[str] = []
+            for m in members:
+                _cm = re.match(r"^([A-Za-z]+\d+)", (m["_customlink"] or "").strip())
+                if _cm and _cm.group(1) not in _codes:
+                    _codes.append(_cm.group(1))
+            container_label = (" or ".join(_codes) + " component") if _codes else new_name_base
+        else:
+            container_label = new_name_base
+
         if "visit" in modes:
             visit_name = (new_name_base + " (Visit)"
                           if not new_name_base.endswith(" (Visit)") else new_name_base)
-            visit_structure = build_structure(visit_name, customlink_blocks, root_scope="visit")
+            visit_structure = build_structure(visit_name, customlink_blocks, root_scope="visit", container_label=container_label)
             rows_out.append({
                 "segment_id": "", "name": visit_name, "description": "",
                 "rsid": DEFAULT_RSID, "tags": DEFAULT_TAGS,
@@ -1107,7 +1137,7 @@ def main() -> int:
             })
         if "hit" in modes:
             hit_name = new_name_base
-            hit_structure = build_structure(hit_name, customlink_blocks, root_scope="hit")
+            hit_structure = build_structure(hit_name, customlink_blocks, root_scope="hit", container_label=container_label)
             rows_out.append({
                 "segment_id": "", "name": hit_name, "description": "",
                 "rsid": DEFAULT_RSID, "tags": DEFAULT_TAGS,
@@ -1116,7 +1146,7 @@ def main() -> int:
         if "delayed_purchase" in modes:
             dp_name = (new_name_base + " (Delayed Purchase)"
                        if not new_name_base.endswith(" (Delayed Purchase)") else new_name_base)
-            dp_structure = _build_delayed_purchase_structure(dp_name, new_name_base, customlink_blocks)
+            dp_structure = _build_delayed_purchase_structure(dp_name, new_name_base, customlink_blocks, container_label=container_label)
             rows_out.append({
                 "segment_id": "", "name": dp_name, "description": "",
                 "rsid": DEFAULT_RSID, "tags": DEFAULT_TAGS,
