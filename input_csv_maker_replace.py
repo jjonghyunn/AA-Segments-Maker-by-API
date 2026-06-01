@@ -65,12 +65,12 @@ MD_EVAR_DESC_REGEX = re.compile(r"^\[CAMPAIGN NAME\].*_Evar$")
 # region 별 매핑 — COMMON_REF (swap 대상 컨테이너의 새 segment-ref), name swap prefix
 REGION_CONFIG: dict[str, dict[str, str]] = {
     "global": {
-        "evar_ref":    "segment_id_placeholder",
+        "evar_ref":    "세그먼트_아이디_넘버",
         "evar_name":   "[CAMPAIGN NAME] Campaign Main Page_Evar",
         "name_prefix": "[CAMPAIGN NAME] CC_",
     },
     "us": {
-        "evar_ref":    "segment_id_placeholder",
+        "evar_ref":    "세그먼트_아이디_넘버",
         "evar_name":   "[CAMPAIGN NAME] US_Campaign Main Page_Evar",
         "name_prefix": "[CAMPAIGN NAME] US_CC_",
     },
@@ -79,7 +79,7 @@ REGION_CONFIG: dict[str, dict[str, str]] = {
 
 def _detect_region(rsid: str, name: str) -> str:
     """rsid + name 둘 다 체크. 한 쪽이라도 US 면 us. 둘이 안 맞으면 warning 출력."""
-    rsid_us = (rsid or "").strip().lower() == "rsid_placeholder"
+    rsid_us = (rsid or "").strip().lower() == "sscompany_namenewus"
     name_lower = (name or "").lower()
     name_us = "[us]" in name_lower or "us_" in name_lower
     if rsid_us != name_us:

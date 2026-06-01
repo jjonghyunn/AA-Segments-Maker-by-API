@@ -32,10 +32,10 @@ from pathlib import Path
 SEG_NAME = "[CAMPAIGN NAME] CC_00. Contents Click Total (Visit)"
 
 # AND 로 묶일 두 segment-ref ID
-SEG_REF_PRIMARY   = "segment_id_placeholder"   # 메인 컨테이너 (input_csv_maker 와 동일)
-SEG_REF_SECONDARY = "segment_id_placeholder"   # 추가 AND 대상
+SEG_REF_PRIMARY   = "세그먼트_아이디_넘버"   # 메인 컨테이너 (input_csv_maker 와 동일)
+SEG_REF_SECONDARY = "세그먼트_아이디_넘버"   # 추가 AND 대상
 
-DEFAULT_RSID = "rsid_placeholder"
+DEFAULT_RSID = "sscompany_name4mstglobal"
 DEFAULT_TAGS = ""
 
 OUTPUT_DIR = Path(__file__).resolve().parent

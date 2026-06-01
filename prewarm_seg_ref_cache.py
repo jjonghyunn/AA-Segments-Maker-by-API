@@ -35,7 +35,7 @@ from aa_create_segment_v2 import _load_auth_headers
 
 # 한 줄에 하나씩 segment id 박기. 빈 줄 무시. # 으로 시작하면 주석 처리.
 SEGMENT_IDS_RAW = """
-segment_id_placeholder
+세그먼트_아이디_넘버
 """
 
 # 기본 cache 파일 suffix — "" / "us" / "global" / ... (CLI --cache 로 override 가능)

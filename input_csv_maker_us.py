@@ -74,7 +74,7 @@ ATC_VISIT_SEGMENT_REF      = ""   # 예: "s200001591_<US_ATC_Visit_id>"  (직접
 ATC_VISIT_SEGMENT_NAME     = ""   # 예: "[US] Add to Cart Visit"        (named container wrap 박힘)
 ATC_REF_SEGMENT_NAME       = "[US] Add to Cart Visit"   # cache 에서 partial 매칭 → id+name 자동 (CACHE_NAME 활용). 글로벌과 안 섞이게 [US] prefix 박을 것
 
-DEFAULT_RSID = "rsid_placeholder"   # US 캠페인 RSID
+DEFAULT_RSID = "sscompany_namenewus"   # US 캠페인 RSID
 DEFAULT_TAGS = ""
 
 # ─── evar 블록 묶음 방식 (row 별 override) ──────────────────────

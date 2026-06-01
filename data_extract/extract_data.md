@@ -70,7 +70,7 @@ python extract_data.py --add-filter s200001591_xxx     # 세그먼트 추가해�
 | 상수 | 설명 | 변경 시점 |
 |---|---|---|
 | `AUTH_JSON_PATH` | Adobe OAuth 인증 JSON 경로 | 환경 변경 시 |
-| `COMPANY_ID` | Adobe Analytics company ID | 환경마다 다름 (`company_id`) |
+| `COMPANY_ID` | Adobe Analytics company ID | 보통 고정 (`your_aa_company_id`) |
 | `PROJECT_ID` | Workspace URL의 `/workspace/edit/{이부분}` | **프로젝트마다 변경** |
 | `MAX_WORKERS` | 병렬 워커 수 (5~8 추천) | 성능/안정성 조절 |
 | `LIMIT` | dimension row 수 제한 | 데이터 양 조절 |
@@ -171,7 +171,7 @@ de,2026-05-12,2026-05-17
 ...
 ```
 
-- `site_code` — `site_registry.py` 의 `_SITE_MASTER` 의 key (`ae`, `au`, `br`, `de`, ... `mstglobal`). 매핑에 없으면 fallback `rsid_prefix{site_code 의 _ 제거}` 사용
+- `site_code` — `site_registry.py` 의 `_SITE_MASTER` 의 key (`ae`, `au`, `br`, `de`, ... `mstglobal`). 매핑에 없으면 fallback `sscompany_name4{site_code 의 _ 제거}` 사용
 - `start_date` / `end_date` — ISO `YYYY-MM-DD`. v2 가 `YYYY-MM-DDT00:00:00.000/다음날T00:00:00.000` 형식 (AA 컨벤션) 으로 자동 변환
 - 빈 줄 / `#` 시작 라인 자동 skip — 일부 site 만 일시 제외할 때 `#` 붙이기
 
@@ -194,26 +194,26 @@ row 의 site_code (예: "au")
 lookup_site("au")  ── site_registry._SITE_MASTER 에서 찾기
     │
     ↓
-SiteInfo(subsidiary="SUB_CODE", country="Country", site_code="au", rsid="rsid_placeholder_au")
+SiteInfo(subsidiary="FRNH", country="Australia", site_code="au", rsid="sscompany_name4au")
     │
     ↓
-payload 의 "rsid" → "rsid_placeholder_au"
+payload 의 "rsid" → "sscompany_name4au"
 payload 의 globalFilters[dateRange] → "2026-05-14T00:00:00.000/2026-05-18T00:00:00.000"
 ```
 
 - 정식 매핑 외에 `_` 제거 alias 도 시도 (예: `ca_fr` → 매핑 없으면 `cafr` 시도)
-- 끝까지 매칭 안 되면 fallback: `rsid_prefix{normalized}`
+- 끝까지 매칭 안 되면 fallback: `sscompany_name4{normalized}`
 
 ## 출력 파일 예시
 
 ```
 output/
-├── extract_data_rsid_placeholder_au_260515_1030.csv          ← au site 의 panel × reportlet 데이터
-├── column_mapping_rsid_placeholder_au_260515_1030.csv         ← au site 의 칼럼 매핑
-├── extract_data_rsid_placeholder_br_260515_1030.csv          ← br
-├── column_mapping_rsid_placeholder_br_260515_1030.csv
-├── extract_data_rsid_placeholder_260515_1030.csv        ← us (rsid_placeholder 처럼 일반 형식 외도 매핑됨)
-├── column_mapping_rsid_placeholder_260515_1030.csv
+├── extract_data_sscompany_name4au_260515_1030.csv          ← au site 의 panel × reportlet 데이터
+├── column_mapping_sscompany_name4au_260515_1030.csv         ← au site 의 칼럼 매핑
+├── extract_data_sscompany_name4br_260515_1030.csv          ← br
+├── column_mapping_sscompany_name4br_260515_1030.csv
+├── extract_data_sscompany_namenewus_260515_1030.csv        ← us (sscompany_namenewus 처럼 일반 형식 외도 매핑됨)
+├── column_mapping_sscompany_namenewus_260515_1030.csv
 └── ...
 ```
 
@@ -243,7 +243,7 @@ v2 베이스 + **추가 segment 를 panel 의 globalFilter 에 끼워넣는** �
 | `site_registry.py` | 같은 폴더 | v2 와 동일 |
 | `sites_input.csv` | 같은 폴더 | v2 와 동일 |
 
-> 원본 `aa_segment_lookup.py` 는 `...\YYMMDD_AA_segment_maker\segment_maker\` 에 있음. v3 는 `Path(__file__).resolve().parent` 로 같은 폴더 사본을 import 하므로 운영 폴더마다 사본 두는 게 룰.
+> 원본 `aa_segment_lookup.py` 는 `...\260504_AA_segment_maker\segment_maker\` 에 있음. v3 는 `Path(__file__).resolve().parent` 로 같은 폴더 사본을 import 하므로 운영 폴더마다 사본 두는 게 룰.
 
 ## 사용법
 
@@ -346,9 +346,9 @@ data_extract/
 
 | 폴더 | 비고 |
 |---|---|
-| `YYMMDD_campaign_1/data_extract/` | Campaign 1 (베이스) |
-| `YYMMDD_AA_segment_maker/data_extract/` | segment maker 베이스 (PROJECT_ID 캠페인별 변경) |
-| `YYMMDD_campaign_2/data_extract/` | Campaign 2 |
+| `260413_CAMPAIGN NAME/data_extract/` | CAMPAIGN NAME (베이스) |
+| `260504_AA_segment_maker/data_extract/` | segment maker 베이스 (PROJECT_ID 캠페인별 변경) |
+| `260515_CAMPAIGN NAME/data_extract/` | CAMPAIGN NAME |
 
 각 폴더에 `aa_segment_lookup.py` 사본도 같이 있음.
 
@@ -421,10 +421,10 @@ v3.1 사본 (PROJECT_ID 등 운영값 캠페인별 다름):
 
 | 폴더 | 비고 |
 |---|---|
-| `YYMMDD_campaign_1/data_extract/extract_data_v3.1.py` | Campaign 1 베이스 |
-| `YYMMDD_AA_segment_maker/data_extract/extract_data_v3.1.py` | segment maker 베이스 |
-| `YYMMDD_campaign_2/data_extract/extract_data_v3.1.py` | Campaign 2 메인 |
-| `YYMMDD_campaign_2/data_extract/revisit_repurchase_<site>/extract_data_v3.1.py` | revisit/repurchase site 별 (13 폴더 — br, cn, cross_sell, de, es, in, it, mx, pt, tr, uk, us, + cross_sell/us_old) |
+| `260413_CAMPAIGN NAME/data_extract/extract_data_v3.1.py` | CAMPAIGN NAME 베이스 |
+| `260504_AA_segment_maker/data_extract/extract_data_v3.1.py` | segment maker 베이스 |
+| `260515_CAMPAIGN NAME/data_extract/extract_data_v3.1.py` | CAMPAIGN NAME 메인 |
+| `260515_CAMPAIGN NAME/data_extract/revisit_repurchase_<site>/extract_data_v3.1.py` | revisit/repurchase site 별 (13 폴더 — br, cn, cross_sell, de, es, in, it, mx, pt, tr, uk, us, + cross_sell/us_old) |
 
 각 폴더에 `aa_segment_lookup.py` 사본도 같이 있음 (v3 와 동일).
 

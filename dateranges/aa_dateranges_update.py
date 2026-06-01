@@ -51,13 +51,13 @@ import aanalytics2 as api2
 
 # ─── 인증 ──────────────────────────────────────────────────────────
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-COMPANY_ID = "company_id"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
+COMPANY_ID = "your_aa_company_id"
 
 # ─── 캠페인 글로벌 (사이트 공통) ────────────────────────────────
 THIS_YEAR_YY  = 26       # 올해 두 자리 (예: 26 = 2026). 매년 갱신
 LAST_YEAR_YY  = 25       # 보통 THIS_YEAR_YY - 1
-CAMPAIGN_TAG  = "MD"     # 캠페인 코드 (CAMPAIGN NAME=MD, CAMPAIGN NAME=BF, CAMPAIGN NAME=CAMPAIGN NAME 등)
+CAMPAIGN_TAG  = "MD"     # 캠페인 코드 (CAMPAIGN NAME=MD, CAMPAIGN NAME=BF, BTS=BTS 등)
 
 # ─── 사이트별 입력 — 1순위: CSV 파일 ────────────────────────────
 # 같은 폴더에 이 파일이 있으면 거기서 사이트 dict 를 읽음 (Excel 에서 편집 가능).

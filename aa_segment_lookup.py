@@ -1,6 +1,6 @@
 # segment_lookup.py
 # 2026-05-15  Jonghyun Park w/ Claude
-# updated: 2026-05-15 13:00  — owner_name을 aa_user_id CSV에서 보강
+# updated: 2026-05-15 13:00  — owner_name을 cnx_aa_id CSV에서 보강
 # updated: 2026-05-18       — --search 키워드 nargs='+' 로 AND 매칭 (공백 구분), 사용법 주석 보완
 # updated: 2026-05-22       — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
 # updated: 2026-05-26       — sequence 처리: wrap 분기 제거, 모든 sequence/prefix/suffix 에 [sequence-after/before/all] 라벨 + scope 감쌈
@@ -18,7 +18,7 @@
 
   # 이름 키워드 검색 (1 개)
   python segment_lookup.py --search "campaign"
-  python segment_lookup.py --search "campaign" --rsid rsid_placeholder
+  python segment_lookup.py --search "campaign" --rsid sscompany_name4mstglobal
 
   # 이름 키워드 AND 검색 (여러 개 — 공백 구분, 각 quote 로 감쌈)
   python segment_lookup.py --search "[CAMPAIGN NAME]" "recomm"               # AND 매칭
@@ -53,8 +53,8 @@ import aanalytics2 as api2
 # ════════════════════════════════════════════════════════════════════
 
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-COMPANY_ID = "company_id"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
+COMPANY_ID = "your_aa_company_id"
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -65,7 +65,7 @@ LOOKUP_DIR = OUTPUT_DIR / "lookup"          # 결과 CSV/DSL 출력 위치 — �
 RESULT_PREFIX = "segment_lookup_"
 
 # ─── AA user 매핑 CSV (owner_name 보강용) ─────────────────────────
-# 상위 폴더의 aa_user_id_*.csv 자동 탐색. 없으면 owner_name 빈값 그대로.
+# 상위 폴더의 cnx_aa_id_*.csv 자동 탐색. 없으면 owner_name 빈값 그대로.
 AA_USER_CSV_DIR = Path(__file__).resolve().parent.parent
 
 # ─── 변수 단축어 (decompile용) ────────────────────────────────────
@@ -371,9 +371,9 @@ def format_dsl_block(name: str, description: str, rsid: str,
 # ═══════════════════════════════════════════════════════════════════
 
 def _load_user_map() -> dict[str, str]:
-    """aa_user_id_*.csv → {loginId(str): fullName} dict. 없으면 빈 dict."""
+    """cnx_aa_id_*.csv → {loginId(str): fullName} dict. 없으면 빈 dict."""
     import glob
-    pattern = str(AA_USER_CSV_DIR / "aa_user_id_*.csv")
+    pattern = str(AA_USER_CSV_DIR / "cnx_aa_id_*.csv")
     files = sorted(glob.glob(pattern), reverse=True)
     if not files:
         return {}
@@ -592,7 +592,7 @@ def main() -> int:
         print("ERROR: 세그먼트 ID 또는 --search 키워드가 필요합니다.")
         print("  python segment_lookup.py s200001591_abc123")
         print("  python segment_lookup.py --from-file ids.txt")
-        print("  python segment_lookup.py --search \"campaign\" --rsid rsid_placeholder")
+        print("  python segment_lookup.py --search \"campaign\" --rsid sscompany_name4mstglobal")
         return 1
 
     now = datetime.now()
@@ -639,7 +639,7 @@ def main() -> int:
     user_map = _load_user_map()
     if user_map:
         _enrich_owner_name(results, user_map)
-        print(f"  owner_name 보강: aa_user_id CSV ({len(user_map)}명)")
+        print(f"  owner_name 보강: cnx_aa_id CSV ({len(user_map)}명)")
     print()
 
     # CSV 출력 — lookup/ 하위

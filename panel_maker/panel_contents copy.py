@@ -1,12 +1,5 @@
-# panel_contents_recomm_v1.2.py
-# 2026-05-20  Jonghyun Park w/ Claude
-# v1.2 변경: Product Recommendation (PR/US_PR) fallback type 추가, SKIP_KEYWORDS 비우기,
-#          PREFERRED_SEGMENT_CSV 옵션 (현재 비활성), US_CC_[US] 잔재 제외 룰 추가
-#
-# panel_contents.py 사본 — recomm (Recommendation) 계열 패널용.
-# SOURCE/TARGET PROJECT_ID 가 본 사본 전용 값으로 박혀있음.
-# 캠페인 prefix 가 [CAMPAIGN NAME]/[CAMPAIGN NAME] 가 아니면 OLD_KEYWORDS / NEW_KEYWORDS /
-# PANEL_NAME_REPLACEMENTS 도 함께 수정 필요 (아래 # TODO 표시).
+﻿# panel_contents.py
+# 2026-05-18  Jonghyun Park w/ Claude
 """
 Adobe Workspace project 의 지정한 panel 들 (기본: 전체) 을 다른 (빈) target project 로
 복제하면서 panel 안의 segment ID 들을 다른 키워드 패턴의 segment 로 자동 swap 하는 도구.
@@ -86,11 +79,11 @@ COMPANY_ID = "your_aa_company_id"
 
 # ─── 대상 프로젝트 ──────────────────────────────────────────────────
 # source = 복제 원본. Workspace URL 의 /workspace/edit/{이부분}
-SOURCE_PROJECT_ID = "YOUR_PROJECT_ID"   # 참고 원본 프로젝트
+SOURCE_PROJECT_ID = "YOUR_PROJECT_ID"   # CAMPAIGN NAME 캠페인 프로젝트 (구조 참고용)
 # target = 미리 UI 에서 빈 프로젝트로 생성해둔 곳 (user1 owner)
-# TARGET_PROJECT_ID = "YOUR_PROJECT_ID" # team공유용.
-TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis (Product Recommendation) | API (user_id)
-# https://experience.adobe.com/@company_name/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
+TARGET_PROJECT_ID = "YOUR_PROJECT_ID" # CAMPAIGN NAME (user_id)플젝
+# TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # team공유용. CAMPAIGN NAME 캠페인 프로젝트 
+
 # source 의 어느 panel(들) 을 가져올지.
 #   · "all"            → 모든 panel (기본)
 #   · [0]              → 첫 panel 만
@@ -100,12 +93,19 @@ TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # [part_name] 2026 CAMPAIGN NAME | Conte
 SOURCE_PANEL_INDICES: "list[int] | str" = "all"
 
 # ─── segment 검색 키워드 ───────────────────────────────────────────
-# TODO: 캠페인이 [CAMPAIGN NAME] → [CAMPAIGN NAME] 가 아니면 아래 값을 새 캠페인 prefix 에 맞게 변경.
-#       SWAP_REQUIRED_KEYWORDS (아래) 도 동일하게 맞춰야 함.
 # source panel 에 박혀있는 segment 들이 매칭될 OLD 키워드 (검증용)
 OLD_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME"]
 # target segment 들이 매칭될 NEW 키워드 (회사 전체 /segments paginate 후 클라 필터)
 NEW_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME"]
+
+# ─── target segment 이름 추가 필터 ─────────────────────────────────
+# NEW_KEYWORDS 로 잡힌 SW 후보들 중에서 이 키워드 매칭하는 것만 매핑 후보로 사용.
+# 빈 list 면 추가 필터 안 함 (기본).
+#   · TARGET_SEG_NAME_KEYWORDS=["CC_03.", "Visit"], MODE="AND"  → 두 키워드 다 포함
+#   · TARGET_SEG_NAME_KEYWORDS=["CC_03.", "CC_04."], MODE="OR"  → 한 개라도 포함
+# 대소문자 무시 substring 매칭.
+TARGET_SEG_NAME_KEYWORDS: list[str] = []
+TARGET_SEG_NAME_MODE: str = "AND"   # "AND" 또는 "OR"
 
 # ─── (type, number) 추출 패턴 ───────────────────────────────────────
 # segment 이름에서 분류 키 (type, number) 를 뽑아내는 정규식.
@@ -141,8 +141,7 @@ SUB_NUM_PATTERN = re.compile(r"\s-\s(\d+)\.", re.IGNORECASE)
 # 이 키워드 중 하나라도 이름에 포함되어 있어야 swap 대상으로 본다.
 # 없으면 system / 공용 segment 로 간주하고 target 에서도 같은 ID 그대로 둠
 # (예: "No Data", "PC User (Visit)", "[part_name] Excluded EPP", "[Global] Excluded APP").
-# TODO: OLD_KEYWORDS 와 동일하게 캠페인 prefix 에 맞게 변경.
-SWAP_REQUIRED_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME", "Product Recommendation"]
+SWAP_REQUIRED_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME"]
 
 # ─── Ambiguous tie-breaker (소유자 우선순위) ──────────────────────
 # 같은 키 ((type, num/sub_num, suffix) 등) 에 SW segment 가 2개 이상 매칭될 때,
@@ -156,13 +155,7 @@ PREFERRED_OWNER_ID = "YOUR_LOGIN_ID"  # user2
 # segment 들 (예: "recomm" → Product Recommendation - 01. Foo 같은 sub 변형).
 # sub_num 없는 컨테이너 segment (예: "CC_08. Product Recommendation") 는 영향 없이
 # 정상 매칭. 추후 MANUAL_OVERRIDES 또는 별도 도구로 처리.
-SKIP_KEYWORDS: list[str] = []  # 새 [CAMPAIGN NAME] CC_Product Recommendation 추가됨 → recomm 도 자동 매칭 OK
-
-# ─── candidate 제한 (특정 result csv 의 SegmentId 만 swap 후보) ──────
-# 빈 string 이면 NEW_KEYWORDS 매칭 segment 전체 사용.
-# 박혀있으면 그 csv 의 SegmentId 컬럼 값에 해당하는 segment 만 candidate.
-# (입력 csv 형식: aa_create_segment_v2.2.py 의 result csv — header 에 'SegmentId' 컬럼)
-PREFERRED_SEGMENT_CSV = ""  # 비활성화 — 중복 segment 삭제 완료, NEW_KEYWORDS 전체에서 매칭
+SKIP_KEYWORDS = ["recomm"]
 
 # ─── 이름 정규화 패턴 (CC/US_CC 패턴 없는 segment 용 fallback) ─────────
 # segment ID 는 다르지만 "같은 논리적 컨셉" 인 경우 매칭하려고 이름을 정규화해서 비교.
@@ -178,7 +171,16 @@ NAME_NORMALIZATION_PATTERNS = [
 # 연결하고 싶을 때 직접 박아둠. 자동 매칭보다 우선.
 # dry-run 결과 NO_MATCH / AMBIGUOUS 잡힌 것 보고 추가.
 MANUAL_OVERRIDES: dict[str, str] = {
-    # "s200001591_xxxxxxxxxxxxxxxxxxxxxxxx": "s200001591_yyyyyyyyyyyyyyyyyyyyyyyy",
+    # MD CC_03 sub_num 9 → 새 SW 9 (evar96/105 제거 cross-RSID 호환, 2026-05-27 1509 ts)
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",  # CC_03-01 base
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",  # CC_03-01 Visit
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",  # CC_03-01 DP
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",  # CC_03-02 base
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",  # CC_03-02 Visit
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",  # CC_03-02 DP
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",  # CC_03-03 base
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",  # CC_03-03 Visit
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",  # CC_03-03 DP
 }
 
 # ─── No Data fallback ───────────────────────────────────────────────
@@ -191,12 +193,40 @@ MANUAL_OVERRIDES: dict[str, str] = {
 NO_DATA_NAME_PATTERN = re.compile(r"\bNo\s*Data\b", re.IGNORECASE)
 USE_NO_DATA_FALLBACK = True
 
+# ─── 끝쪽 sub_num 미매칭 시 column 제거 ────────────────────────────
+# True 면: source 의 sub_num 이 SW (type, primary_num) 의 max sub_num 보다 클 때
+# (즉 SW 끝쪽에 없는 경우) → mapping 안 만들고 panel JSON 에서 그 source ID 를
+# 참조하는 list/segment object entry 를 통째로 제거 (한 칸 당기는 효과).
+# False 면: 기존 동작 (sub→cc_key fallback 또는 No Data).
+# 시작/중간 빔 (예: SW 가 02,03,04 만 있고 MD 가 01) 은 영향 X — No Data 유지.
+TRIM_TAIL_UNMATCHED_SUB_NUM = True
+
+# ─── SW 기준 순서 매핑 (sub_num 매칭 무시) ──────────────────────────
+# True 면: sub_num / primary CC 정확 매칭 무시. 같은 type (CC vs US_CC) 안에서
+# SW segment list 와 MD source list 를 (primary_num, sub_num, suffix) 정렬 후
+# 위치 기반 zip 매핑. SW 가 정의하는 column 순서대로 MD panel column 자리에 채움.
+#   · MD 가 더 많은 type → 끝 source 들 tail 처리 (panel 에서 제거 시도).
+#   · SW 가 더 많은 type → 초과 SW 는 panel 에 안 들어감 (panel column 동적 추가
+#     미구현 — panel JSON dump 받은 후 확장 예정).
+# 우선순위: MANUAL > keep > skip > [SW_ORDER 매핑] > normalize fallback (CC 패턴 없는
+# segment 용). sub_num/primary CC 정확 매칭 단계는 SW_ORDER_MAPPING=True 시 스킵.
+SW_ORDER_MAPPING = False
+
+# ─── Shift Tail to Next Primary (cursor 기반 cascade) ───────────────
+# True 면: (type, suffix) 그룹 안에서 SW cursor 진행하면서 매핑.
+#   · MD primary 가 SW 에 있으면 → SW cursor 의 현재 segment 와 매핑
+#   · MD primary 가 SW 에 없으면 → No Data, SW cursor 유지 (CC_01 케이스)
+#   · sub_num breakdown 의 tail (예: SW 에 CC_03-04 없음) → SW cursor 의 다음
+#     segment 로 매핑 → cascade shift (MD CC_04 → SW CC_05 식)
+#   · SW cursor 가 끝나면 No Data
+# sub_num/primary CC 매칭 단계는 SHIFT_TAIL_TO_NEXT_PRIMARY=True 시 스킵.
+# SW_ORDER_MAPPING 과 동시 활성 비추천 — SHIFT 가 우선.
+SHIFT_TAIL_TO_NEXT_PRIMARY = False
+
 # ─── 테이블(subPanel) 접힘 상태 강제 ───────────────────────────────
 COLLAPSE_ALL_SUBPANELS = True
 
 # ─── Panel 이름 변환 패턴 (panel 헤더 텍스트) ────────────────────────
-# TODO: 캠페인이 [CAMPAIGN NAME] → [CAMPAIGN NAME] 가 아니면 아래 치환 룰을 새 캠페인 명칭에 맞게 변경.
-#       필요 없으면 RENAME_PANEL=False 로 두면 panel 이름은 source 그대로 복사됨.
 RENAME_PANEL = True
 PANEL_NAME_REPLACEMENTS = [
     (r"\[ALL\s+SITES\]\s*",         ""),                  # "[ALL SITES] " 제거
@@ -291,21 +321,44 @@ def _extract_segment_ids(node) -> set[str]:
     return found
 
 
+SEG_ID_PATTERN = re.compile(r"s\d+_[0-9a-f]+")   # search 용 (anchor 없음)
+
+
 def _swap_segment_ids(node, mapping: dict[str, str]):
-    """JSON 트리 안의 segment ID 들을 mapping 대로 in-place 치환."""
+    """JSON 트리 안의 segment ID 들을 mapping 대로 in-place 치환.
+    잡는 위치:
+      · dict key (예: {"s200001591_xxx": {...}}) — key 자체 치환
+      · dict value 의 string (segment ID 단독 또는 substring 포함)
+      · list element 의 string
+      · 더 깊은 nested 위치도 재귀 처리
+    string 안의 모든 segment ID 발생을 mapping 대로 일괄 치환 (substring 매칭)."""
+
+    def repl(s: str) -> str:
+        return SEG_ID_PATTERN.sub(lambda m: mapping.get(m.group(0), m.group(0)), s)
 
     def walk(obj):
         if isinstance(obj, dict):
+            # dict key 치환 (segment ID 가 key 위치에 박힌 경우)
+            for k in list(obj.keys()):
+                if isinstance(k, str):
+                    new_k = repl(k)
+                    if new_k != k:
+                        obj[new_k] = obj.pop(k)
+            # value 치환 + 재귀
             for k, v in list(obj.items()):
-                if isinstance(v, str) and SEG_ID_RE.match(v) and v in mapping:
-                    obj[k] = mapping[v]
-                else:
+                if isinstance(v, str):
+                    new_v = repl(v)
+                    if new_v != v:
+                        obj[k] = new_v
+                elif isinstance(v, (dict, list)):
                     walk(v)
         elif isinstance(obj, list):
             for i, v in enumerate(obj):
-                if isinstance(v, str) and SEG_ID_RE.match(v) and v in mapping:
-                    obj[i] = mapping[v]
-                else:
+                if isinstance(v, str):
+                    new_v = repl(v)
+                    if new_v != v:
+                        obj[i] = new_v
+                elif isinstance(v, (dict, list)):
                     walk(v)
 
     walk(node)
@@ -392,29 +445,12 @@ def _extract_cc_key(name: str) -> tuple[str, str, str] | None:
     """이름에서 (type, number_raw, suffix) 키 추출. US_CC 먼저, 그 다음 CC.
     suffix 는 'visit' / 'delayed' / '' 중 하나.
     type/number 매칭 안 되면 None.
-    number_raw 는 zero-pad 그대로 ("01" vs "1" 구분) — source/target 표기 통일 가정.
-
-    fallback: CC 패턴 없어도 'Product Recommendation - NN.' 형식이면
-    type='PR' + num=sub_num 으로 매칭 키 생성 (source 와 target 둘 다 동일하게 추출됨).
-    이는 source 의 [CAMPAIGN NAME] 없는 'Product Recommendation - 01. ...' 와
-    target 의 '[CAMPAIGN NAME] CC_Product Recommendation - 01. ...' 를 같은 키로 묶기 위함."""
+    number_raw 는 zero-pad 그대로 ("01" vs "1" 구분) — source/target 표기 통일 가정."""
     n = name or ""
-    # 잔재 segment 제외: 'US_CC_[US]' (dedupe 안 된 옛 이름) → 매칭 후보 제외
-    if re.search(r"US_CC_\[US\]", n, re.IGNORECASE):
-        return None
     for type_label, pat in CC_TYPE_PATTERNS:
         m = pat.search(n)
         if m:
             return (type_label, m.group(1), _extract_suffix(n))
-    # fallback — Product Recommendation 패턴 (Global vs US 분리)
-    # US 우선순위: US_CC_Product Recommendation 또는 [US] Product Recommendation
-    has_us = bool(re.search(r"\[US\]\s*Product Recommendation|US_CC_Product Recommendation|US_Product Recommendation", n, re.IGNORECASE))
-    has_pr = bool(re.search(r"Product Recommendation", n, re.IGNORECASE))
-    if has_pr:
-        sub_num = _extract_sub_num(n)
-        if sub_num:
-            type_label = "US_PR" if has_us else "PR"
-            return (type_label, sub_num, _extract_suffix(n))
     return None
 
 
@@ -469,10 +505,49 @@ def _has_skip_keyword(name: str) -> bool:
     return any(k.lower() in n for k in SKIP_KEYWORDS)
 
 
+def _filter_by_name_keywords(items: list[dict], keywords: list[str], mode: str) -> list[dict]:
+    """이름 기반 추가 필터 — TARGET_SEG_NAME_KEYWORDS 적용용.
+    keywords 빈 list 면 그대로 통과. 대소문자 무시 substring 매칭.
+    mode='AND' → 모든 키워드 포함, mode='OR' → 한 개라도 포함."""
+    if not keywords:
+        return items
+    kw_lower = [k.lower() for k in keywords if k]
+    if not kw_lower:
+        return items
+    mode_up = (mode or "").strip().upper()
+    out = []
+    for it in items:
+        n_lower = (it.get("name") or "").lower()
+        if mode_up == "AND":
+            if all(k in n_lower for k in kw_lower):
+                out.append(it)
+        else:  # OR
+            if any(k in n_lower for k in kw_lower):
+                out.append(it)
+    return out
+
+
 def _pick_by_owner(cand: list[dict], owner_id: str) -> dict | None:
-    """cand 중 owner.id 가 owner_id 인 것 1개 리턴. 0개 또는 2개 이상이면 None.
-    AMBIGUOUS tie-breaker 용 (예: user2 의 segment 우선)."""
-    matched = [c for c in cand if str(((c.get("owner") or {}).get("id") or "")) == str(owner_id)]
+    """AMBIGUOUS tie-breaker — 2개 이상 후보를 1개로 좁히기.
+    적용 순서:
+      1단계 (prefix 필터): 이름이 NEW_KEYWORDS 의 '[' 로 시작하는 prefix 로 정확히
+            시작하는 것만 남김 (예: "UK_추가_[CAMPAIGN NAME] ..." 같은 wrap prefix segment 거름).
+            이 단계에서 1개로 좁혀지면 그걸로 채택 (owner 무관).
+      2단계 (owner 매칭): 1단계 후에도 여러 개면 owner.id 가 owner_id 와 일치하는
+            것 1개로 좁힘.
+    그래도 1개로 안 좁혀지면 None (호출자가 AMBIGUOUS 처리)."""
+    # 1단계: prefix 필터 — UK_추가_ 같은 wrap prefix 거름 (owner 무관)
+    bracketed_prefixes = [k for k in NEW_KEYWORDS if k.startswith("[")]
+    filtered = list(cand)
+    if bracketed_prefixes:
+        filtered = [c for c in filtered
+                    if any((c.get("name") or "").lstrip().startswith(kw) for kw in bracketed_prefixes)]
+    if len(filtered) == 1:
+        return filtered[0]
+    if len(filtered) == 0:
+        return None
+    # 2단계: owner.id 매칭
+    matched = [c for c in filtered if str(((c.get("owner") or {}).get("id") or "")) == str(owner_id)]
     return matched[0] if len(matched) == 1 else None
 
 
@@ -489,6 +564,109 @@ def _rename_panel(name: str) -> str:
     for pat, repl in PANEL_NAME_REPLACEMENTS:
         out = re.sub(pat, repl, out, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", out).strip()
+
+
+def _remove_source_ids_from_panel(panel: dict, ids_to_remove: set[str]) -> tuple[int, list[str]]:
+    """panel JSON 트리에서 ids_to_remove 의 segment ID 를 참조하는 list element 들을
+    list 에서 제거 (in-place). 적용 규칙:
+      · list 의 element 가 string 이고 ids_to_remove 에 있으면 → list 에서 제거
+      · list 의 element 가 dict 이고 그 dict 의 'id' / 'componentId' / 'segmentId'
+        value 가 ids_to_remove 에 있으면 → dict 통째로 list 에서 제거
+      · dict value 위치 ({"segmentId": "..."}) 는 안 건드림 — 구조 보존
+    Returns: (n_removed, sample_paths) — 제거된 entry 개수 + 위치 sample 디버그 용도."""
+    n_removed = 0
+    samples: list[str] = []
+
+    def walk(node, path: str):
+        nonlocal n_removed
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if isinstance(v, (dict, list)):
+                    walk(v, f"{path}.{k}")
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                if isinstance(item, (dict, list)):
+                    walk(item, f"{path}[{i}]")
+            kept = []
+            for i, item in enumerate(node):
+                if isinstance(item, str) and item in ids_to_remove:
+                    n_removed += 1
+                    if len(samples) < 20:
+                        samples.append(f"{path}[{i}] str={item}")
+                    continue
+                if isinstance(item, dict):
+                    sid = item.get("id") or item.get("componentId") or item.get("segmentId")
+                    if isinstance(sid, str) and sid in ids_to_remove:
+                        n_removed += 1
+                        if len(samples) < 20:
+                            samples.append(f"{path}[{i}] dict.id={sid}")
+                        continue
+                kept.append(item)
+            node[:] = kept
+
+    walk(panel, "panel")
+    return n_removed, samples
+
+
+ISO_INTERVAL_RE_BUILD = re.compile(
+    r"^\d{4}-\d{2}-\d{2}(?:T[\d:.+\-Z]*)?/\d{4}-\d{2}-\d{2}(?:T[\d:.+\-Z]*)?$"
+)
+
+
+def _collect_date_intervals(node) -> list[str]:
+    """panel 트리에서 ISO interval format '<ISO>/<ISO>' 값들을 path 순으로 모음.
+    같은 path 의 같은 값을 target/source 비교에 쓰는 게 아니라, 단순 occurrence list 로
+    수집해서 첫 N 개를 target 의 첫 N 개로 복원하는 방식. panel 구조가 동일하니까
+    occurrence 순서가 동일하다는 가정."""
+    out: list[str] = []
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            for v in obj.values():
+                if isinstance(v, str) and ISO_INTERVAL_RE_BUILD.match(v):
+                    out.append(v)
+                elif isinstance(v, (dict, list)):
+                    walk(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                if isinstance(v, str) and ISO_INTERVAL_RE_BUILD.match(v):
+                    out.append(v)
+                elif isinstance(v, (dict, list)):
+                    walk(v)
+
+    walk(node)
+    return out
+
+
+def _restore_date_intervals(node, values: list[str]) -> int:
+    """panel 트리의 ISO interval format 값들을 values list 순으로 복원 (in-place).
+    occurrence 순서대로 매칭. values 길이보다 발견 위치가 많으면 초과분은 그대로 둠.
+    Returns: 복원된 개수."""
+    n_restored = 0
+    idx = [0]   # closure 카운터
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            for k, v in list(obj.items()):
+                if isinstance(v, str) and ISO_INTERVAL_RE_BUILD.match(v):
+                    if idx[0] < len(values):
+                        if obj[k] != values[idx[0]]:
+                            obj[k] = values[idx[0]]
+                        idx[0] += 1
+                elif isinstance(v, (dict, list)):
+                    walk(v)
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                if isinstance(v, str) and ISO_INTERVAL_RE_BUILD.match(v):
+                    if idx[0] < len(values):
+                        if obj[i] != values[idx[0]]:
+                            obj[i] = values[idx[0]]
+                        idx[0] += 1
+                elif isinstance(v, (dict, list)):
+                    walk(v)
+
+    walk(node)
+    return idx[0]
 
 
 def _collapse_all_subpanels(panel: dict) -> int:
@@ -608,30 +786,20 @@ def main() -> int:
     print(f"\n[3] Fetching all segments matching {NEW_KEYWORDS}...")
     new_segs = _list_segments_by_keyword(headers, gcid, NEW_KEYWORDS)
     print(f"  → 매칭된 {NEW_KEYWORDS[0]} 계열 segment: {len(new_segs)} 개")
-
-    # candidate 제한 — PREFERRED_SEGMENT_CSV 의 SegmentId 만 candidate 로
-    if PREFERRED_SEGMENT_CSV:
-        preferred_ids: set[str] = set()
-        try:
-            with open(PREFERRED_SEGMENT_CSV, encoding="utf-8-sig", newline="") as f:
-                rdr = csv.DictReader(f)
-                for row in rdr:
-                    sid = (row.get("SegmentId") or row.get("segment_id") or "").strip()
-                    if sid:
-                        preferred_ids.add(sid)
-            print(f"  → PREFERRED_SEGMENT_CSV: {len(preferred_ids)} ids ({Path(PREFERRED_SEGMENT_CSV).name})")
-            new_segs = [s for s in new_segs if s.get("id") in preferred_ids]
-            print(f"  → filtered candidates: {len(new_segs)} (csv 안 SegmentId 만)")
-        except Exception as e:
-            print(f"  ⚠️ PREFERRED_SEGMENT_CSV 로드 실패 — {e}. filter 건너뜀.")
+    if TARGET_SEG_NAME_KEYWORDS:
+        before = len(new_segs)
+        new_segs = _filter_by_name_keywords(new_segs, TARGET_SEG_NAME_KEYWORDS, TARGET_SEG_NAME_MODE)
+        print(f"  추가 필터 ({TARGET_SEG_NAME_MODE} {TARGET_SEG_NAME_KEYWORDS}): {before} → {len(new_segs)} 개")
 
     # CC/US_CC 키별 인덱스 분리:
     #   · new_by_sub_key: sub_num 있는 target — (type, sub_num, suffix)
     #   · new_by_cc_key : sub_num 없는 target — (type, primary_num, suffix)
     # + normalize 인덱스 (fallback)
+    # + sw_max_sub_by_primary: (type, primary_num) → max int(sub_num) — TRIM 판정용
     new_by_cc_key: dict[tuple[str, str, str], list[dict]] = {}
     new_by_sub_key: dict[tuple[str, str, str], list[dict]] = {}
     new_by_norm: dict[str, list[dict]] = {}
+    sw_max_sub_by_primary: dict[tuple[str, str], int] = {}
     for it in new_segs:
         name = it.get("name", "")
         key = _extract_cc_key(name)
@@ -639,6 +807,14 @@ def main() -> int:
         if key:
             if sub is not None:
                 new_by_sub_key.setdefault((key[0], sub, key[2]), []).append(it)
+                try:
+                    sub_int = int(sub)
+                    primary_key = (key[0], key[1])
+                    prev = sw_max_sub_by_primary.get(primary_key)
+                    if prev is None or sub_int > prev:
+                        sw_max_sub_by_primary[primary_key] = sub_int
+                except ValueError:
+                    pass
             else:
                 new_by_cc_key.setdefault(key, []).append(it)
         norm = _normalize_name(name)
@@ -647,8 +823,10 @@ def main() -> int:
     # 4) 매핑 빌드
     print("\n[4] Building old → new mapping...")
     print("    우선순위: MANUAL_OVERRIDES > keep(no [CAMPAIGN NAME]) > skip(SKIP_KEYWORDS + sub_num→no_data)")
-    print("              > sub_num((type,sub_num,suffix)) > primary CC((type,num,suffix))")
+    print("              > sub_num((type,sub_num,suffix)) > tail trim (끝쪽 sub_num) > primary CC")
     print("              > No Data fallback > normalize_name")
+    if TRIM_TAIL_UNMATCHED_SUB_NUM:
+        print(f"  (TRIM_TAIL_UNMATCHED_SUB_NUM=True — SW max sub_num 초과 source 는 panel 에서 제거)")
     if MANUAL_OVERRIDES:
         print(f"  (수동 오버라이드 {len(MANUAL_OVERRIDES)}건 우선 적용)")
     if SKIP_KEYWORDS:
@@ -660,6 +838,129 @@ def main() -> int:
     rows: list[dict] = []
     unmapped_src: list[str] = []
     ambiguous: list[tuple[str, list[dict]]] = []
+    tail_source_ids: set[str] = set()   # TRIM_TAIL_UNMATCHED_SUB_NUM / SW_ORDER 대상 (panel 에서 제거)
+
+    # SW_ORDER_MAPPING 모드 — 같은 type (CC vs US_CC) 안에서 SW list 와 MD source list 를
+    # (primary_num int, sub_num int, suffix_order) 정렬 후 위치 기반 zip.
+    sw_order_mapping: dict[str, dict] = {}   # sid → matched SW item dict
+    sw_order_tail: set[str] = set()          # MD 가 더 많은 경우 끝 source 들 (panel 에서 제거 대상)
+    sw_order_excess: list[dict] = []         # SW 가 더 많은 경우 안 들어간 SW 들 (콘솔 디버그용)
+    if SW_ORDER_MAPPING:
+        def _sort_seg(name: str):
+            k = _extract_cc_key(name)
+            s = _extract_sub_num(name)
+            return _cc_sort_key(k, s)
+
+        md_by_type: dict[str, list[str]] = {}
+        sw_by_type: dict[str, list[dict]] = {}
+        for sid in src_seg_ids:
+            nm = src_seg_info[sid]["name"]
+            if not _has_swap_keyword(nm):
+                continue
+            if SKIP_KEYWORDS and _extract_sub_num(nm) is not None and _has_skip_keyword(nm):
+                continue
+            k = _extract_cc_key(nm)
+            if not k:
+                continue
+            md_by_type.setdefault(k[0], []).append(sid)
+        for it in new_segs:
+            k = _extract_cc_key(it.get("name", ""))
+            if not k:
+                continue
+            sw_by_type.setdefault(k[0], []).append(it)
+        for t in md_by_type:
+            md_by_type[t].sort(key=lambda s: (_sort_seg(src_seg_info[s]["name"]), src_seg_info[s]["name"]))
+        for t in sw_by_type:
+            sw_by_type[t].sort(key=lambda it: (_sort_seg(it.get("name", "")), it.get("name", "")))
+        for t, md_list in md_by_type.items():
+            sw_list = sw_by_type.get(t, [])
+            for i, sid in enumerate(md_list):
+                if i < len(sw_list):
+                    sw_order_mapping[sid] = sw_list[i]
+                else:
+                    sw_order_tail.add(sid)
+            if len(sw_list) > len(md_list):
+                sw_order_excess.extend(sw_list[len(md_list):])
+        print(f"  [SW_ORDER_MAPPING] type 별 zip 결과:")
+        for t in sorted(set(list(md_by_type.keys()) + list(sw_by_type.keys()))):
+            n_md = len(md_by_type.get(t, []))
+            n_sw = len(sw_by_type.get(t, []))
+            print(f"    {t:<7}: MD={n_md}  SW={n_sw}  → 매핑 {min(n_md, n_sw)} / tail {max(0, n_md - n_sw)} / excess {max(0, n_sw - n_md)}")
+        if sw_order_excess:
+            print(f"  ⚠️ SW 초과 {len(sw_order_excess)} 개 — panel column 동적 추가 미구현. UI 에서 수동 추가 필요.")
+            for it in sw_order_excess[:10]:
+                print(f"      · {it.get('id')}  {it.get('name', '')}")
+
+    # SHIFT_TAIL_TO_NEXT_PRIMARY 모드 — cursor 기반 cascade shift.
+    # (type, suffix) 그룹 별로 MD source 와 SW segment 를 (primary, sub_num) 정렬 후
+    # SW pointer 진행하면서 매핑. MD primary 가 SW 에 없으면 No Data + cursor 유지.
+    shift_mapping: dict[str, dict] = {}     # sid → matched SW item
+    shift_no_data: set[str] = set()         # SW 에 same primary 없거나 cursor 끝남 → No Data
+    if SHIFT_TAIL_TO_NEXT_PRIMARY:
+        def _sort_seg2(name: str):
+            k = _extract_cc_key(name)
+            s = _extract_sub_num(name)
+            return _cc_sort_key(k, s)
+
+        # SW 의 (type) 별 primary set 구함 — primary 존재 여부 판정용
+        sw_primaries_by_type: dict[str, set[str]] = {}
+        for it in new_segs:
+            k = _extract_cc_key(it.get("name", ""))
+            if k:
+                sw_primaries_by_type.setdefault(k[0], set()).add(k[1])
+
+        # (type, suffix) 별로 grouping
+        md_by_ts: dict[tuple[str, str], list[str]] = {}
+        sw_by_ts: dict[tuple[str, str], list[dict]] = {}
+        for sid in src_seg_ids:
+            nm = src_seg_info[sid]["name"]
+            if not _has_swap_keyword(nm):
+                continue
+            if SKIP_KEYWORDS and _extract_sub_num(nm) is not None and _has_skip_keyword(nm):
+                continue
+            k = _extract_cc_key(nm)
+            if not k:
+                continue
+            md_by_ts.setdefault((k[0], k[2]), []).append(sid)
+        for it in new_segs:
+            k = _extract_cc_key(it.get("name", ""))
+            if not k:
+                continue
+            sw_by_ts.setdefault((k[0], k[2]), []).append(it)
+
+        for ts_key in md_by_ts:
+            md_by_ts[ts_key].sort(key=lambda s: (_sort_seg2(src_seg_info[s]["name"]), src_seg_info[s]["name"]))
+        for ts_key in sw_by_ts:
+            sw_by_ts[ts_key].sort(key=lambda it: (_sort_seg2(it.get("name", "")), it.get("name", "")))
+
+        # cursor 알고리즘
+        for ts_key, md_list in md_by_ts.items():
+            sw_list = sw_by_ts.get(ts_key, [])
+            sw_primaries_in_type = sw_primaries_by_type.get(ts_key[0], set())
+            sw_cursor = 0
+            for sid in md_list:
+                nm = src_seg_info[sid]["name"]
+                k = _extract_cc_key(nm)
+                md_primary = k[1]
+                # SW 에 same primary 자체 없으면 → No Data, cursor 유지
+                if md_primary not in sw_primaries_in_type:
+                    shift_no_data.add(sid)
+                    continue
+                # cursor 끝났으면 → No Data
+                if sw_cursor >= len(sw_list):
+                    shift_no_data.add(sid)
+                    continue
+                shift_mapping[sid] = sw_list[sw_cursor]
+                sw_cursor += 1
+
+        print(f"  [SHIFT_TAIL_TO_NEXT_PRIMARY] (type, suffix) 별 cursor 매핑 결과:")
+        for ts_key in sorted(set(list(md_by_ts.keys()) + list(sw_by_ts.keys()))):
+            n_md = len(md_by_ts.get(ts_key, []))
+            n_sw = len(sw_by_ts.get(ts_key, []))
+            n_mapped = sum(1 for sid in md_by_ts.get(ts_key, []) if sid in shift_mapping)
+            n_nodata = sum(1 for sid in md_by_ts.get(ts_key, []) if sid in shift_no_data)
+            print(f"    ({ts_key[0]:<6}, {ts_key[1]:<8}): MD={n_md}  SW={n_sw}  → 매핑 {n_mapped} / no_data {n_nodata}")
+
     for sid in sorted(src_seg_ids, key=lambda s: (
         _cc_sort_key(_extract_cc_key(src_seg_info[s]["name"]), _extract_sub_num(src_seg_info[s]["name"])),
         src_seg_info[s]["name"],
@@ -690,7 +991,74 @@ def main() -> int:
             })
             continue
 
-        # 2) [CAMPAIGN NAME] prefix 없는 system/공용 segment → swap 없이 keep
+        # 2) SW_ORDER_MAPPING 모드면 미리 빌드된 dict 우선 적용
+        if SW_ORDER_MAPPING and _has_swap_keyword(name):
+            if sid in sw_order_mapping:
+                it = sw_order_mapping[sid]
+                mapping[sid] = it["id"]
+                rows.append({
+                    "SourceSegId":   sid,
+                    "SourceSegName": name,
+                    "MatchKey":      key_str,
+                    "NormalizedName": norm,
+                    "TargetSegId":   it["id"],
+                    "TargetSegName": it.get("name", ""),
+                    "MatchStatus":   "OK (sw_order)",
+                })
+                continue
+            if sid in sw_order_tail:
+                tail_source_ids.add(sid)
+                fallback_status = "REMOVE (sw_order tail)"
+                target_id_disp = ""
+                target_name_disp = "(REMOVE — SW list 끝남)"
+                if no_data_sid and USE_NO_DATA_FALLBACK:
+                    mapping[sid] = no_data_sid
+                    fallback_status = "REMOVE (sw_order tail) → no_data fallback"
+                    target_id_disp = no_data_sid
+                    target_name_disp = "(TRIM 시도 → 실패 시 No Data 보험; SW list 끝남)"
+                rows.append({
+                    "SourceSegId":   sid,
+                    "SourceSegName": name,
+                    "MatchKey":      key_str,
+                    "NormalizedName": norm,
+                    "TargetSegId":   target_id_disp,
+                    "TargetSegName": target_name_disp,
+                    "MatchStatus":   fallback_status,
+                })
+                continue
+            # SW_ORDER 에서 안 잡혔으면 CC key 없는 source 일 가능성 → normalize 로 fall through
+
+        # 2.5) SHIFT_TAIL_TO_NEXT_PRIMARY 모드 — 미리 빌드된 cursor 매핑 적용
+        if SHIFT_TAIL_TO_NEXT_PRIMARY and _has_swap_keyword(name):
+            if sid in shift_mapping:
+                it = shift_mapping[sid]
+                mapping[sid] = it["id"]
+                rows.append({
+                    "SourceSegId":   sid,
+                    "SourceSegName": name,
+                    "MatchKey":      key_str,
+                    "NormalizedName": norm,
+                    "TargetSegId":   it["id"],
+                    "TargetSegName": it.get("name", ""),
+                    "MatchStatus":   "OK (shift)",
+                })
+                continue
+            if sid in shift_no_data:
+                if no_data_sid and USE_NO_DATA_FALLBACK:
+                    mapping[sid] = no_data_sid
+                rows.append({
+                    "SourceSegId":   sid,
+                    "SourceSegName": name,
+                    "MatchKey":      key_str,
+                    "NormalizedName": norm,
+                    "TargetSegId":   no_data_sid or "",
+                    "TargetSegName": no_data_name or "",
+                    "MatchStatus":   "OK (shift→no_data)",
+                })
+                continue
+            # SHIFT 에서 안 잡혔으면 CC key 없는 source 일 가능성 → normalize 로 fall through
+
+        # 3) [CAMPAIGN NAME] prefix 없는 system/공용 segment → swap 없이 keep
         #    (target 에도 같은 ID 그대로 참조 — No Data, PC User, [part_name], [Global] 등)
         if not _has_swap_keyword(name):
             rows.append({
@@ -734,7 +1102,8 @@ def main() -> int:
         # 4) sub_num 매칭 — source 가 ' - ##.' 가지면 (type, sub_num, suffix) 로 1차 매칭
         #    (primary CC 번호 다른 target 도 OK — sub_num 이 핵심 키)
         #    매칭 실패시 즉시 No Data 로 빠지지 않고 5) primary CC fallback 으로 흘러감.
-        if key is not None and sub is not None:
+        #    SW_ORDER_MAPPING 모드에서는 사전 처리되니까 스킵.
+        if not SW_ORDER_MAPPING and not SHIFT_TAIL_TO_NEXT_PRIMARY and key is not None and sub is not None:
             cand_key = (key[0], sub, key[2])
             cand = new_by_sub_key.get(cand_key) or []
             if len(cand) == 1:
@@ -776,15 +1145,49 @@ def main() -> int:
                     "MatchStatus":   f"AMBIGUOUS_sub_num({len(cand)})",
                 })
                 continue
-            # cand == 0 → 5) primary CC 매칭으로 fall through
+            # cand == 0 → 끝쪽 sub_num 빔 (SW max 보다 큰 source) 이면 panel 에서 제거.
+            #             그 외 (시작/중간 빔) 는 5) primary CC fallback 으로 흘러감.
+            if TRIM_TAIL_UNMATCHED_SUB_NUM:
+                primary_key = (key[0], key[1])
+                sw_max_sub = sw_max_sub_by_primary.get(primary_key)
+                try:
+                    src_sub_int = int(sub)
+                except ValueError:
+                    src_sub_int = -1
+                if sw_max_sub is not None and src_sub_int > sw_max_sub:
+                    tail_source_ids.add(sid)
+                    # 보험 — panel JSON 제거가 실패할 가능성 대비 mapping 에도 No Data 박음.
+                    # panel JSON 제거 성공 시: source ID 가 panel 에서 사라졌으니 mapping 영향 X.
+                    # 실패 시: _swap_segment_ids 가 source → No Data 로 swap → "No Data 가 그
+                    # 자리에 박힘" graceful fallback (panel column 수는 그대로 유지).
+                    fallback_status = "REMOVE (tail)"
+                    target_id_disp = ""
+                    target_name_disp = f"(REMOVE — SW max sub_num={sw_max_sub} < {src_sub_int})"
+                    if no_data_sid and USE_NO_DATA_FALLBACK:
+                        mapping[sid] = no_data_sid
+                        fallback_status = "REMOVE (tail) → no_data fallback"
+                        target_id_disp = no_data_sid
+                        target_name_disp = f"(TRIM 시도 → 실패 시 No Data 보험; SW max sub_num={sw_max_sub} < {src_sub_int})"
+                    rows.append({
+                        "SourceSegId":   sid,
+                        "SourceSegName": name,
+                        "MatchKey":      key_str,
+                        "NormalizedName": norm,
+                        "TargetSegId":   target_id_disp,
+                        "TargetSegName": target_name_disp,
+                        "MatchStatus":   fallback_status,
+                    })
+                    continue
+            # 끝쪽 아니거나 TRIM 꺼져있으면 5) primary CC 매칭으로 fall through
 
         # 5) primary CC 매칭 — sub_num 없는 컨테이너 segment, 또는 sub_num 매칭 실패 fallback.
         #    SW 의 sub_num 없는 컨테이너 (예: "CC_03. Scenario: Your Daily Sync") 와 매칭.
         #    여기서도 안 잡히면 No Data fallback.
         #    sub→cc_key fallback 시 중복 방지: 이미 다른 source 에 쓰인 target 은 후보에서
-        #    제외 → No Data 로. (컨테이너 source 가 먼저 처리되어 mapping 에 들어가니까
-        #    그 다음 sub_num 변형들이 fallback 들어올 때 cand 에서 자동 제거됨.)
-        if key is not None:
+        #    제외 → No Data 로. (sort 순서상 컨테이너 source 가 먼저 처리되어 mapping 에
+        #    들어가니까 그 다음 sub_num 변형들이 fallback 들어올 때 cand 에서 자동 제거됨.)
+        #    SW_ORDER_MAPPING 모드에서는 사전 처리되니까 스킵.
+        if not SW_ORDER_MAPPING and not SHIFT_TAIL_TO_NEXT_PRIMARY and key is not None:
             cand = new_by_cc_key.get(key) or []
             if sub is not None and cand:
                 used = set(mapping.values()) - ({no_data_sid} if no_data_sid else set())
@@ -899,6 +1302,10 @@ def main() -> int:
 
     # 5) 콘솔 요약 + CSV
     print(f"\n  매핑 결과:")
+    print(f"    OK (sw_order)             : {sum(1 for r in rows if r['MatchStatus'] == 'OK (sw_order)')}")
+    print(f"    REMOVE (sw_order tail)    : {sum(1 for r in rows if r['MatchStatus'] == 'REMOVE (sw_order tail)')}")
+    print(f"    OK (shift)                : {sum(1 for r in rows if r['MatchStatus'] == 'OK (shift)')}")
+    print(f"    OK (shift→no_data)        : {sum(1 for r in rows if r['MatchStatus'] == 'OK (shift→no_data)')}")
     print(f"    OK (sub_num)              : {sum(1 for r in rows if r['MatchStatus'] == 'OK (sub_num)')}")
     print(f"    OK (sub_num + owner_pref) : {sum(1 for r in rows if r['MatchStatus'] == 'OK (sub_num + owner_pref)')}")
     print(f"    OK (sub→cc_key)           : {sum(1 for r in rows if r['MatchStatus'] == 'OK (sub→cc_key)')}")
@@ -910,6 +1317,7 @@ def main() -> int:
     print(f"    OK (normalize + owner_pref): {sum(1 for r in rows if r['MatchStatus'] == 'OK (normalize + owner_pref)')}")
     print(f"    OK (manual)               : {sum(1 for r in rows if r['MatchStatus'] == 'OK (manual)')}")
     print(f"    OK (keep)                 : {sum(1 for r in rows if r['MatchStatus'] == 'OK (keep)')}")
+    print(f"    REMOVE (tail)             : {sum(1 for r in rows if r['MatchStatus'] == 'REMOVE (tail)')}")
     print(f"    NO_MATCH                  : {len(unmapped_src)}")
     print(f"    AMBIGUOUS                 : {len(ambiguous)}")
     print(f"    leftover {NEW_KEYWORDS[0]} segments not used: {len(leftover_new)}")
@@ -975,9 +1383,26 @@ def main() -> int:
             return 0
 
     print(f"\n[6] Building modified panels ({len(selected_panels)} 개)...")
+    if tail_source_ids:
+        print(f"  TRIM 대상 (끝쪽 sub_num) source ID: {len(tail_source_ids)} 개 — panel 에서 제거 시도")
+    # 날짜 유지 — target panel 들의 ISO interval (dateRange) 값을 미리 수집해서
+    # 새 panel 빌드 후 같은 occurrence 순서대로 복원. source 날짜 덮어쓰는 거 방지.
+    tgt_panels_existing = (tgt_ws[0].get("panels") if tgt_ws else None) or []
+    target_date_intervals_per_panel: list[list[str]] = []
+    for tgt_panel in tgt_panels_existing:
+        target_date_intervals_per_panel.append(_collect_date_intervals(tgt_panel))
     new_panels: list[dict] = []
-    for idx, src_panel in zip(panel_indices, selected_panels):
+    for build_i, (idx, src_panel) in enumerate(zip(panel_indices, selected_panels)):
         np = copy.deepcopy(src_panel)
+        # 1) tail (끝쪽 sub_num 미매칭) source ID 들을 panel JSON 에서 제거
+        if tail_source_ids:
+            n_trim, trim_samples = _remove_source_ids_from_panel(np, tail_source_ids)
+            print(f"  [{idx}] TRIM       : {n_trim} 개 entry 제거")
+            for s in trim_samples[:10]:
+                print(f"      · {s}")
+            if len(trim_samples) > 10:
+                print(f"      · ... ({len(trim_samples) - 10}개 더)")
+        # 2) 나머지 source → target swap
         _swap_segment_ids(np, mapping)
         if RENAME_PANEL:
             old_name = np.get("name", "")
@@ -989,6 +1414,12 @@ def main() -> int:
             n_collapsed = _collapse_all_subpanels(np)
             total = len(np.get("subPanels") or [])
             print(f"  [{idx}] subPanels  : {total} 개 중 {n_collapsed} 개 collapsed=True 로 변경")
+        # 3) 날짜 유지 — target 의 기존 dateRange 들로 occurrence 순서대로 복원
+        if build_i < len(target_date_intervals_per_panel):
+            tgt_intervals = target_date_intervals_per_panel[build_i]
+            if tgt_intervals:
+                n_restored = _restore_date_intervals(np, tgt_intervals)
+                print(f"  [{idx}] 날짜 복원 : {n_restored} 개 dateRange — target 의 기존 값으로 유지")
         new_panels.append(np)
 
     new_definition = copy.deepcopy(src_def)

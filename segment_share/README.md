@@ -1,6 +1,6 @@
 # segment_share/ — segment 키워드 매칭 → 일괄 share 추가 (운영 사본)
 
-repo: https://github.com/juser1n/AA-Segments-Maker-by-API/tree/main/segment_share (예정)
+repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/segment_share (예정)
 
 운영 사본 — 실제 KEYWORDS / SHARE_USER_IDS / AUTH 경로 박혀있는 작업본. generic 변경은 repo 사본에 동기화.
 
@@ -18,10 +18,10 @@ repo: https://github.com/juser1n/AA-Segments-Maker-by-API/tree/main/segment_shar
 
 | 상수 | 값 |
 |---|---|
-| `AUTH_JSON_PATH` | `C:\Users\user_name\path\to\auth.json |
-| `COMPANY_ID` | `company_id` |
+| `AUTH_JSON_PATH` | `C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\aanalyticsact_auth.json` |
+| `COMPANY_ID` | `your_aa_company_id` |
 | `RSID` | `""` (전체 RSID — 빈 문자열이면 server-side RSID 필터 안 함) |
-| `OWN_LOGIN_ID` | `000000001` (Jonghyun Park — 본인 owner segment 만 client-side 필터) |
+| `OWN_LOGIN_ID` | `YOUR_LOGIN_ID` (Jonghyun Park — 본인 owner segment 만 client-side 필터) |
 | `KEYWORDS` | `["visit"]` (name/description AND substring 매칭, case-insensitive) |
 | `OWNER_ID_FILTER` | `[]` (비어있으면 미사용) |
 | `OWNER_FULLNAME_INCLUDES` | `[]` (비어있으면 미사용) |
@@ -32,21 +32,21 @@ repo: https://github.com/juser1n/AA-Segments-Maker-by-API/tree/main/segment_shar
 
 | email | loginId | fullName |
 |---|---|---|
-| user1@company_name.com | 000000001 | Jonghyun Park |
-| user2@company_name.com | YOUR_LOGIN_ID | User2 Name |
-| user3@company_name.com | YOUR_LOGIN_ID | User3 Name |
-| user4@company_name.com | YOUR_LOGIN_ID | User4 Name |
-| user5@company_name.com | YOUR_LOGIN_ID | User5 Name |
-| user6@company_name.com | YOUR_LOGIN_ID | User6 Name |
-| user7@company_name.com | YOUR_LOGIN_ID | User7 Name |
-| user8_login@... | YOUR_LOGIN_ID | User8 Name |
+| user1@company_name.com | YOUR_LOGIN_ID | Jonghyun Park |
+| user2@company_name.com | YOUR_LOGIN_ID | User 2 |
+| user3@company_name.com | YOUR_LOGIN_ID | User 3 |
+| user4@company_name.com | YOUR_LOGIN_ID | User 4 |
+| user5@company_name.com | YOUR_LOGIN_ID | User 5 |
+| user6@company_name.com | YOUR_LOGIN_ID | User 6 |
+| user7@company_name.com | YOUR_LOGIN_ID | User 7 |
+| user8@... | YOUR_LOGIN_ID | User 8 |
 
-ID lookup 은 상위 폴더의 `aa_user_id_*.csv` 자동 pick (`AA_USER_CSV` — 가장 최신 timestamp). `find_user_id.py --all --csv ...` 로 갱신.
+ID lookup 은 상위 폴더의 `cnx_aa_id_*.csv` 자동 pick (`AA_USER_CSV` — 가장 최신 timestamp). `find_user_id.py --all --csv ...` 로 갱신.
 
 ## 실행
 
 ```powershell
-cd "C:\Users\user_name\path\to\auth.json"
+cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\2.data\99.PY,SQL-250429\your_workspace\260504_AA_segment_maker\segment_share"
 
 # 1) Dry-run — 매칭 segment 목록 + segment 별 실제 추가될 user id 미리보기 + segments_matched_*.csv 생성
 python add_segment_shares.py
@@ -68,7 +68,7 @@ python add_segment_shares.py --apply
 [2026-05-21 19:00:00] segment share 일괄 추가 도구
   KEYWORDS         : ['visit']
   RSID 필터        : ''  (전체)
-  추가할 user id   : [000000001, YOUR_LOGIN_ID, ..., YOUR_LOGIN_ID]
+  추가할 user id   : [YOUR_LOGIN_ID, YOUR_LOGIN_ID, ..., YOUR_LOGIN_ID]
 
 GET /segments (본인 owner) ...
   본인 owner segment 총 N개
@@ -78,12 +78,12 @@ KEYWORDS=['visit'] 매칭 segment: M개
 --- 매칭된 segment 목록 (첫 5개) ---
   #  segment id                    rsid                name
 ----------------------------------------------------------------------------------------
-  1  s200000001_xxxxxxxx...        rsid_placeholder [part_name] Campaign Visit
+  1  s200259492_xxxxxxxx...        sscompany_name4mstglobal [part_name] Campaign Visit
   ...
 
 --- 변경 미리보기 (segment 별 추가될 user id) ---
-  + s200000001_xxxxxxxx...  [part_name] Campaign Visit               추가: [YOUR_LOGIN_ID, YOUR_LOGIN_ID, ...]
-  · s200000001_zzzzzzzz...  [part_name] Already Shared               이미 모두 share 됨 (skip)
+  + s200259492_xxxxxxxx...  [part_name] Campaign Visit               추가: [YOUR_LOGIN_ID, YOUR_LOGIN_ID, ...]
+  · s200259492_zzzzzzzz...  [part_name] Already Shared               이미 모두 share 됨 (skip)
   ...
 
 --- 합계 ---
@@ -119,5 +119,5 @@ KEYWORDS=['visit'] 매칭 segment: M개
 ## 자매 도구
 
 - `../utils/find_user_id.py` — email/login/name 으로 numeric loginId 찾기
-- `../aa_user_id_*.csv` — 회사 전체 user id 매핑 (`find_user_id.py --all --csv ...` 로 생성)
-- `../aa_create_segment_v2.3.py` — segment 생성 시 `OWNER_ID` 설정으로 본인 명의 보장
+- `../cnx_aa_id_*.csv` — 회사 전체 user id 매핑 (`find_user_id.py --all --csv ...` 로 생성)
+- `../segment_maker/aa_create_segment_v2.2.py` — segment 생성 시 `OWNER_ID` 설정으로 본인 명의 보장

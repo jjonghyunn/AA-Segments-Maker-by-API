@@ -60,7 +60,7 @@ from pathlib import Path
 # ════════════════════════════════════════════════════════════════════
 
 # 베이스 segment-ref (visit / delayed_purchase 양쪽에서 활용)
-SEG_REF       = "segment_id_placeholder"
+SEG_REF       = "세그먼트_아이디_넘버"
 # SEG_NAME_BASE = "[CAMPAIGN NAME] CC_XX. 세그명"   # ' (Visit)' / ' (Delayed Purchase)' suffix 자동 붙음
 SEG_NAME_BASE = "Product Recommendation - 15. Theme Category Popular"
 
@@ -73,13 +73,13 @@ NAME_PREFIX = "[CAMPAIGN NAME] CC_"
 # (input_csv_maker.py 의 COMMON_SEGMENT_REF 와 동일 역할)
 # 글로벌: "[CAMPAIGN NAME] Campaign Main Page_Evar" / US: "[CAMPAIGN NAME] US_Campaign Main Page_Evar"
 # 빈 값 → AND 안 묶음 (SEG_REF 단독)
-COMMON_SEGMENT_REF      = "segment_id_placeholder" # [CAMPAIGN NAME] Campaign Main Page_Evar
-# COMMON_SEGMENT_REF      = "segment_id_placeholder"  # US — [CAMPAIGN NAME] US_Campaign Main Page_Evar
+COMMON_SEGMENT_REF      = "세그먼트_아이디_넘버" # [CAMPAIGN NAME] Campaign Main Page_Evar
+# COMMON_SEGMENT_REF      = "세그먼트_아이디_넘버"  # US — [CAMPAIGN NAME] US_Campaign Main Page_Evar
 COMMON_SEGMENT_REF_NAME = ""   # 박혀 있으면 named container wrap: '<name>'!hit( @<COMMON> )
 
 # Delayed Purchase 용 ATC visit segment-ref (없으면 delayed_purchase mode 비활성)
 # 글로벌: [Global] Add to Cart Visit  / US: [US] Add to Cart Visit
-ATC_VISIT_SEGMENT_REF  = "YOUR_PROJECT_ID"
+ATC_VISIT_SEGMENT_REF  = "YOUR_ID"
 ATC_VISIT_SEGMENT_NAME = "[Global] Add to Cart Visit"
 
 # 한 SEG_REF 로 어떤 segment 만들지 — 콤마 구분.
@@ -88,8 +88,8 @@ ATC_VISIT_SEGMENT_NAME = "[Global] Add to Cart Visit"
 #   "visit,delayed_purchase" → 둘 다 (default)
 SCOPE_MODE = "visit,delayed_purchase"
 
-DEFAULT_RSID = "rsid_placeholder"
-# DEFAULT_RSID = "rsid_placeholder"
+DEFAULT_RSID = "sscompany_name4mstglobal"
+# DEFAULT_RSID = "sscompany_namenewus"
 DEFAULT_TAGS = ""
 
 # ════════════════════════════════════════════════════════════════════

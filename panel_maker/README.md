@@ -1,6 +1,6 @@
 # panel_maker/ — AA Workspace project panel 복제 + segment swap (운영 사본)
 
-repo: https://github.com/juser1n/AA-Segments-Maker-by-API/tree/main/panel_maker (반영 예정)
+repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/panel_maker (반영 예정)
 
 운영 사본 — 실제 SOURCE/TARGET PROJECT_ID·키워드·MANUAL_OVERRIDES 박혀있는 작업본. generic 변경(룰/기능)은 repo 사본에 동기화. 단순 운영값(PROJECT_ID/키워드) 변경은 repo 안 올림.
 
@@ -35,10 +35,10 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 
 | 상수 | 값 |
 |---|---|
-| `AUTH_JSON_PATH` | `C:\Users\user_name\path\to\auth.json |
-| `COMPANY_ID` | `company_id` |
-| `SOURCE_PROJECT_ID` | `YOUR_PROJECT_ID` (CAMPAIGN NAME 캠페인) |
-| `TARGET_PROJECT_ID` | `YOUR_PROJECT_ID` (26 JH 캠페인) |
+| `AUTH_JSON_PATH` | `C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\aanalyticsact_auth.json` |
+| `COMPANY_ID` | `your_aa_company_id` |
+| `SOURCE_PROJECT_ID` | `YOUR_ID` (CAMPAIGN NAME 캠페인) |
+| `TARGET_PROJECT_ID` | `YOUR_ID` (26 JH 캠페인) |
 | `SOURCE_PANEL_INDEX` | `0` (첫 panel 만) |
 | `OLD_KEYWORDS` | `["[CAMPAIGN NAME]", "CAMPAIGN NAME"]` |
 | `NEW_KEYWORDS` | `["[26 JH]", "26 JH"]` |
@@ -47,8 +47,8 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 
 | 상수 | 값 |
 |---|---|
-| `SOURCE_PROJECT_ID` | `YOUR_PROJECT_ID` (CAMPAIGN NAME 구조 원본) |
-| `TARGET_PROJECT_ID` | `YOUR_PROJECT_ID` (team 공유 CAMPAIGN NAME) |
+| `SOURCE_PROJECT_ID` | `YOUR_ID` (CAMPAIGN NAME 구조 원본) |
+| `TARGET_PROJECT_ID` | `YOUR_ID` (team 공유 CAMPAIGN NAME) |
 | `SOURCE_PANEL_INDICES` | `"all"` |
 | `OLD_KEYWORDS` / `NEW_KEYWORDS` | `[CAMPAIGN NAME]` → `[CAMPAIGN NAME]` |
 
@@ -56,8 +56,8 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 
 | 상수 | 값 |
 |---|---|
-| `SOURCE_PROJECT_ID` | `YOUR_PROJECT_ID` (recomm 구조 원본) |
-| `TARGET_PROJECT_ID` | `YOUR_PROJECT_ID` (CAMPAIGN NAME Contents Click Analysis (Product Recommendation), user_id) |
+| `SOURCE_PROJECT_ID` | `YOUR_ID` (recomm 구조 원본) |
+| `TARGET_PROJECT_ID` | `YOUR_ID` (CAMPAIGN NAME Contents Click Analysis (Product Recommendation), user_id) |
 | `SOURCE_PANEL_INDICES` | `"all"` |
 | `OLD_KEYWORDS` / `NEW_KEYWORDS` | `[CAMPAIGN NAME]` → `[CAMPAIGN NAME]` |
 
@@ -65,8 +65,8 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 
 | 상수 | 값 |
 |---|---|
-| `SOURCE_PROJECT_ID` | `YOUR_PROJECT_ID` (CAMPAIGN NAME) |
-| `TARGET_PROJECT_ID` | `YOUR_PROJECT_ID` (CAMPAIGN NAME Scenario CC_03 component only) |
+| `SOURCE_PROJECT_ID` | `YOUR_ID` (CAMPAIGN NAME) |
+| `TARGET_PROJECT_ID` | `YOUR_ID` (CAMPAIGN NAME Scenario CC_03 component only) |
 | `TARGET_SEG_NAME_KEYWORDS` | `["CC_03.", "_Prop", "_Evar", "all visit"]` |
 | `TARGET_SEG_NAME_MODE` | `"OR"` |
 | `SW_ORDER_MAPPING` | `False` |
@@ -86,7 +86,7 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 - **2차 키** `(type, sub_num, suffix)` — 이름 안의 ` - ##.` sub-breakdown
 - source 에 sub_num 있으면 → 2차 키 매칭. 실패 시 같은 (type, primary_num, suffix) 의 SW 컨테이너 fallback. 그것도 없으면 `No Data`
 - source 에 sub_num 없으면 → 1차 키로 매칭 (target 도 sub_num 없는 것끼리)
-- **AMBIGUOUS** (2개 이상 매칭) → `PREFERRED_OWNER_ID` (예: user2_login) 가 만든 것 1개로 tie-break
+- **AMBIGUOUS** (2개 이상 매칭) → `PREFERRED_OWNER_ID` (예: user2) 가 만든 것 1개로 tie-break
 - CC / US_CC 패턴 없는 segment 는 `_normalize_name` 으로 fallback
 - `[CAMPAIGN NAME]` prefix 없는 system / 공용 segment (`No Data`, `PC User`, `[part_name]`, `[Global]` 등) 는 swap 후보에서 제외 — keep as-is
 - `SKIP_KEYWORDS` (예: `"recomm"`) + sub_num 둘 다 있는 segment → 자동 매칭 제외 → `No Data` fallback
@@ -111,7 +111,7 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 ## 실행
 
 ```powershell
-cd "C:\Users\user_name\path\to\auth.json"
+cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\2.data\99.PY,SQL-250429\your_workspace\260504_AA_segment_maker\panel_maker"
 
 # dry-run (default) — 매핑 표 + 매칭 안된 목록 + CSV 떨어뜨림. PUT 안 함
 python clone_project_first_panel.py
@@ -137,7 +137,7 @@ dry-run 결과 CSV:
 1. `SOURCE_PROJECT_ID` / `TARGET_PROJECT_ID` 교체 (target 은 미리 UI 에서 본인 계정으로 빈 프로젝트 생성)
 2. `OLD_KEYWORDS` / `NEW_KEYWORDS` 교체 (예: `[CAMPAIGN NAME]` → `[26 BF]`)
 3. dry-run 실행 → 결과 CSV 의 `MatchStatus = NO_MATCH` / `AMBIGUOUS` 항목 확인
-4. 의미상 맞지만 자동 매칭 안 된 건 → `MANUAL_OVERRIDES` 에 `source_id → target_id` 박기 (clone_project_first_panel) 또는 NEW segment 자체를 만들기 (`aa_create_segment_v2.3.py`)
+4. 의미상 맞지만 자동 매칭 안 된 건 → `MANUAL_OVERRIDES` 에 `source_id → target_id` 박기 (clone_project_first_panel) 또는 NEW segment 자체를 만들기 (segment_maker/v2.2)
 5. 다시 dry-run → 모두 OK 면 `--apply`
 
 ## 안전장치

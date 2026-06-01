@@ -47,7 +47,7 @@ SITE, THIS_START, THIS_END, LAST_START, LAST_END, BEFORE_BASE
 | 7 | `[<S> <ly> <T> 이전 전체]` | `BEFORE_BASE` | `LAST_START - 1d` |
 | 8 | `[<S> <ly> <T> 포함 이전 전체]` | `BEFORE_BASE` | `LAST_END` |
 
-`<S>` = 사이트, `<yy>`=THIS_YEAR_YY (올해 두자리), `<ly>`=LAST_YEAR_YY, `<T>`=CAMPAIGN_TAG (예: MD, SW, BF, CAMPAIGN NAME)
+`<S>` = 사이트, `<yy>`=THIS_YEAR_YY (올해 두자리), `<ly>`=LAST_YEAR_YY, `<T>`=CAMPAIGN_TAG (예: MD, SW, BF, BTS)
 
 → 8 사이트 × 8 타입 = 64개 daterange 자동 생성/갱신.
 
@@ -175,7 +175,7 @@ Adobe API 는 POST 시 `owner.id` 를 명시해도 **token holder 로 강제 덮
 | `0` (기본) | POST 만 — owner = 본인 (token holder) |
 | `<numeric loginId>` | POST 직후 자동 PUT 으로 owner 이전 (admin 권한 필요) |
 
-예) user2_login 명의로 일괄 생성하려면: `POST_TRANSFER_TO_OWNER_ID = YOUR_LOGIN_ID` 설정 후 `--apply`. 결과 CSV 의 `TransferStatus` 컬럼이 `TRANSFERRED` 로 떨어짐.
+예) user2lee 명의로 일괄 생성하려면: `POST_TRANSFER_TO_OWNER_ID = YOUR_LOGIN_ID` 설정 후 `--apply`. 결과 CSV 의 `TransferStatus` 컬럼이 `TRANSFERRED` 로 떨어짐.
 
 ## 자매 도구
 

@@ -11,7 +11,7 @@ numeric loginId를 찾기 위한 헬퍼.
   python find_user_id.py --login user1                    # login 필드 substring
   python find_user_id.py --email 'user1@company_name'    # email 필드 substring
   python find_user_id.py --name "user1"                   # fullName substring
-  python find_user_id.py --all                               # 전체 목록 (company_id 사용자 전부)
+  python find_user_id.py --all                               # 전체 목록 (your_aa_company_id 사용자 전부)
   python find_user_id.py --all --csv users.csv               # 전체 + CSV dump
   python find_user_id.py --email user1 --csv me.csv       # 검색 결과를 CSV로도 저장
 
@@ -34,10 +34,10 @@ import aanalytics2 as api2
 
 # Adobe Developer Console에서 받은 OAuth Server-to-Server 자격증명 json 경로.
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
 
 # AA 회사(login company) ID. 어도비 UI URL의 `so:xxxxx` 부분.
-COMPANY_ID = "company_id"
+COMPANY_ID = "your_aa_company_id"
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용 — 보통 수정 불필요
@@ -165,7 +165,7 @@ def main() -> int:
     g.add_argument("--login", help="login 필드 substring 매칭")
     g.add_argument("--email", help="email 필드 substring 매칭")
     g.add_argument("--name", help="fullName 필드 substring 매칭")
-    g.add_argument("--all", action="store_true", help="전체 사용자 출력 (company_id 모든 사용자)")
+    g.add_argument("--all", action="store_true", help="전체 사용자 출력 (your_aa_company_id 모든 사용자)")
     parser.add_argument(
         "--csv",
         help="결과를 CSV로도 저장 (검색/전체 어느 모드든 사용 가능)",

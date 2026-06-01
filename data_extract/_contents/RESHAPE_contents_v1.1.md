@@ -73,10 +73,10 @@ rsid, start_date, end_date, value_n
 
 ## SITE CODE 정규화 (v1.1)
 
-2026-05-19 부로 US 의 RSID 가 `rsid_placeholder` → `rsid_placeholder` 로 갈리면서
+2026-05-19 부로 US 의 RSID 가 `sscompany_namenewus` → `sscompany_name4newus` 로 갈리면서
 `extract_data_v3_contents.py` 가 두 site_code 로 분리 추출:
-- `us_old` (rsid `rsid_placeholder`, 기간 ~5-18, `[US]` panel)
-- `us` (rsid `rsid_placeholder`, 기간 5-19~, `[Global]` panel)
+- `us_old` (rsid `sscompany_namenewus`, 기간 ~5-18, `[US]` panel)
+- `us` (rsid `sscompany_name4newus`, 기간 5-19~, `[Global]` panel)
 
 이 두 row 를 분석 단계에선 동일 SITE CODE 로 봐야 하므로,
 **모든 join·합산·환율·ITEM 정제가 끝난 출력 직전 단계**에서 `SITE CODE` 컬럼만 치환:
@@ -88,7 +88,7 @@ SITE_CODE_NORMALIZE: dict[str, str] = {
 ```
 
 - `delayed_index` 등 합산 join key 는 여전히 원본 site_code 사용 → RSID 다른 데이터끼리 cross-매칭 없음
-- `rsid` / `start_date` / `end_date` 는 원본 그대로 → CSV 에서 출처 구분 가능 (e.g. `rsid=rsid_placeholder` 면 us_old 원본)
+- `rsid` / `start_date` / `end_date` 는 원본 그대로 → CSV 에서 출처 구분 가능 (e.g. `rsid=sscompany_namenewus` 면 us_old 원본)
 - 변환 카운트는 `[normalize] SITE CODE 정규화: N rows (us_old→us(N))` 형식으로 콘솔 출력
 
 향후 다른 RSID 분리 케이스 (예: `uk_old` → `uk`) 생기면 `SITE_CODE_NORMALIZE` 표에 한 줄만 추가.

@@ -39,8 +39,8 @@ from pathlib import Path
 
 SEG_MAKE_REF_CSV = "seg_make_ref_recomm_us_1_to14.csv"   # 빈 값이면 폴더의 seg_make_ref_*.csv 사전순 최신 1개 자동
 
-# DEFAULT_RSID = "rsid_placeholder"
-DEFAULT_RSID = "rsid_placeholder"
+# DEFAULT_RSID = "sscompany_name4mstglobal"
+DEFAULT_RSID = "sscompany_namenewus"
 DEFAULT_TAGS = ""
 
 # scope 단일 — hit container 안 OR 묶음. (필요하면 "visit" 으로 변경)

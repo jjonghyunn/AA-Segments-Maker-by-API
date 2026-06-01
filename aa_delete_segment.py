@@ -50,10 +50,10 @@ import aanalytics2 as api2
 
 # Adobe Developer Console에서 받은 OAuth Server-to-Server 자격증명 json 경로.
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
 
 # AA 회사(login company) ID.
-COMPANY_ID = "company_id"
+COMPANY_ID = "your_aa_company_id"
 
 # 안전장치 #2 (선택) — 실제 segment 이름이 이 prefix로 시작 안 하면 삭제 거부.
 # 빈 값 ""이면 prefix 검증 비활성 — csv 의 모든 SegmentId 그대로 삭제 진행.
