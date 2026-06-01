@@ -8,6 +8,7 @@
 #                       result csv 의 Action 컬럼 (PUT/POST 구분)
 # updated: 2026-05-22  — --lookup-by-name 의 source 위치를 같은 폴더의 lookup/ 하위로 변경 (segment_lookup_*.csv 가 lookup/ 로 이동됨)
 # updated: 2026-05-26  — v2.3: (1) DSL preprocess 추가 — [sequence-after] visitor( 같은 label+scope-keyword 토큰을 visit( 으로 strip → Delayed Purchase ParseError 해결. (2) v2.py 의존성 제거 — v2 의 parser/compiler/auth 코드 inline (self-contained). (3) OWNER_IMS_USER_ID + OWNER_LOGIN 빈 값 default (다른 사람 fork 시 자기 정보로 채움). OWNER_ID 는 유지.
+# updated: 2026-05-26  — _lift_inner_hit_into_visit_root 후처리 추가. visit/visitor scope segment 가 AA server-side simplification (outer-visit + 단일 inner-hit no_desc wrap → hit-scope 로 합침) 에 의해 hit scope 로 떨어지는 문제 fix. inner hit wrap 제거하고 outer.pred = inner.pred 직접 박아서 server 가 단일 wrap 패턴 simplify 못 하도록.
 """
 CSV 입력 → AA 세그먼트 일괄 생성 또는 업데이트.
 
@@ -73,26 +74,26 @@ import aanalytics2 as api2
 
 # ─── 인증 ──────────────────────────────────────────────────────────
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-COMPANY_ID = "company_id"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
+COMPANY_ID = "your_aa_company_id"
 
 # ─── 본인 식별 (segment owner) ────────────────────────────────────
 # OWNER_ID 에 numeric loginId 직접 지정하면 API lookup 생략.
 # 팀원 loginId 목록 (add_segment_shares.py 기준):
-#   000000001  user1_login   (Jonghyun Park)
-#   YOUR_LOGIN_ID  user2_login     (User2 Name)
-#   YOUR_LOGIN_ID  user3_login  (User3 Name)
-#   YOUR_LOGIN_ID  user4_login         (User4 Name)
-#   YOUR_LOGIN_ID  user5_login     (User5 Name)
-#   YOUR_LOGIN_ID  user6_login      (User6 Name)
-#   YOUR_LOGIN_ID  user7_login   (User7 Name)
-OWNER_ID: int | None = 000000000   # 자기 numeric loginId (위 팀원 목록 참조). None 이면 IMS/LOGIN 으로 lookup
+#   YOUR_LOGIN_ID  user1   (Jonghyun Park)
+#   YOUR_LOGIN_ID  user2     (User 2)
+#   YOUR_LOGIN_ID  user3  (User 3)
+#   YOUR_LOGIN_ID  user4         (User 4)
+#   YOUR_LOGIN_ID  user5     (User 5)
+#   YOUR_LOGIN_ID  user6      (User 6)
+#   YOUR_LOGIN_ID  user7   (User 7)
+OWNER_ID: int | None = YOUR_LOGIN_ID   # 자기 numeric loginId (위 팀원 목록 참조). None 이면 IMS/LOGIN 으로 lookup
 OWNER_IMS_USER_ID: str = ""        # 다른 사람 fork 시 자기 IMS user ID. 빈 값이면 OWNER_ID 사용
 OWNER_LOGIN: str = ""              # 다른 사람 fork 시 자기 login email substring. 빈 값이면 OWNER_ID 사용
                                    # 셋 다 빈 값이면 owner 필드 빠짐 — AA 가 인증 user 자동 사용
 
 # ─── 기본 RSID (segment별 rsid 미지정 시 사용) ───────────────────
-DEFAULT_RSID = "rsid_placeholder"
+DEFAULT_RSID = "sscompany_name4mstglobal"
 
 # ─── 입력 파일 ─────────────────────────────────────────────────────
 INPUT_FILE = "segments.dsl"
@@ -102,7 +103,7 @@ INPUT_FILE = "segments.dsl"
 
 INPUT_CSV = "segments_input_260526_1653.csv" #global
 # INPUT_CSV = "segments_input_260526_1313_us.csv"
-# INPUT_CSV = "segments_input_260526_1440_scenario.csv"
+# INPUT_CSV = "segments_input_260526_1657_scenario.csv"
 # INPUT_CSV = "segments_from_ref_260519_1945_recomm15.csv"
 # INPUT_CSV = "segments_from_ref_batch_us_hit_260520_1103.csv"
 # INPUT_CSV = "segments_from_ref_batch_us_hit_260520_1325_hit_only_plus15.csv"
@@ -133,7 +134,7 @@ OUTPUT_DIR = Path(__file__).resolve().parent
 RESULT_CSV_PREFIX = "segment_v2_result_"
 
 UI_URL_TEMPLATE = (
-    "https://experience.adobe.com/#/@company_name/so:company_id/"
+    "https://experience.adobe.com/#/@company_name/so:your_aa_company_id/"
     "analytics/spa/#/components/segments/edit/{seg_id}"
 )
 
@@ -1402,6 +1403,31 @@ def _patch_root_sequence_for_hit_scope(definition: dict) -> dict:
     return definition
 
 
+def _lift_inner_hit_into_visit_root(definition: dict) -> dict:
+    """root container.context='visits'(or 'visitors') + pred 가 container(hits, no_desc) 단일 wrap 인 경우
+    inner hit wrap 제거하고 outer.pred = inner.pred 로 직접 박음.
+
+    AA POST 시 server-side simplification 이 outer-visit + 단일 inner-hit(no_desc) 패턴을
+    hit-scope 로 합쳐버리는 동작 우회. visit/visitor scope 보존.
+    """
+    if not isinstance(definition, dict):
+        return definition
+    container = definition.get("container")
+    if not isinstance(container, dict):
+        return definition
+    if container.get("context") not in ("visits", "visitors"):
+        return definition
+    pred = container.get("pred")
+    if not (isinstance(pred, dict) and pred.get("func") == "container"
+            and pred.get("context") == "hits" and not pred.get("description")):
+        return definition
+    inner_pred = pred.get("pred")
+    if inner_pred is None:
+        return definition
+    container["pred"] = inner_pred
+    return definition
+
+
 def _patch_definition_for_aa(node, *, fetch_seg_pred=None):
     """v2 컴파일 결과 JSON → AA validator 호환 형식 후처리.
 
@@ -1801,6 +1827,7 @@ def main() -> int:
             ast = parse_dsl(dsl_text)
             definition = compile_to_definition(ast)
             definition = _patch_definition_for_aa(definition, fetch_seg_pred=fetch_seg_pred)
+            definition = _lift_inner_hit_into_visit_root(definition)      # visit/visitor scope 보존 (server-side simplify 우회)
             definition = _patch_root_sequence_for_hit_scope(definition)   # Delayed Purchase: root sequence → sequence-prefix
             print(f"  [{i+1}] '{row['name']}' — 파싱 OK")
             specs.append({**row, "definition": definition, "dsl": dsl_text})

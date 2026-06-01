@@ -3,8 +3,8 @@
 # Scenario 통합본 — 한 raw csv 에 global / US row 가 섞여 있을 때 자동 분류 + 각 builder 호출 + 결과 통합.
 """
 seg_make_ref_scenario_*.csv → row 별 Segment Name 에 'US_CC' 또는 'US_' 포함 여부로 자동 분류:
-  · US row  → input_csv_maker_us.py (US 패턴: evar96instances + starts-with + 큰따옴표 + rsid_placeholder RSID + ATC=[US] + cache=*_us)
-  · Global row → input_csv_maker.py    (Global 패턴: evar26 contains + 작은따옴표 + rsid_placeholder RSID + ATC=[Global] + cache=*_global)
+  · US row  → input_csv_maker_us.py (US 패턴: evar96instances + starts-with + 큰따옴표 + sscompany_namenewus RSID + ATC=[US] + cache=*_us)
+  · Global row → input_csv_maker.py    (Global 패턴: evar26 contains + 작은따옴표 + sscompany_name4mstglobal RSID + ATC=[Global] + cache=*_global)
 
 분리된 임시 csv (`seg_make_ref_<ts>_global_tmp.csv`, `seg_make_ref_us_<ts>_us_tmp.csv`) 만들고 각 builder 를
 subprocess 로 호출 → 결과 segments_input_<ts>.csv / .dsl / _WARN.csv 각각 받아 → 통합본 한 csv 로 merge.

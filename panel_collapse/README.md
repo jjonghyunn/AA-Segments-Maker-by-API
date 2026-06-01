@@ -1,6 +1,6 @@
 # panel_collapse/ — AA Workspace panel 내 subPanel 일괄 collapse (운영 사본)
 
-repo: https://github.com/juser1n/AA-Segments-Maker-by-API/tree/main/panel_collapse (예정)
+repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/panel_collapse (예정)
 
 운영 사본 — 실제 PROJECT_ID / AUTH 경로 박혀있는 작업본. generic 변경 (룰/기능) 은 repo 사본에도 동기화. 단순 운영값 (PROJECT_ID) 변경은 repo 안 올림.
 
@@ -21,15 +21,15 @@ AA Workspace project 의 panel 안에 있는 모든 subPanel (테이블 / freefo
 
 | 상수 | 값 |
 |---|---|
-| `AUTH_JSON_PATH` | `C:\Users\user_name\path\to\auth.json |
-| `COMPANY_ID` | `company_id` |
+| `AUTH_JSON_PATH` | `C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\aanalyticsact_auth.json` |
+| `COMPANY_ID` | `your_aa_company_id` |
 | `PROJECT_ID` | (실행 시 본인 project ID 로 교체) |
 | `PANEL_NAME_PATTERN` | `""` (빈 문자열 = 전체 panel 처리) |
 
 ## 실행
 
 ```powershell
-cd "C:\Users\user_name\path\to\auth.json"
+cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\your_workspace\260504_AA_segment_maker\panel_collapse"
 
 # 1) Dry-run (실제 PUT 안 함 — 변경 건수만 출력)
 python collapse_panel_tables.py

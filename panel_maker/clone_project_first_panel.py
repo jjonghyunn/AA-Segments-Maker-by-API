@@ -51,13 +51,13 @@ import aanalytics2 as api2
 
 # ─── 인증 ──────────────────────────────────────────────────────────
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-COMPANY_ID = "company_id"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
+COMPANY_ID = "your_aa_company_id"
 
 # ─── 대상 프로젝트 ──────────────────────────────────────────────────
 # source = 복제 원본. Workspace URL 의 /workspace/edit/{이부분}
 SOURCE_PROJECT_ID = "YOUR_PROJECT_ID"   # CAMPAIGN NAME 캠페인 프로젝트
-# target = 미리 UI 에서 빈 프로젝트로 생성해둔 곳 (user1_login owner)
+# target = 미리 UI 에서 빈 프로젝트로 생성해둔 곳 (user1 owner)
 TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # 26 JH 캠페인 프로젝트
 
 # source 의 어느 panel 을 가져올지 (0-based index, 0 = 첫 번째)
@@ -89,11 +89,11 @@ NAME_NORMALIZATION_PATTERNS = [
 # 이름이 살짝 달라 매칭 안 됐지만 의미상 같은 것을 여기 박아두면 됨.
 MANUAL_OVERRIDES = {
     # [CAMPAIGN NAME] ALL SITES_Internal_Home GNB (Shop)  →  [26 JH] Internal_Home GNB
-    "segment_id_placeholder": "segment_id_placeholder",
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",
     # [CAMPAIGN NAME] ALL SITES_logged In (p10) - Visitor  →  [26 JH] Logged In Visitor
-    "segment_id_placeholder": "segment_id_placeholder",
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",
     # [CAMPAIGN NAME] ALL SITES_logged Out (p10) - Visitor →  [26 JH] Logged Out Visitor
-    "segment_id_placeholder": "segment_id_placeholder",
+    "세그먼트_아이디_넘버": "세그먼트_아이디_넘버",
 }
 
 # ─── 테이블(subPanel) 접힘 상태 강제 ───────────────────────────────

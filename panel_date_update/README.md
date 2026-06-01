@@ -1,6 +1,6 @@
 # panel_date_update/ — AA Workspace 패널 시작/종료일 일괄 치환 (운영 사본)
 
-repo: https://github.com/juser1n/AA-Segments-Maker-by-API/tree/main/panel_date_update
+repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/panel_date_update
 
 운영 사본 — 실제 PROJECT_ID/AUTH 경로/캠페인별 패턴이 박혀있는 작업본. generic 변경(룰/기능)은 repo 사본에도 동기화할 것. 단순 운영값(PROJECT_ID/날짜) 변경은 repo 안 올림.
 
@@ -14,9 +14,9 @@ repo: https://github.com/juser1n/AA-Segments-Maker-by-API/tree/main/panel_date_u
 
 | 상수 | 값 |
 |---|---|
-| `AUTH_JSON_PATH` | `C:\Users\user_name\path\to\auth.json |
-| `COMPANY_ID` | `company_id` |
-| `PROJECT_ID` | `YOUR_PROJECT_ID` (user_id Product Recommendation) |
+| `AUTH_JSON_PATH` | `C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\aanalyticsact_auth.json` |
+| `COMPANY_ID` | `your_aa_company_id` |
+| `PROJECT_ID` | `YOUR_ID` (user_id Product Recommendation) |
 | `PANEL_NAME_PATTERN` | (실행 시 캠페인에 맞게 설정 — 예: `r"\[AU\]\s*campaign_name'?s\s*Day\s*Campaign"`) |
 | `NEW_START_DATE` | `2026-05-11` |
 | `NEW_END_DATE` | `2026-05-17` |
@@ -27,7 +27,7 @@ repo: https://github.com/juser1n/AA-Segments-Maker-by-API/tree/main/panel_date_u
 ## 실행
 
 ```powershell
-cd "C:\Users\user_name\path\to\auth.json"
+cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\your_workspace\260504_AA_segment_maker\panel_date_update"
 
 # 1) Dry-run
 python update_panel_date.py

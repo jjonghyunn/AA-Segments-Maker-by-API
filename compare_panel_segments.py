@@ -54,16 +54,16 @@ import aanalytics2 as api2
 
 # ─── 인증 ──────────────────────────────────────────────────────────
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-COMPANY_ID = "company_id"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
+COMPANY_ID = "your_aa_company_id"
 
 # ─── 비교할 두 프로젝트 + 패널 ─────────────────────────────────────
 # project_id = Workspace URL의 `/workspace/edit/{이부분}`
 # panel_name = panel 헤더 텍스트 substring (대소문자 무시)
-PROJECT_A_ID = "YOUR_PROJECT_ID"
+PROJECT_A_ID = "YOUR_ID"
 PANEL_A_NAME = "[ALL SITES] 2026 CAMPAIGN NAME Campaign Traffic & CVR"
 
-PROJECT_B_ID = "YOUR_PROJECT_ID"
+PROJECT_B_ID = "YOUR_ID"
 PANEL_B_NAME = "MAIN KPI"
 
 # ─── 결과 CSV ──────────────────────────────────────────────────────

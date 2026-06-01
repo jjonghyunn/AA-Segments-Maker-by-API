@@ -49,7 +49,7 @@ SEG_MAKE_REF_CSV = "seg_make_ref_260526_1121.csv"   # 빈 값이면 폴더 내 s
 #   1) 직접 박기: COMMON_SEGMENT_REF + COMMON_SEGMENT_REF_NAME 둘 다
 #   2) cache lookup: REF_SEGMENT_NAME + CACHE_NAME 박으면 segment_ref_cache_<CACHE_NAME>.json 에서 자동 결정
 # COMMON_SEGMENT_REF_NAME 박혀 있으면 dsl 에 named container wrap (`'<name>'!hit(@<id>)`).
-COMMON_SEGMENT_REF      = "segment_id_placeholder"
+COMMON_SEGMENT_REF      = "세그먼트_아이디_넘버"
 COMMON_SEGMENT_REF_NAME = ""   # 예: "[CAMPAIGN NAME] Campaign Main Page_Evar" — 박혀 있으면 named container wrap
 REF_SEGMENT_NAME = ""          # 예: "Campaign Main Page_Evar" — cache 에서 name partial 매칭
 CACHE_NAME       = "26sw_evar_global,add_to_cart_global"   # 콤마 분리 — 두 cache 다 lookup (Campaign Main + ATC)
@@ -77,12 +77,12 @@ SCOPE_MODE = "visit,hit,delayed_purchase"
 # 예: SCOPE_MODE = "hit"
 
 # delayed_purchase 옵션의 ATC (Add to Cart Visit) segment-ref — 글로벌은 [Global] Add to Cart Visit
-ATC_VISIT_SEGMENT_REF      = ""   # 예: "YOUR_PROJECT_ID"  (직접 박기)
+ATC_VISIT_SEGMENT_REF      = ""   # 예: "YOUR_ID"  (직접 박기)
 ATC_VISIT_SEGMENT_NAME     = ""   # 예: "[Global] Add to Cart Visit"
 ATC_REF_SEGMENT_NAME       = "[Global] Add to Cart Visit"   # cache 에서 partial 매칭 → id+name 자동
 
-DEFAULT_RSID = "rsid_placeholder"
-# DEFAULT_RSID = "rsid_placeholder"
+DEFAULT_RSID = "sscompany_name4mstglobal"
+# DEFAULT_RSID = "sscompany_namenewus"
 DEFAULT_TAGS = ""
 
 # ─── evar 블록 묶음 방식 (row 별 override) ──────────────────────

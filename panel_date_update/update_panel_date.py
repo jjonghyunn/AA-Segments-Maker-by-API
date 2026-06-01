@@ -43,23 +43,25 @@ import aanalytics2 as api2
 
 # Adobe Developer Console에서 받은 OAuth Server-to-Server 자격증명 json 경로
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
 
 # AA 회사(login company) ID
-COMPANY_ID = "company_id"
+COMPANY_ID = "your_aa_company_id"
 
 # 대상 Workspace project ID (URL 의 /workspace/edit/<여기> 부분)
 # 여러 프로젝트를 한 번에 처리하려면 엔터 단위로 나열. 주석(#)으로 프로젝트명 메모 가능.
 PROJECT_IDS = """
-YOUR_PROJECT_ID  # team 공유 Product Recommendation
-YOUR_PROJECT_ID  # user_id Product Recommendation
+YOUR_ID  # team 공유 Product Recommendation
+YOUR_ID  # user_id Product Recommendation
 
 YOUR_ID # [part_name] 2026 CAMPAIGN NAME | Contents cc_03 | API_260527 (user_id)
-YOUR_PROJECT_ID  # CAMPAIGN NAME (user_id)플젝
-YOUR_PROJECT_ID  # CAMPAIGN NAME 캠페인 프로젝트
 
-YOUR_PROJECT_ID  # [part_name] 2026 CAMPAIGN NAME | Contents cc09 cmpnt v26 | API (user_id)
+YOUR_ID  # CAMPAIGN NAME (user_id)플젝
+YOUR_ID  # CAMPAIGN NAME 캠페인 프로젝트
+
+YOUR_ID  # [part_name] 2026 CAMPAIGN NAME | Contents cc09 cmpnt v26 | API (user_id)
 YOUR_ID # [part_name] 2026 CAMPAIGN NAME | Contents cc09 cmpnt V26 | API https://experience.adobe.com/@company_name/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
+
 """
 
 # 패널 이름이 이 정규식에 매칭되는 모든 패널을 일괄 치환한다 (0개면 abort).
@@ -76,7 +78,7 @@ PANEL_NAME_PATTERN = r"\bGlobal\b"
 
 # 시작/종료일 — 트리 안 start*/end* 키의 값을 이 값으로 교체 (기존 값 무관).
 NEW_START_DATE = "2026-05-11"
-NEW_END_DATE   = "2026-05-24"
+NEW_END_DATE   = "2026-05-31"
 
 # (선택) 패널 name 텍스트 안의 옛 날짜 substring 치환용. 비워두면 name 안 건드림.
 # 트리 안 dateRange / reportRange 등은 위 NEW_*_DATE 로 키 기반 교체되므로 무관.

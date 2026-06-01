@@ -44,8 +44,8 @@ import aanalytics2 as api2
 
 # ─── 인증 ──────────────────────────────────────────────────────────
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-COMPANY_ID = "company_id"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
+COMPANY_ID = "your_aa_company_id"
 
 # ─── 캠페인 글로벌 (사이트 공통) ────────────────────────────────
 THIS_YEAR_YY  = 26       # 올해 두 자리 (예: 26 = 2026)
@@ -59,7 +59,7 @@ CAMPAIGN_TAG  = "SW"     # 캠페인 코드 (짧은 약어)
 # POST_TRANSFER_TO_OWNER_ID:
 #   0          : 본인(token holder) owner 그대로 유지
 #   numeric ID : POST 직후 자동 PUT 으로 owner 이전 (admin 권한 필요)
-POST_TRANSFER_TO_OWNER_ID = YOUR_LOGIN_ID   # user2_login
+POST_TRANSFER_TO_OWNER_ID = YOUR_LOGIN_ID   # user2lee
 
 # 새 daterange 의 description, tags (모든 사이트 공통)
 NEW_DESCRIPTION = ""

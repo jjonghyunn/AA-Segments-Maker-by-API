@@ -38,15 +38,15 @@ import aanalytics2 as api2
 # ════════════════════════════════════════════════════════════════════
 
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-COMPANY_ID     = "company_id"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
+COMPANY_ID     = "your_aa_company_id"
 
 # RSID 필터 — 빈 문자열 ""이면 모든 RSID. segment 가 어느 RSID 인지 모를 때 전체 검색 권장.
 RSID = ""
 
 # 본인 numeric loginId — `/segments` GET 후 owner.id 가 이 값과 일치하는 segment 만 처리.
 # (AA API 의 ownerId 쿼리 파라미터는 지원 안 함 → 클라이언트 사이드 필터링)
-OWN_LOGIN_ID = 000000001
+OWN_LOGIN_ID = YOUR_LOGIN_ID
 
 # 이 키워드가 name 또는 description 에 substring 으로 포함된 segment 매칭 (case-insensitive)
 # 같은 값을 AA API 의 `name` 쿼리 파라미터로도 보내서 server-side 사전 필터링 (회사 전체 22만 → 수십개로)
@@ -61,24 +61,24 @@ KEYWORDS: list[str] = [
 ]
 
 # owner.id 화이트리스트 (numeric loginId). 비어있으면 미사용.
-# 예: [000000001, YOUR_LOGIN_ID] → 두 사람 owner segment 만
+# 예: [YOUR_LOGIN_ID, YOUR_LOGIN_ID] → 두 사람 owner segment 만
 OWNER_ID_FILTER: list[int] = [
-    # 000000001,   # user1_login  (Jonghyun Park)
-    # YOUR_LOGIN_ID,   # user2_login    (User2 Name)
-    # YOUR_LOGIN_ID,   # user3_login (User3 Name)
-    # YOUR_LOGIN_ID,   # user4_login        (User4 Name)
-    # YOUR_LOGIN_ID,   # user5_login    (User5 Name)
-    # YOUR_LOGIN_ID,   # user6_login     (User6 Name)
-    # YOUR_LOGIN_ID,   # user7_login  (User7 Name)
+    # YOUR_LOGIN_ID,   # user1  (Jonghyun Park)
+    # YOUR_LOGIN_ID,   # user2    (User 2)
+    # YOUR_LOGIN_ID,   # user3 (User 3)
+    # YOUR_LOGIN_ID,   # user4        (User 4)
+    # YOUR_LOGIN_ID,   # user5    (User 5)
+    # YOUR_LOGIN_ID,   # user6     (User 6)
+    # YOUR_LOGIN_ID,   # user7  (User 7)
 ]
 
 # owner.name (fullName) substring 매칭 (case-insensitive). 빈 리스트면 미사용.
 # AA API 의 owner.login 은 안정적으로 안 채워져서 이메일 substring 은 못 씀.
 # 대신 fullName 으로 매칭 — CSV (segments_matched_*.csv) 의 OwnerName 컬럼 보고 박기.
-# 예: ["user1", "User2"] → 두 fullName substring 매칭되는 owner 의 segment 만
+# 예: ["user1", "User 2"] → 두 fullName substring 매칭되는 owner 의 segment 만
 OWNER_FULLNAME_INCLUDES: list[str] = [
     # "user1",
-    # "User2",
+    # "User 2",
 ]
 
 # 매칭 segment 중 이 id 들만 PUT 대상으로 좁힘. 빈 리스트면 매칭 전체 대상.
@@ -89,165 +89,165 @@ OWNER_FULLNAME_INCLUDES: list[str] = [
 # 한 줄에 하나씩 segment id 박기. 빈 줄 무시. # 으로 시작하면 주석 처리 (해당 id 제외).
 # 큰따옴표·콤마 안 써도 됨 — 아래 자동 parse.
 TARGET_SEGMENT_IDS_RAW = """
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
-segment_id_placeholder
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
+세그먼트_아이디_넘버
 
 """
 
@@ -260,17 +260,17 @@ TARGET_SEGMENT_IDS: list[str] = [
 # 콘솔에 매칭 결과 첫 N 개만 print (나머지는 CSV 만 — 회사 전체 검색 시 매칭 너무 많을 때)
 PRINT_FIRST_N = 5
 
-# shares 에 추가할 numeric loginId 리스트 (aa_user_id_*.csv 에서 lookup)
+# shares 에 추가할 numeric loginId 리스트 (cnx_aa_id_*.csv 에서 lookup)
 # 본인 + 추가 인원
 SHARE_USER_IDS = [
-    000000001,   # user1@company_name.com  (Jonghyun Park)
-    YOUR_LOGIN_ID,   # user2@company_name.com    (User2 Name)
-    YOUR_LOGIN_ID,   # user3@company_name.com (User3 Name)
-    YOUR_LOGIN_ID,   # user4@company_name.com        (User4 Name)
-    YOUR_LOGIN_ID,   # user5@company_name.com    (User5 Name)
-    YOUR_LOGIN_ID,   # user6@company_name.com     (User6 Name)
-    YOUR_LOGIN_ID,   # user7@company_name.com  (User7 Name)
-    YOUR_LOGIN_ID, # user8_login
+    YOUR_LOGIN_ID,   # user1@company_name.com  (Jonghyun Park)
+    YOUR_LOGIN_ID,   # user2@company_name.com    (User 2)
+    YOUR_LOGIN_ID,   # user3@company_name.com (User 3)
+    YOUR_LOGIN_ID,   # user4@company_name.com        (User 4)
+    YOUR_LOGIN_ID,   # user5@company_name.com    (User 5)
+    YOUR_LOGIN_ID,   # user6@company_name.com     (User 6)
+    YOUR_LOGIN_ID,   # user7@company_name.com  (User 7)
+    YOUR_LOGIN_ID, # user8
 ]
 
 # ════════════════════════════════════════════════════════════════════
@@ -280,9 +280,9 @@ SHARE_USER_IDS = [
 API_BASE = "https://analytics.adobe.io/api"
 SCRIPT_DIR = Path(__file__).parent
 
-# AA user 매핑 CSV — 상위 폴더의 aa_user_id_*.csv 자동 pick (loginId → login/email/fullName)
+# AA user 매핑 CSV — 상위 폴더의 cnx_aa_id_*.csv 자동 pick (loginId → login/email/fullName)
 # AA API 가 segment 의 owner.name/login 을 안 채워서 (id 만) 이 CSV 로 enrich.
-_AA_USER_CSV_CANDIDATES = sorted(SCRIPT_DIR.parent.glob("aa_user_id_*.csv"))
+_AA_USER_CSV_CANDIDATES = sorted(SCRIPT_DIR.parent.glob("cnx_aa_id_*.csv"))
 AA_USER_CSV = _AA_USER_CSV_CANDIDATES[-1] if _AA_USER_CSV_CANDIDATES else None
 
 
@@ -352,7 +352,7 @@ def list_segments(headers: dict, gcid: str, rsid: str = "", name_filter: str = "
 
 
 def load_user_map(csv_path: Path | None) -> dict[int, dict]:
-    """aa_user_id_*.csv 를 loginId(int) → {login, email, name} dict 로 로드.
+    """cnx_aa_id_*.csv 를 loginId(int) → {login, email, name} dict 로 로드.
     파일 없거나 컬럼 형식 다르면 빈 dict 반환."""
     if csv_path is None or not csv_path.exists():
         return {}
@@ -537,13 +537,13 @@ def main() -> int:
     server_filtered = list_segments(headers, gcid, RSID, name_filter=server_filter_keyword)
     print(f"  server-side name 필터 후 {len(server_filtered)}개")
 
-    # AA API 가 owner.name/login 안 채워서 aa_user_id_*.csv 로 loginId → name/login lookup 보강
+    # AA API 가 owner.name/login 안 채워서 cnx_aa_id_*.csv 로 loginId → name/login lookup 보강
     user_map = load_user_map(AA_USER_CSV)
     if user_map:
         n_enriched = enrich_owner(server_filtered, user_map)
         print(f"  owner enrich (lookup: {AA_USER_CSV.name}, {len(user_map)} users): {n_enriched}개 segment 보강")
     else:
-        print(f"  ⚠️ aa_user_id CSV 못찾음 — owner.name/login 비어있을 수 있음 (find_user_id.py --all --csv ... 로 생성)")
+        print(f"  ⚠️ cnx_aa_id CSV 못찾음 — owner.name/login 비어있을 수 있음 (find_user_id.py --all --csv ... 로 생성)")
 
     # client-side: name 또는 description 에 KEYWORDS 의 모든 substring 다 포함 (AND)
     keyword_matches = match_segments(server_filtered, KEYWORDS)

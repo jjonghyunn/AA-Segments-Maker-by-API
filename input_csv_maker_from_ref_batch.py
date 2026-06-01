@@ -7,7 +7,7 @@ input_csv_maker_from_ref.py 의 batch 버전 — 여러 SEG_REF 를 한 번에 �
 흐름:
   · INPUT_CSV (segment_id, name, rsid 컬럼 필수 — lookup csv 호환) 의 각 row 별로:
       - SEG_REF = row.segment_id
-      - rsid → region 자동 결정 (rsid_placeholder → us, 그 외 → global)
+      - rsid → region 자동 결정 (sscompany_namenewus → us, 그 외 → global)
       - region 별 COMMON_REF + COMMON_NAME + ATC ref/name 자동 매핑
       - NAME_PREFIX + name 으로 새 segment name 빌드
       - SCOPE_MODE 따라 visit + delayed_purchase 새 segment 생성 (POST 용 — segment_id 빈 채)
@@ -77,16 +77,16 @@ SCOPE_MODE = "visit,delayed_purchase"
 # region 별 매핑 — COMMON_REF (Campaign Main Page_Evar), ATC ref, NAME_PREFIX 모두 region 자동 분기.
 REGION_CONFIG: dict[str, dict[str, str]] = {
     "global": {
-        "common_ref":  "segment_id_placeholder",
+        "common_ref":  "세그먼트_아이디_넘버",
         "common_name": "[CAMPAIGN NAME] Campaign Main Page_Evar",
-        "atc_ref":     "YOUR_PROJECT_ID",
+        "atc_ref":     "YOUR_ID",
         "atc_name":    "[Global] Add to Cart Visit",
         "name_prefix": "[CAMPAIGN NAME] CC_",
     },
     "us": {
-        "common_ref":  "segment_id_placeholder",
+        "common_ref":  "세그먼트_아이디_넘버",
         "common_name": "[CAMPAIGN NAME] US_Campaign Main Page_Evar",
-        "atc_ref":     "segment_id_placeholder",
+        "atc_ref":     "세그먼트_아이디_넘버",
         "atc_name":    "[US] Add to Cart Visit",
         "name_prefix": "[CAMPAIGN NAME] US_CC_",
     },
@@ -94,7 +94,7 @@ REGION_CONFIG: dict[str, dict[str, str]] = {
 
 def _detect_region(rsid: str) -> str:
     """rsid → region (us / global)."""
-    return "us" if (rsid or "").strip().lower() == "rsid_placeholder" else "global"
+    return "us" if (rsid or "").strip().lower() == "sscompany_namenewus" else "global"
 
 DEFAULT_TAGS = ""
 
@@ -309,9 +309,9 @@ def main() -> int:
             # rsid 빈 채면 name 으로 자동 추론
             if not rsid:
                 if "US_" in raw_name or "[US]" in raw_name:
-                    rsid = "rsid_placeholder"
+                    rsid = "sscompany_namenewus"
                 else:
-                    rsid = "rsid_placeholder"
+                    rsid = "sscompany_name4mstglobal"
 
             if not input_id or not raw_name:
                 skipped.append((raw_name or "(no name)", "segment_id 또는 name 빈 채"))

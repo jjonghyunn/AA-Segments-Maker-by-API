@@ -48,7 +48,7 @@ from aa_segment_lookup import (
 # PROJECT_ID = "YOUR_PROJECT_ID"
 PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis (Product Recommendation) | API (user_id)
 # 기존 MD visit, delayed_purchase수정위함.
-# https://experience.adobe.com/#/@company_name/so:company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
+# https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -208,7 +208,7 @@ def main() -> int:
     user_map = _load_user_map()
     if user_map:
         _enrich_owner_name(results, user_map)
-        print(f"  owner_name 보강: aa_user_id CSV ({len(user_map)}명)")
+        print(f"  owner_name 보강: cnx_aa_id CSV ({len(user_map)}명)")
     print()
 
     # 출력 파일명 — lookup/ 하위
