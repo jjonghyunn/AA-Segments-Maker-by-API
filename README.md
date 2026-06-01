@@ -95,6 +95,7 @@ pip install aanalytics2 pandas requests
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-06-01 | input_csv_maker v1.4~v1.7: DP 2-branch 그룹핑 버그 수정 + customlink 기반 컨테이너 라벨 (`'pd25 component'`/`'co78 component'`) + 멀티 customlink(줄바꿈 OR, `'pd25 or ft31 component'`) |
 | 2026-05-30 | extract_data v3.1 추가 (SKIP_PANEL_SEGMENTS) + extract_data.md 문서, RESHAPE v1.3 |
 | 2026-05-27 | 구버전 코드 `old/` 이동, README 최신화 |
 | 2026-05-26 | v2.3: DSL preprocess, v2 의존성 제거 (self-contained) |
