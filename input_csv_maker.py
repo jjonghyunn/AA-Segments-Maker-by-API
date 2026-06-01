@@ -1,5 +1,6 @@
 # input_csv_maker.py
 # 2026-06-01  Jonghyun Park w/ Claude
+# updated: 2026-06-01  v1.7 — build_customlink_block: customlink 멀티값(줄바꿈 split) 지원 — 한 컨테이너에 여러 customlink 를 OR 로 묶고 라벨은 코드들 ' or ' 조합('pd25 or ft31 component'). 바깥 container_label 도 멀티 customlink 코드 반영.
 # updated: 2026-06-01  v1.6 — 컨테이너 라벨 정렬: 바깥 segment 컨테이너를 customlink 코드 ' or ' 조합('pd25 or co78 component')으로(build_structure container_label). DP 는 '<base>(Visit)'!visit( hit( @common AND ( '<label>'!hit( hit(A) OR hit(B) ) ) ) ) 구조 — '<label>' 이 모든 브랜치를 감쌈(hit/visit 와 동일 대칭). customlink 서브컨테이너 'pd25 component'/'co78 component' 유지.
 # updated: 2026-06-01  v1.5 — build_customlink_block: COMPONENT_LABEL_FROM_CUSTOMLINK(기본 True) 면 브랜치 컨테이너를 customlink 선두코드('pd25 component'/'co78 component')로 명명 + customlink inline (무명 hit() 래퍼 제거). hit/visit/DP 전 변형 공통 적용. False 면 기존 hit('Component'!hit(customlink)...) 구조.
 # updated: 2026-06-01  v1.4 — _build_delayed_purchase_structure: customlink_block 2 개+ (OR 브랜치) 일 때 각 hit() 래퍼 유지하고 ( hit(A) OR hit(B) ) 괄호 그룹으로 묶음. 기존엔 래퍼 벗겨 평탄화 → @COMMON_REF AND A OR B 로 그룹 경계가 사라져 B 가 @ref/THEN 시퀀스에서 빠지는 버그 수정. 1 개일 땐 기존 inline 유지.
@@ -547,17 +548,24 @@ def build_customlink_block(customlink: str, evar_blocks: list[str],
     parts: list[str] = ["hit("]
     has_first = False
     if customlink:
-        # customlink 서브컨테이너 라벨 — toggle True 면 선두코드(pd25, co78 ...) + ' component'
+        # customlink 멀티값(줄바꿈 split) 지원 — 한 컨테이너 안에 여러 customlink 를 OR 로 묶음.
+        _cls = [c.strip() for c in re.split(r"[\r\n]+", customlink) if c.strip()]
+        # 서브컨테이너 라벨 — toggle True 면 선두코드들(pd25, ft31 ...) ' or ' 조합 + ' component'
         if COMPONENT_LABEL_FROM_CUSTOMLINK:
-            _m = re.match(r"^([A-Za-z]+\d+)", customlink.strip())
-            _label = f"{_m.group(1)} component" if _m else "Component"
+            _codes: list[str] = []
+            for _c in _cls:
+                _m = re.match(r"^([A-Za-z]+\d+)", _c)
+                if _m and _m.group(1) not in _codes:
+                    _codes.append(_m.group(1))
+            _label = (" or ".join(_codes) + " component") if _codes else "Component"
         else:
             _label = "Component"
-        parts.extend([
-            f"'{_label}'!hit(",
-            f"customlink starts-with '{customlink}'",
-            ")",
-        ])
+        parts.append(f"'{_label}'!hit(")
+        for _i, _c in enumerate(_cls):
+            if _i > 0:
+                parts.append("OR")
+            parts.append(f"customlink starts-with '{_c}'")
+        parts.append(")")
         has_first = True
     # eVar 블록들 — join 옵션 따라 AND (default) 또는 OR (named container wrap)
     if evar_blocks:
@@ -1119,9 +1127,10 @@ def main() -> int:
         if COMPONENT_LABEL_FROM_CUSTOMLINK:
             _codes: list[str] = []
             for m in members:
-                _cm = re.match(r"^([A-Za-z]+\d+)", (m["_customlink"] or "").strip())
-                if _cm and _cm.group(1) not in _codes:
-                    _codes.append(_cm.group(1))
+                for _c in re.split(r"[\r\n]+", (m["_customlink"] or "")):
+                    _cm = re.match(r"^([A-Za-z]+\d+)", _c.strip())
+                    if _cm and _cm.group(1) not in _codes:
+                        _codes.append(_cm.group(1))
             container_label = (" or ".join(_codes) + " component") if _codes else new_name_base
         else:
             container_label = new_name_base
