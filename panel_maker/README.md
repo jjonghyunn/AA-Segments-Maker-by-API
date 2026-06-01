@@ -111,7 +111,7 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 ## 실행
 
 ```powershell
-cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\2.data\99.PY,SQL-250429\your_workspace\260504_AA_segment_maker\panel_maker"
+cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\2.data\99.PY,SQL-250429\your_workspace\AA_segment_maker\panel_maker"
 
 # dry-run (default) — 매핑 표 + 매칭 안된 목록 + CSV 떨어뜨림. PUT 안 함
 python clone_project_first_panel.py

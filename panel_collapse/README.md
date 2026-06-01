@@ -29,7 +29,7 @@ AA Workspace project 의 panel 안에 있는 모든 subPanel (테이블 / freefo
 ## 실행
 
 ```powershell
-cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\2.data\99.PY,SQL-250429\your_workspace\260504_AA_segment_maker\panel_collapse"
+cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\2.data\99.PY,SQL-250429\your_workspace\AA_segment_maker\panel_collapse"
 
 # 1) Dry-run (실제 PUT 안 함 — 변경 건수만 출력)
 python collapse_panel_tables.py
@@ -86,7 +86,7 @@ PANEL_NAME_PATTERN = r"campaign_name'?s\s*Day"           # 캠페인명 매칭
 
 ## 자매 도구
 
-같은 폴더 (`260504_AA_segment_maker/`) 안:
+같은 폴더 (`AA_segment_maker/`) 안:
 
 - `panel_date_update/update_panel_date.py` — 특정 panel 의 종료일 일괄 치환
 - `panel_maker/clone_project_first_panel.py` — 첫 panel 복제 + segment swap (이 안에 `_collapse_all_subpanels` 동일 헬퍼가 있어 본 도구가 그 패턴을 재사용)

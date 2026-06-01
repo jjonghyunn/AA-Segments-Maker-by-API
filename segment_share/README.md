@@ -46,7 +46,7 @@ ID lookup 은 상위 폴더의 `cnx_aa_id_*.csv` 자동 pick (`AA_USER_CSV` — 
 ## 실행
 
 ```powershell
-cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\2.data\99.PY,SQL-250429\your_workspace\260504_AA_segment_maker\segment_share"
+cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\2.data\99.PY,SQL-250429\your_workspace\AA_segment_maker\segment_share"
 
 # 1) Dry-run — 매칭 segment 목록 + segment 별 실제 추가될 user id 미리보기 + segments_matched_*.csv 생성
 python add_segment_shares.py
