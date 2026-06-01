@@ -27,7 +27,7 @@ repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/panel_date_
 ## 실행
 
 ```powershell
-cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\your_workspace\260504_AA_segment_maker\panel_date_update"
+cd "C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\your_workspace\AA_segment_maker\panel_date_update"
 
 # 1) Dry-run
 python update_panel_date.py
