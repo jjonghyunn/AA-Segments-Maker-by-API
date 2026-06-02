@@ -63,7 +63,7 @@ KEYWORDS: list[str] = [
 # owner.id 화이트리스트 (numeric loginId). 비어있으면 미사용.
 # 예: [000000001, YOUR_LOGIN_ID] → 두 사람 owner segment 만
 OWNER_ID_FILTER: list[int] = [
-    # 000000001,   # user1_login  (Jonghyun Park)
+    # 000000001,   # user1_login  (User 1)
     # YOUR_LOGIN_ID,   # user2_login    (User2 Name)
     # YOUR_LOGIN_ID,   # user3_login (User3 Name)
     # YOUR_LOGIN_ID,   # user4_login        (User4 Name)
@@ -263,7 +263,7 @@ PRINT_FIRST_N = 5
 # shares 에 추가할 numeric loginId 리스트 (aa_user_id_*.csv 에서 lookup)
 # 본인 + 추가 인원
 SHARE_USER_IDS = [
-    000000001,   # user1@company_name.com  (Jonghyun Park)
+    000000001,   # user1@company_name.com  (User 1)
     YOUR_LOGIN_ID,   # user2@company_name.com    (User2 Name)
     YOUR_LOGIN_ID,   # user3@company_name.com (User3 Name)
     YOUR_LOGIN_ID,   # user4@company_name.com        (User4 Name)
