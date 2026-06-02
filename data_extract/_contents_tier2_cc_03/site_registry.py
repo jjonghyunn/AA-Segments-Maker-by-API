@@ -65,6 +65,7 @@ _SITE_MASTER: dict[str, tuple[str | None, str | None, str]] = {
     # --- Europe etc ---
     "at": ("FRNF", "Austria", "sscompany_name4at"),
     "be": ("FROA", "Belgium", "vrs_your_aa_company_id_p6webmstbelgiumestor"),
+    "be_old": ("FROA", "Belgium", "sscompany_name4be"), # ~ 2025-12 말 경
     "be_fr": ("FROA", "Belgium", "vrs_your_aa_company_id_p6webmstbelgiumestor"),  # (표가 be/be_fr 같이 적혀있어서 일단 동일 RSID로 둠)
     "ba": ("FRNQ", "Bosnia", "sscompany_name4ba"),
     "bg": ("FREBZ", "Bulgaria", "sscompany_name4bg"),
@@ -75,6 +76,7 @@ _SITE_MASTER: dict[str, tuple[str | None, str | None, str]] = {
     "fi": ("FRAN", "Finland", "sscompany_name4fi"),
     "fr": ("FRS", "France", "sscompany_name4fr"),
     "de": ("FRT", "Germany", "vrs_your_aa_company_id_p6webmstgermanyestor_0"),
+    "de_old": ("FRT", "Germany", "sscompany_name4de"), # ~ 2025-12 말 경
     "gr": ("FRTE", "Greece", "sscompany_name4gr"),
     "hu": ("FRU", "Hungary", "sscompany_name4hu"),
     "ie": ("FRHX", "Ireland", "sscompany_name4ie"),
@@ -83,18 +85,22 @@ _SITE_MASTER: dict[str, tuple[str | None, str | None, str]] = {
     "lt": ("FRO", "Lithuania", "sscompany_name4lt"),
     "mk": ("FRNQ", "Macedonia", "sscompany_name4mk"),
     "nl": ("FROA", "Netherlands", "vrs_your_aa_company_id_p6webmstnetherlandse_0"),
+    "nl_old": ("FROA", "Netherlands", "sscompany_name4nl"), # ~ 2025-12 말 경
     "no": ("FRAN", "Norway", "sscompany_name4no"),
     "pl": ("FRCBY", "Poland", "sscompany_name4pl"),
     "pt": ("FRVO", "Portugal", "vrs_your_aa_company_id_p6webmstportugalesto"),
+    "pt_old": ("FRVO", "Portugal", "sscompany_name4pt"), # ~ 2025-12 말 경
     "ro": ("FREBZ", "Romania", "sscompany_name4ro"),
     "rs": ("FRNQ", "Serbia", "sscompany_name4rs"),
     "sk": ("FRPM", "Slovakia", "sscompany_name4sk"),
     "si": ("FRNQ", "Slovenia", "sscompany_name4si"),
     "es": ("FRVO", "Spain", "vrs_your_aa_company_id_p6webmstspainestoreb"),
+    "es_old": ("FRVO", "Spain", "sscompany_name4es"), # ~ 2025-12 말 경
     "se": ("FRAN", "Sweden", "sscompany_name4se"),
     "ch": ("FRNF", "Switzerland", "sscompany_name4ch"),
     "ch_fr": ("FRNF", "Switzerland", "sscompany_name4chfr"),
     "uk": ("FRHX", "UK", "vrs_your_aa_company_id_p6webmstukcopy"),
+    "uk_old": ("FRHX", "UK", "sscompany_name4uk"), # ~ 2025-12 말 경
     "al": ("FRNQ", "Albania", "sscompany_name4al"),
 
     # --- Americas ---
@@ -110,8 +116,8 @@ _SITE_MASTER: dict[str, tuple[str | None, str | None, str]] = {
     "ca": ("FRPN", "Canada", "sscompany_name4ca"),
     "ca_fr": ("FRPN", "Canada", "sscompany_name4cafr"),  
     "mx": ("FRZ", "Mexico", "sscompany_name4mx"),
-    "us": ("FRN", "US", "sscompany_namenewus"), # ~ 2026-05-18
-    # "us": ("FRN", "US", "sscompany_name4newus"), # 2026-05-19 ~
+    "us_old": ("FRN", "US", "sscompany_namenewus"), # ~ 2026-05-18
+    "us": ("FRN", "US", "sscompany_name4newus"), # 2026-05-19 ~
 }
 
 def lookup_site(site_code: str) -> SiteInfo:
