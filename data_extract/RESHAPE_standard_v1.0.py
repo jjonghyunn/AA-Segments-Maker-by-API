@@ -16,6 +16,7 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
         예) 'Landing Page; Email' → 'Email'
   · VALUE = value1 값. revenue metric 이면 currency.csv 환율 적용, 그 외 원본 그대로
         (환율 적용된 batch 면 VALUE=환산값 + 'VALUE (원본)' 컬럼 추가)
+  · DIM_EXCLUDE_VALUES 일치하는 디멘션값 행 제외 (Unspecified/null/(summary) 등, 대소문자 무시)
   · COUNTRY = site_registry 로 site_code → 국가명
   · 출력 : <폴더>/output/_union_standard_{ts}.csv
 
@@ -31,8 +32,9 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
   4) SITES_FILTER 있으면 그 site 만
   5) ITEM = segments 우측 토큰 / SITE CODE = SITE_CODE_RENAME 치환 (xx_old→xx)
      revenue 면 환율 적용
-  6) (옵션) DROP_ZERO_VALUE 면 VALUE==0 행 제외
-  7) _union_standard_{ts}.csv 저장
+  6) DIM_EXCLUDE_VALUES 에 일치하는 디멘션값 행 제외 (Unspecified/null/(summary) 등)
+  7) (옵션) DROP_ZERO_VALUE 면 VALUE==0 행 제외
+  8) _union_standard_{ts}.csv 저장
 
 출력 컬럼:
   TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [VALUE (원본)],
@@ -91,7 +93,16 @@ SITE_CODE_RENAME: dict[str, str] = {"xx_old": "xx"}
 # Entries/Visits 등 비-금액 metric 은 환율 무관 (rate=1.0).
 APPLY_CURRENCY = True
 CURRENCY_CSV = SCRIPT_DIR / "currency.csv"
-CURRENCY_METRIC_KEYWORD = "revenue"   # 소문자 substring 매칭
+# ★ metric 에 이 키워드가 '포함'되기만 하면(부분일치, 대소문자 무시) 환율 적용.
+#   예: 'Revenue', 'Revenue (KRW)', 'Total Revenue', 'revenue per visit' → 전부 매칭
+#       (정확히 'revenue' 일 필요 없음 — revenue 글자가 들어가면 됨)
+CURRENCY_METRIC_KEYWORD = "revenue"   # 부분일치(substring), 대소문자 무시
+
+# ─── 디멘션 값 제외 (값 전체 일치, 대소문자 무시) ───────────────────
+# 디멘션 값이 아래 목록 중 하나와 (양끝 공백 제거 후 대소문자 무시) 정확히 일치하면 그 행 제외.
+# 디멘션 종류에 따라 추가/제거하는 영역. 빈 리스트면 제외 없음.
+#   '(summary)' 는 괄호 포함. 'Unspecified'/'null' 은 디멘션 미지정/빈값 라벨.
+DIM_EXCLUDE_VALUES: list[str] = ["Unspecified", "null", "(summary)"]
 
 # ─── VALUE==0 행 제외 (옵션) ────────────────────────────────────────
 # True 면 VALUE 가 0 인 행을 출력에서 제외. False(기본) 면 0 행도 전부 유지.
@@ -105,6 +116,7 @@ INCLUDE_REPORTLET = True
 # 내부 사용
 # ════════════════════════════════════════════════════════════════════
 RE_TS_FILE = re.compile(r"^extract_data_(.+)_(\d{6}_\d{4})\.csv$")
+_DIM_EXCLUDE_LOWER = {v.strip().lower() for v in DIM_EXCLUDE_VALUES if v.strip()}
 
 
 def _ts_now() -> str:
@@ -261,6 +273,7 @@ def process() -> int:
 
     out_rows: list[dict] = []
     n_zero_dropped = 0
+    n_dim_excluded = 0
 
     for r in rows:
         site       = (r.get("site_code")  or "").strip()
@@ -273,6 +286,11 @@ def process() -> int:
         dim_val    = (r.get(dim_col)      or "").strip()
         reportlet  = (r.get("reportlet")  or "").strip()
         raw_val    = (r.get("value1")     or "").strip()   # extract_data 의 값 컬럼은 항상 'value1'
+
+        # 디멘션 값 제외 (Unspecified/null/(summary) 등 — 값 전체 일치, 대소문자 무시)
+        if dim_val.strip().lower() in _DIM_EXCLUDE_LOWER:
+            n_dim_excluded += 1
+            continue
 
         # 숫자 변환 (원본값)
         try:
@@ -341,6 +359,8 @@ def process() -> int:
             w.writerow(r)
     print(f"\n[save] {out_path}")
     print(f"  output rows : {len(out_rows)}")
+    if _DIM_EXCLUDE_LOWER:
+        print(f"  디멘션값 제외: {n_dim_excluded} rows")
     if DROP_ZERO_VALUE:
         print(f"  VALUE==0 제외: {n_zero_dropped} rows")
     return 0
