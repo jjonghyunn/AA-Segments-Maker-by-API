@@ -21,7 +21,7 @@ repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/segment_sha
 | `AUTH_JSON_PATH` | `C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\aanalyticsact_auth.json` |
 | `COMPANY_ID` | `your_aa_company_id` |
 | `RSID` | `""` (전체 RSID — 빈 문자열이면 server-side RSID 필터 안 함) |
-| `OWN_LOGIN_ID` | `YOUR_LOGIN_ID` (Jonghyun Park — 본인 owner segment 만 client-side 필터) |
+| `OWN_LOGIN_ID` | `YOUR_LOGIN_ID` (User 1 — 본인 owner segment 만 client-side 필터) |
 | `KEYWORDS` | `["visit"]` (name/description AND substring 매칭, case-insensitive) |
 | `OWNER_ID_FILTER` | `[]` (비어있으면 미사용) |
 | `OWNER_FULLNAME_INCLUDES` | `[]` (비어있으면 미사용) |
@@ -32,7 +32,7 @@ repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/segment_sha
 
 | email | loginId | fullName |
 |---|---|---|
-| user1@company_name.com | YOUR_LOGIN_ID | Jonghyun Park |
+| user1@company_name.com | YOUR_LOGIN_ID | User 1 |
 | user2@company_name.com | YOUR_LOGIN_ID | User 2 |
 | user3@company_name.com | YOUR_LOGIN_ID | User 3 |
 | user4@company_name.com | YOUR_LOGIN_ID | User 4 |

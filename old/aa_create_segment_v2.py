@@ -49,7 +49,7 @@ COMPANY_ID = "company_id"
 # ─── 본인 식별 (segment owner) ────────────────────────────────────
 # OWNER_ID 에 numeric loginId 직접 지정하면 API lookup 생략.
 # 팀원 loginId 목록 (add_segment_shares.py 기준):
-#   000000001  user1_login   (Jonghyun Park)
+#   000000001  user1_login   (User 1)
 #   YOUR_LOGIN_ID  user2_login     (User2 Name)
 #   YOUR_LOGIN_ID  user3_login  (User3 Name)
 #   YOUR_LOGIN_ID  user4_login         (User4 Name)
