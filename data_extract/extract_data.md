@@ -1,7 +1,5 @@
-# extract_data.py / extract_data_v2.py / extract_data_v3.py / extract_data_v3.1.py
-<sub>2026-05-28  Jonghyun Park w/ Claude</sub>
-
-Adobe Workspace project의 모든 panel × reportlet에서 세그먼트/메트릭 이름 + 실제 데이터 값을 **동시다발적으로** 추출.
+# extract_data.py / extract_data_v2.py / extract_data_v3.py / extract_data_v3.1.py / extract_data_v3.2.py / extract_data_v3.3.py / extract_data_v3.4.py  
+<sub>2026-06-04  Jonghyun Park w/ Claude</sub>  Adobe Workspace project의 모든 panel × reportlet에서 세그먼트/메트릭 이름 + 실제 데이터 값을 **동시다발적으로** 추출.
 
 | 파일 | 용도 |
 |---|---|
@@ -9,8 +7,11 @@ Adobe Workspace project의 모든 panel × reportlet에서 세그먼트/메트�
 | `extract_data_v2.py` | **사이트별 RSID + dateRange override** (`sites_input.csv` 의 row 별로) |
 | `extract_data_v3.py` | v2 베이스 + **EXTRA_SEGMENTS 옵션** (세그 이름 검색 또는 ID 로 globalFilter 추가) |
 | `extract_data_v3.1.py` | v3 베이스 + **SKIP_PANEL_SEGMENTS 옵션** (panel 의 기존 segmentGroups 무시 토글) |
+| `extract_data_v3.2.py` | v3.1 베이스 + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기, 줄 안 지우고) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) |
+| `extract_data_v3.3.py` | v3.2 베이스 + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 이름 필터, panel 필터 다음 단계) |
+| `extract_data_v3.4.py` | v3.3 베이스 + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌 검사** |
 | `extract_data_v3_contents*.py` (v3 contents 시리즈) | v2 베이스 + **site 단위 병렬 처리 옵션** (`SITE_WORKERS` 상수) |
-| `extract_data_v3.1_contents*.py` | v3 contents 베이스 + **SKIP_PANEL_SEGMENTS 옵션** |
+| `extract_data_v3.2_contents*.py` | v3 contents 베이스 + **SKIP_PANEL_SEGMENTS 옵션** + **OUTPUT_PREFIX** (EXTRA_SEGMENTS 미탑재) |
 
 > 주의: `extract_data_v3.py` 와 `extract_data_v3_contents*.py` 는 **이름은 비슷하지만 다른 시리즈**. 전자는 segment 추가, 후자는 site 병렬화.
 
@@ -76,6 +77,7 @@ python extract_data.py --add-filter s200001591_xxx     # 세그먼트 추가해�
 | `LIMIT` | dimension row 수 제한 | 데이터 양 조절 |
 | `BASE_YEAR` | 기준년도 (panel 컨텍스트 감지용) | 매년/시즌 변경 |
 | `REQUIRED_PANEL_KEYWORDS` | 빈 리스트면 모든 패널 통과 | 특정 패널만 추출 시 |
+| `REQUIRED_TABLE_KEYWORDS` | 빈 리스트면 모든 테이블 통과 | 특정 reportlet/테이블만 추출 시 |
 
 ## 전체필터 조회/수정
 
@@ -101,7 +103,7 @@ API가 422/400을 반환하면 (메트릭이 너무 많거나 dateRange가 긴 �
 columnTree에 DateRange 컴포넌트가 있으면:
 1. `GET /dateranges/{id}?expansion=definition`으로 실제 날짜 범위 조회 (시작 시 일괄 prefetch + 캐시)
 2. metricFilter에 `dateRange` + `dateRangeId` 둘 다 포함하여 정확한 값 추출
-3. segments 칼럼에 dateRange 이름 표시 (예: `[DE CAMPAIGN NAME 직전 4주] (2026. 3. 12 ~ 2026. 4. 8)`)
+3. segments 칼럼에 dateRange 이름 표시 (예: `[DE 26 MD 직전 4주] (2026. 3. 12 ~ 2026. 4. 8)`)
 
 > 주의: 2년 이상 긴 dateRange는 API가 `max network bytes exceeded` (422)로 거부할 수 있음. Workspace UI는 내부 캐시로 처리하지만 raw API에는 제한 있음.
 
@@ -194,7 +196,7 @@ row 의 site_code (예: "au")
 lookup_site("au")  ── site_registry._SITE_MASTER 에서 찾기
     │
     ↓
-SiteInfo(subsidiary="FRNH", country="Australia", site_code="au", rsid="sscompany_name4au")
+SiteInfo(subsidiary="SEAU", country="Australia", site_code="au", rsid="sscompany_name4au")
     │
     ↓
 payload 의 "rsid" → "sscompany_name4au"
@@ -346,9 +348,9 @@ data_extract/
 
 | 폴더 | 비고 |
 |---|---|
-| `260413_CAMPAIGN NAME/data_extract/` | CAMPAIGN NAME (베이스) |
+| `260413_CAMPAIGN_NAME/data_extract/` | CAMPAIGN NAME (베이스) |
 | `260504_AA_segment_maker/data_extract/` | segment maker 베이스 (PROJECT_ID 캠페인별 변경) |
-| `260515_CAMPAIGN NAME/data_extract/` | CAMPAIGN NAME |
+| `260515_campaign_name/data_extract/` | CAMPAIGN NAME |
 
 각 폴더에 `aa_segment_lookup.py` 사본도 같이 있음.
 
@@ -417,14 +419,14 @@ EXTRA_SEGMENTS = [
 
 ## 운영 사본 위치
 
-v3.1 사본 (PROJECT_ID 등 운영값 캠페인별 다름):
+최신 사본 = **v3.4** (PROJECT_ID 등 운영값 캠페인별 다름):
 
 | 폴더 | 비고 |
 |---|---|
-| `260413_CAMPAIGN NAME/data_extract/extract_data_v3.1.py` | CAMPAIGN NAME 베이스 |
-| `260504_AA_segment_maker/data_extract/extract_data_v3.1.py` | segment maker 베이스 |
-| `260515_CAMPAIGN NAME/data_extract/extract_data_v3.1.py` | CAMPAIGN NAME 메인 |
-| `260515_CAMPAIGN NAME/data_extract/revisit_repurchase_<site>/extract_data_v3.1.py` | revisit/repurchase site 별 (13 폴더 — br, cn, cross_sell, de, es, in, it, mx, pt, tr, uk, us, + cross_sell/us_old) |
+| `260413_CAMPAIGN_NAME/data_extract/extract_data_v3.4.py` | CAMPAIGN NAME 베이스 |
+| `260504_AA_segment_maker/data_extract/extract_data_v3.4.py` | segment maker 베이스 |
+| `260515_campaign_name/data_extract/extract_data_v3.4.py` | CAMPAIGN NAME 메인 |
+| `260515_campaign_name/data_extract/revisit_repurchase_<site>/extract_data_v3.4.py` | revisit/repurchase site 별 (12 폴더 — br, cn, cross_sell, de, es, in, it, mx, pt, tr, uk, us) |
 
 각 폴더에 `aa_segment_lookup.py` 사본도 같이 있음 (v3 와 동일).
 
@@ -434,6 +436,89 @@ v3.1 사본 (PROJECT_ID 등 운영값 캠페인별 다름):
 2. 기존 패널 세그 갈아끼울 필요 생기면 `SKIP_PANEL_SEGMENTS = True` 로 변경 + EXTRA_SEGMENTS 에 새 세그 박기
 3. 특정 panel 만 갈아끼우려면 `SKIP_PANEL_SEGMENTS = ["panel_name_keyword"]` 형식
 4. `--dry-run --site us` 로 payload 검증 → 전체 실행
+
+---
+
+# extract_data_v3.2.py — EXTRA_SEGMENTS `enabled` 토글 + `OUTPUT_PREFIX`
+
+v3.1 베이스 + 두 가지 옵트인 추가. 둘 다 기본값이 기존 동작과 100% 호환.
+
+## 1) EXTRA_SEGMENTS 항목별 `enabled` 토글
+
+각 EXTRA_SEGMENTS 항목에 `"enabled": False` 를 주면 그 세그를 globalFilter 에서 제외(스킵). 줄을 지우지 않고 끄고 켤 수 있음. 키가 없으면 `True` (적용).
+
+```python
+EXTRA_SEGMENTS = [
+    {"segment_id": "s200001591_xxx", "panel_scope": "all", "enabled": False},  # 끔
+    {"segment_id": "s200001591_yyy", "panel_scope": "all"},                    # 적용(기본)
+]
+```
+
+> 주의: `enabled:False` 는 **EXTRA_SEGMENTS 로 추가한 세그만** 끔. 패널 자체 segmentGroups 에 박힌 세그는 `SKIP_PANEL_SEGMENTS`(v3.1) 로 따로 제어. **같은 조건의 세그가 패널에도 박혀 있으면 EXTRA 를 꺼도 패널 쪽 필터가 남음** — 콘솔 `[disabled] EXTRA_SEGMENTS skip: ...` 출력으로 EXTRA 가 빠졌는지 확인하고, 실제 globalFilters 는 dry-run 으로 점검.
+
+## 2) OUTPUT_PREFIX 상수
+
+출력 CSV 파일명 앞 prefix. `""` 면 기존 동작. 추출 변형(제외본/전체본 등)을 파일명으로 구분할 때 사용.
+
+```python
+OUTPUT_PREFIX = ""        # 기존: extract_data_<site>_<ts>.csv
+OUTPUT_PREFIX = "excl_"   # excl_extract_data_<site>_<ts>.csv (제외 적용본)
+OUTPUT_PREFIX = "full_"   # full_extract_data_<site>_<ts>.csv (세그 없는 전체)
+```
+
+적용 위치: `output/{OUTPUT_PREFIX}extract_data_<site>_<ts>.csv` / `{OUTPUT_PREFIX}column_mapping_<site>_<ts>.csv`.
+
+## 운영 사본
+plain v3.2 = 캠페인 메인 3 + revisit_repurchase 국가별. contents 계열(`extract_data_v3.2_contents*`)은 EXTRA_SEGMENTS 미탑재 → OUTPUT_PREFIX 만 추가됨(enabled 토글 없음).
+
+---
+
+# extract_data_v3.4.py — name_keywords 패널-우선 + SKIP_PANEL_SEGMENT_KEYWORDS + 충돌 검사
+
+v3.3 베이스 + 3가지 추가. 모두 기본값이 기존 동작과 100% 호환(옵트인).
+
+## 1) name_keywords 패널-우선(panel-first) 해석
+`EXTRA_SEGMENTS` 의 `name_keywords` 검색을 **회사 전체보다 프로젝트 패널 segmentGroups 안에서 먼저** 매칭:
+- 패널 내 **1건** → 그 세그 바로 적용 (회사 전체 검색 생략, 모호성 없음)
+- 패널 내 **2건+** → 중단 (segment_id 직접 지정하거나 더 세밀한 키워드)
+- 패널 내 **0건** → 기존 회사 전체 검색 fallback
+
+> 회사 전체엔 비슷한 이름 세그가 여러 개라도(예: "visitor id d=mid null" 7건), 패널 안엔 보통 1개라 정확히 확정됨.
+
+## 2) SKIP_PANEL_SEGMENT_KEYWORDS — 특정 패널 세그만 제거
+패널 segmentGroups 중 **이름에 키워드를 모두(AND) 포함**하는 세그만 globalFilter 에서 제거. EPP 등 나머지는 유지.
+
+```python
+SKIP_PANEL_SEGMENT_KEYWORDS: list[str] = []                       # 기본: 제거 안 함
+SKIP_PANEL_SEGMENT_KEYWORDS = ["visitor id", "d=mid", "null"]     # (SJ) 류만 제거
+```
+
+| 방법 | 효과 |
+|---|---|
+| `SKIP_PANEL_SEGMENTS=True` | 패널 세그 **전부** 제거 |
+| `SKIP_PANEL_SEGMENT_KEYWORDS=[...]` | **키워드 매칭 세그만** 제거 (나머지 유지) |
+| `enabled:False` (EXTRA) | EXTRA 추가만 차단 — 패널 세그는 **제거 못 함** |
+
+> 빈 visitor id 같은 "값 없음"은 Adobe 에서 `Unspecified` 로 잡힘 — `streq "null"` 정의 세그로는 안 잡히니 세그 정의 확인 필요.
+
+## 3) EXTRA ↔ SKIP 충돌 검사
+같은 세그를 `EXTRA_SEGMENTS`(추가) + `SKIP_PANEL_SEGMENT_KEYWORDS`(제거)로 동시에 지정하면 모순 → **경고 후 중단**(SystemExit). 추가/제거 중 하나를 빼고 재실행.
+
+## 사용자 설정 추가 (상단 상수)
+| 상수 | 설명 |
+|---|---|
+| `SKIP_PANEL_SEGMENT_KEYWORDS` | 이름에 키워드 다 든 패널 세그만 제거 (빈 리스트=미적용) |
+
+> v3.4 에서 `SKIP_PANEL_SEGMENTS` / `SKIP_PANEL_SEGMENT_KEYWORDS` 는 상단 사용자 설정부(EXTRA_SEGMENTS 뒤)로 이동됨.
+
+## 운영 사본 위치 (v3.3 → v3.4 일괄 업그레이드, 18개)
+| 폴더 | 비고 |
+|---|---|
+| `260413_CAMPAIGN_NAME/data_extract/` (+ `revisit_repurchase_fr/`) | CAMPAIGN NAME |
+| `260504_AA_segment_maker/data_extract/` | segment maker 베이스 |
+| `260515_campaign_name/data_extract/` (+ `cid_list/`, `watch_visit_debug/`, `revisit_repurchase_<site>/` ×12) | CAMPAIGN NAME |
+
+> `SKIP_PANEL_SEGMENT_KEYWORDS` 값은 캠페인/패널마다 다름 — revisit_repurchase 계열엔 (SJ) 제거값 박힘, 그 외는 확인 후 조정.
 
 ---
 
