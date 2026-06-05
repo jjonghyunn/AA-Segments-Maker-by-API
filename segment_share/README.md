@@ -41,7 +41,7 @@ repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/segment_sha
 | user7@company_name.com | YOUR_LOGIN_ID | User 7 |
 | user8@... | YOUR_LOGIN_ID | User 8 |
 
-ID lookup 은 상위 폴더의 `cnx_aa_id_*.csv` 자동 pick (`AA_USER_CSV` — 가장 최신 timestamp). `find_user_id.py --all --csv ...` 로 갱신.
+ID lookup 은 상위 폴더의 `company_name_aa_id_*.csv` 자동 pick (`AA_USER_CSV` — 가장 최신 timestamp). `find_user_id.py --all --csv ...` 로 갱신.
 
 ## 실행
 
@@ -78,12 +78,12 @@ KEYWORDS=['visit'] 매칭 segment: M개
 --- 매칭된 segment 목록 (첫 5개) ---
   #  segment id                    rsid                name
 ----------------------------------------------------------------------------------------
-  1  s200259492_xxxxxxxx...        sscompany_name4mstglobal [part_name] Campaign Visit
+  1  s200001591_xxxxxxxx...        sscompany_name4mstglobal [part_name] Campaign Visit
   ...
 
 --- 변경 미리보기 (segment 별 추가될 user id) ---
-  + s200259492_xxxxxxxx...  [part_name] Campaign Visit               추가: [YOUR_LOGIN_ID, YOUR_LOGIN_ID, ...]
-  · s200259492_zzzzzzzz...  [part_name] Already Shared               이미 모두 share 됨 (skip)
+  + s200001591_xxxxxxxx...  [part_name] Campaign Visit               추가: [YOUR_LOGIN_ID, YOUR_LOGIN_ID, ...]
+  · s200001591_zzzzzzzz...  [part_name] Already Shared               이미 모두 share 됨 (skip)
   ...
 
 --- 합계 ---
@@ -119,5 +119,5 @@ KEYWORDS=['visit'] 매칭 segment: M개
 ## 자매 도구
 
 - `../utils/find_user_id.py` — email/login/name 으로 numeric loginId 찾기
-- `../cnx_aa_id_*.csv` — 회사 전체 user id 매핑 (`find_user_id.py --all --csv ...` 로 생성)
+- `../company_name_aa_id_*.csv` — 회사 전체 user id 매핑 (`find_user_id.py --all --csv ...` 로 생성)
 - `../segment_maker/aa_create_segment_v2.2.py` — segment 생성 시 `OWNER_ID` 설정으로 본인 명의 보장

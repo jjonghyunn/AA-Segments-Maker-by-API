@@ -12,7 +12,7 @@ repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/panel_maker
 
 source project 의 panel(들) 을 미리 만들어둔 빈 target project 로 복제 + 그 안에 박혀있는 segment ID 들을 NEW 키워드 계열의 segment 로 자동 swap. 캠페인 갈아끼울 때 panel 구조 통째로 재사용:
 
-> `[CAMPAIGN NAME]` 캠페인 프로젝트의 패널 구조 + 리포틀렛 + 차트 layout 그대로 → `[26 JH]` / `[CAMPAIGN NAME]` / CAMPAIGN NAME Recomm 같은 새 캠페인 프로젝트에 복제 + 캠페인 prefix 만 자동 교체.
+> `[CAMPAIGN NAME]` 캠페인 프로젝트의 패널 구조 + 리포틀렛 + 차트 layout 그대로 → `[NEW CAMPAIGN NAME]` / `[CAMPAIGN NAME]` / CAMPAIGN NAME Recomm 같은 새 캠페인 프로젝트에 복제 + 캠페인 prefix 만 자동 교체.
 
 UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자동화.
 
@@ -38,10 +38,10 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 | `AUTH_JSON_PATH` | `C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\aanalyticsact_auth.json` |
 | `COMPANY_ID` | `your_aa_company_id` |
 | `SOURCE_PROJECT_ID` | `YOUR_ID` (CAMPAIGN NAME 캠페인) |
-| `TARGET_PROJECT_ID` | `YOUR_ID` (26 JH 캠페인) |
+| `TARGET_PROJECT_ID` | `YOUR_ID` (NEW CAMPAIGN NAME 캠페인) |
 | `SOURCE_PANEL_INDEX` | `0` (첫 panel 만) |
 | `OLD_KEYWORDS` | `["[CAMPAIGN NAME]", "CAMPAIGN NAME"]` |
-| `NEW_KEYWORDS` | `["[26 JH]", "26 JH"]` |
+| `NEW_KEYWORDS` | `["[NEW CAMPAIGN NAME]", "NEW CAMPAIGN NAME"]` |
 
 ### panel_contents.py
 
@@ -76,7 +76,7 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 ### clone_project_first_panel.py (이름 정규화)
 
 - `NAME_NORMALIZATION_PATTERNS` 의 (regex, replacement) 튜플들을 순서대로 적용 → 정규화 키 도출
-- 예: `"[CAMPAIGN NAME] ALL SITES_Internal_GNB"` ↔ `"[26 JH] Internal_GNB"` → 둘 다 `"internal_gnb"` 로 정규화되어 매칭
+- 예: `"[CAMPAIGN NAME] ALL SITES_Internal_GNB"` ↔ `"[NEW CAMPAIGN NAME] Internal_GNB"` → 둘 다 `"internal_gnb"` 로 정규화되어 매칭
 - 매칭 안 되면 `MANUAL_OVERRIDES` 의 `source_id → target_id` 직접 매핑 적용 (dry-run 결과의 `NO_MATCH` / `AMBIGUOUS` 항목 보고 박음)
 - 옵션: `RENAME_PANEL` (panel.name 안 OLD → NEW 치환), `COLLAPSE_ALL_SUBPANELS` (subPanel `collapsed=True` 강제)
 
