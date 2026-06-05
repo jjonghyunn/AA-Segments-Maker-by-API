@@ -1,6 +1,7 @@
 # aa_segment_lookup.py
 # 2026-05-15  Jonghyun Park w/ Claude
 # ── 변경 이력 (git 히스토리 스크럽됨 — 아래 changelog 가 변경 기록) ──
+# updated: 2026-06-05  v1.2 — --search 전 키워드를 연속 substring AND (첫 키워드 토큰화 버그 수정) + SEARCH_RESULT_LIMIT 등 상단 상수화 + 초과 시 경고
 # updated: 2026-06-05  v1.1 — owner_email 컬럼 추가 + owner 이름/이메일을 GET /users 직접 조회로 보강 (외부 user-id CSV 의존 제거)
 # updated: 2026-05-26       — sequence 처리: wrap 분기 제거, 모든 sequence/prefix/suffix 에 [sequence-after/before/all] 라벨 + scope 감쌈
 # updated: 2026-05-22       — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
@@ -23,8 +24,8 @@
   python segment_lookup.py --search "campaign" --rsid sscompany_name4mstglobal
 
   # 이름 키워드 AND 검색 (여러 개 — 공백 구분, 각 quote 로 감쌈)
-  python segment_lookup.py --search "[CAMPAIGN NAME]" "recomm"               # AND 매칭
-  python segment_lookup.py --search "[CAMPAIGN NAME]" "US_CC" --limit 500
+  python segment_lookup.py --search "[us] p" "visit"      # 이름에 "[us] p" 와 "visit" 둘 다
+  python segment_lookup.py --search "[CAMPAIGN NAME]" "US_CC" --limit 2000
 
   주의: --search 키워드 list 는 **공백 구분** (콤마 박지 말 것).
         PowerShell 에서 콤마 (`,`) 는 array operator 라 native exe 전달 시 처리 불일치 가능.
@@ -32,9 +33,10 @@
         ✅ --search "[CAMPAIGN NAME]" "recomm"     (정확 — argparse nargs='+' 가 공백 구분)
 
   검색 동작:
-    · 첫 키워드  → AA API server-side `name` 파라미터로 사전 필터 (가장 specific 한 것 앞에 둘 것)
-    · 나머지 키워드 → client-side 에서 case-insensitive substring 으로 AND 추가 매칭 (name + description)
-    · --limit (default 50) — server-side 사전 필터 결과 상한. AND 결과가 적으면 limit 늘리기.
+    · 각 키워드(첫 키워드 포함)를 이름(+설명)에 **연속 substring** 으로 AND 매칭 (대소문자 무시).
+      → "[us] p" 는 공백까지 통째로 한 substring (단어로 안 쪼갬).
+    · 서버 `name` 파라미터는 매칭 수단이 아니라 가장 긴 완전단어 1개로 속도용 prefetch 만.
+    · --limit (기본 SEARCH_RESULT_LIMIT) — 결과 상한. 초과하면 경고 후 상위 N 만 출력.
 """
 from __future__ import annotations
 
@@ -57,6 +59,11 @@ import aanalytics2 as api2
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
 AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
 COMPANY_ID = "your_aa_company_id"
+
+# ─── 검색(--search) 설정 ───────────────────────────────────────────
+SEARCH_RESULT_LIMIT = 1000          # --search 결과 최대 건수 (--limit 로 덮어쓰기 가능)
+SEARCH_MATCH_IN_DESCRIPTION = True  # 키워드를 이름+description 에서 찾을지 (False=이름만)
+SEARCH_PREFILTER_MIN_WORD = 2       # server-side name prefetch 에 쓸 "완전단어" 최소 길이
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -509,14 +516,27 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
     }
 
 
+def _pick_prefilter_word(kw_list: list[str]) -> str:
+    """모든 키워드를 공백 split → `[a-z0-9]+` 이고 길이 ≥ SEARCH_PREFILTER_MIN_WORD 인
+    토큰 중 가장 긴 것 1개 반환. 서버 `name` prefetch(volume 축소)용. 없으면 ''."""
+    cand: list[str] = []
+    for kw in kw_list:
+        for tok in re.findall(r"[a-z0-9]+", kw.lower()):
+            if len(tok) >= SEARCH_PREFILTER_MIN_WORD:
+                cand.append(tok)
+    return max(cand, key=len) if cand else ""
+
+
 def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
-                     rsid: str = "", limit: int = 50) -> list[dict]:
+                     rsid: str = "", limit: int = SEARCH_RESULT_LIMIT) -> list[dict]:
     """GET /segments — 이름 키워드 검색. 결과를 _lookup_segment 포맷으로 반환.
 
-    keywords:
-      · str → 단일 키워드 (기존 동작)
-      · list[str] → 모두 (AND) substring 매칭. 첫 키워드만 server-side `name` 필터 (가장 specific 한 거 앞에 둘 것),
-                     나머지는 client-side 에서 case-insensitive substring AND 추가 매칭.
+    매칭: keywords 의 **모든** 키워드(첫 키워드 포함)를 case-insensitive **연속 substring** 으로
+          이름(+ SEARCH_MATCH_IN_DESCRIPTION 시 description)에 AND 매칭.
+          예) --search "[us] p" "visit" → 이름에 "[us] p" 와 "visit" 가 둘 다 들어있는 세그.
+
+    Adobe 서버 `name` 필터는 **단어(토큰) 매칭**이라 부분단어("[us] p" 의 "p")를 못 잡으므로
+    매칭 수단으로 쓰지 않고, 가장 긴 완전단어 1개만 **속도용 prefetch** 로 사용(없으면 미사용).
     """
     if isinstance(keywords, str):
         kw_list = [keywords]
@@ -524,16 +544,19 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
         kw_list = [k for k in (keywords or []) if k]
     if not kw_list:
         return []
+    match_kws = [k.lower() for k in kw_list]          # 첫 키워드 포함 전부 substring 매칭
     url = f"https://analytics.adobe.io/api/{gcid}/segments"
     base_params: dict[str, Any] = {
         "expansion": "definition,name,description,owner,tags,reportSuiteName",
-        "name": kw_list[0],          # server-side: 첫 키워드만 (AA API 가 단일값 받음)
         "includeType": "all",
     }
+    prefilter = _pick_prefilter_word(kw_list)         # 서버 volume 축소용 (매칭 수단 아님)
+    if prefilter:
+        base_params["name"] = prefilter
     if rsid:
         base_params["rsids"] = rsid
 
-    # paging — limit 결과 받을 때까지 페이지 순회. AA API max page size = 1000.
+    # paging — 매칭 후보를 전부 받음(중간에 안 자름). AA API max page size = 1000.
     PAGE_SIZE = 1000
     MAX_PAGES = 50
     items: list[dict] = []
@@ -548,28 +571,24 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
         if not rows:
             break
         items.extend(rows)
-        is_last = bool(data.get("lastPage")) or len(rows) < PAGE_SIZE
-        if len(items) >= limit and limit > 0:
-            items = items[:limit] if not isinstance(keywords, list) or len(keywords) <= 1 else items
-            # AND 매칭이 더 있을 수 있어서 client-side 필터 전엔 자르지 말고 전체 유지
-            if isinstance(keywords, list) and len(keywords) > 1:
-                pass   # 그냥 계속 받음 (AND 필터 후 자름)
-            else:
-                break
-        if is_last:
+        if bool(data.get("lastPage")) or len(rows) < PAGE_SIZE:
             break
-    if limit and not (isinstance(keywords, list) and len(keywords) > 1):
-        items = items[:limit]
-    # client-side AND — 나머지 키워드들 모두 (case-insensitive) 매칭
-    extra_kws = [k.lower() for k in kw_list[1:]]
-    if extra_kws:
-        items = [
-            it for it in items
-            if all(kw in (it.get("name", "") + " " + (it.get("description") or "")).lower() for kw in extra_kws)
-        ]
-    # AND 필터 후 limit 자름 (multi keyword 케이스)
-    if limit and isinstance(keywords, list) and len(keywords) > 1:
-        items = items[:limit]
+
+    # client-side AND — 모든 키워드를 substring 으로 (첫 키워드 포함)
+    def _hay(it: dict) -> str:
+        s = it.get("name", "") or ""
+        if SEARCH_MATCH_IN_DESCRIPTION:
+            s = s + " " + (it.get("description") or "")
+        return s.lower()
+    matched = [it for it in items if all(kw in _hay(it) for kw in match_kws)]
+
+    # 조용한 절단 방지 — 초과 시 경고 후 자름
+    total = len(matched)
+    if limit and total > limit:
+        print(f"  ⚠️ {total}건 매칭 — 상위 {limit}건만 출력. --limit 또는 SEARCH_RESULT_LIMIT 올리기.")
+        matched = matched[:limit]
+    items = matched
+
     results: list[dict] = []
     for item in items:
         owner = item.get("owner", {})
@@ -608,11 +627,12 @@ def main() -> int:
     parser.add_argument("ids", nargs="*", help="segment ID(s)")
     parser.add_argument("--from-file", help="segment ID 목록 파일 (한 줄에 하나)")
     parser.add_argument("--search", nargs="+", default=None,
-                        help="세그먼트 이름 키워드 검색 (여러 개 박으면 AND 매칭). "
-                             "공백 구분 (콤마 X). 첫 키워드만 server-side 필터, 나머지는 client-side AND. "
-                             "예: --search \"[CAMPAIGN NAME]\" \"recomm\"  /  --search \"[CAMPAIGN NAME]\" \"US_CC\" --limit 500")
+                        help="세그먼트 이름 키워드 검색 (여러 개 박으면 모두 AND). "
+                             "공백 구분 (콤마 X). 각 키워드는 이름(+설명)에 **연속 substring** 으로 매칭 "
+                             "(공백 포함). 예: --search \"[us] p\" \"visit\"  /  --search \"[CAMPAIGN NAME]\" \"US_CC\"")
     parser.add_argument("--rsid", default="", help="검색 시 RSID 필터 (선택)")
-    parser.add_argument("--limit", type=int, default=500, help="검색 결과 최대 건수 (기본 500)")
+    parser.add_argument("--limit", type=int, default=SEARCH_RESULT_LIMIT,
+                        help=f"검색 결과 최대 건수 (기본 SEARCH_RESULT_LIMIT={SEARCH_RESULT_LIMIT})")
     args = parser.parse_args()
 
     # ID 수집
