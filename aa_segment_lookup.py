@@ -1,6 +1,7 @@
 # segment_lookup.py
 # 2026-05-15  Jonghyun Park w/ Claude
-# updated: 2026-05-15 13:00  — owner_name을 cnx_aa_id CSV에서 보강
+# updated: 2026-06-05  v1.1 — owner_email 컬럼 추가 + owner 이름/이메일을 GET /users 직접 조회로 보강 (외부 user-id CSV 의존 제거)
+# updated: 2026-05-15 13:00  — owner_name을 외부 user-id CSV에서 보강
 # updated: 2026-05-18       — --search 키워드 nargs='+' 로 AND 매칭 (공백 구분), 사용법 주석 보완
 # updated: 2026-05-22       — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
 # updated: 2026-05-26       — sequence 처리: wrap 분기 제거, 모든 sequence/prefix/suffix 에 [sequence-after/before/all] 라벨 + scope 감쌈
@@ -63,10 +64,6 @@ COMPANY_ID = "your_aa_company_id"
 OUTPUT_DIR = Path(__file__).resolve().parent
 LOOKUP_DIR = OUTPUT_DIR / "lookup"          # 결과 CSV/DSL 출력 위치 — 코드 폴더 어지럽지 않게 분리
 RESULT_PREFIX = "segment_lookup_"
-
-# ─── AA user 매핑 CSV (owner_name 보강용) ─────────────────────────
-# 상위 폴더의 cnx_aa_id_*.csv 자동 탐색. 없으면 owner_name 빈값 그대로.
-AA_USER_CSV_DIR = Path(__file__).resolve().parent.parent
 
 # ─── 변수 단축어 (decompile용) ────────────────────────────────────
 VARIABLE_ALIASES: dict[str, str] = {
@@ -367,32 +364,72 @@ def format_dsl_block(name: str, description: str, rsid: str,
 
 
 # ═══════════════════════════════════════════════════════════════════
-# AA user CSV → loginId → name 매핑 (owner_name 보강)
+# AA /users 직접 조회 → loginId → {name, email} (owner 보강)
+#   외부 CSV 의존 제거 — find_user_id.py 와 동일하게 GET /users 페이지 순회로
+#   회사 사용자 전체를 받아 owner_id(numeric loginId) → 이름/이메일 매핑.
 # ═══════════════════════════════════════════════════════════════════
 
-def _load_user_map() -> dict[str, str]:
-    """cnx_aa_id_*.csv → {loginId(str): fullName} dict. 없으면 빈 dict."""
-    import glob
-    pattern = str(AA_USER_CSV_DIR / "cnx_aa_id_*.csv")
-    files = sorted(glob.glob(pattern), reverse=True)
-    if not files:
-        return {}
-    user_map: dict[str, str] = {}
-    with open(files[0], "r", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            lid = row.get("loginId", "").strip()
-            name = row.get("fullName", "").strip()
-            if lid and name:
-                user_map[lid] = name
+_USER_PAGE_SIZE = 400          # /users 한 페이지 최대 (Adobe API max=1000)
+_USER_MAX_PAGES = 100          # 페이지 순회 상한
+_USER_MAP_CACHE: dict[str, dict] | None = None   # 실행 1회만 조회
+
+
+def _iter_users(headers: dict, gcid: str):
+    """AA /users 엔드포인트 페이지 순회 generator (find_user_id.py 와 동일)."""
+    url = f"https://analytics.adobe.io/api/{gcid}/users"
+    page = 0
+    while page < _USER_MAX_PAGES:
+        r = requests.get(url, headers=headers,
+                         params={"limit": _USER_PAGE_SIZE, "page": page}, timeout=120)
+        if r.status_code != 200:
+            print(f"  WARN: GET /users 실패 page {page} — {r.status_code} {r.reason}")
+            break
+        body = r.json()
+        items = body.get("content") if isinstance(body, dict) else body
+        if not items:
+            break
+        for u in items:
+            yield u
+        if isinstance(body, dict) and body.get("lastPage", True):
+            break
+        page += 1
+
+
+def _load_user_map(headers: dict, gcid: str) -> dict[str, dict]:
+    """GET /users → {loginId(str): {"name": fullName, "email": email}}. 실행 1회 캐시.
+    실패 시 빈 dict (owner_name/owner_email 빈값 유지)."""
+    global _USER_MAP_CACHE
+    if _USER_MAP_CACHE is not None:
+        return _USER_MAP_CACHE
+    user_map: dict[str, dict] = {}
+    try:
+        for u in _iter_users(headers, gcid):
+            lid = str(u.get("loginId") or "").strip()
+            if not lid:
+                continue
+            user_map[lid] = {
+                "name": (u.get("fullName") or "").strip(),
+                "email": (u.get("email") or "").strip(),
+            }
+    except Exception as e:
+        print(f"  WARN: user map 로드 실패 — {e}")
+    _USER_MAP_CACHE = user_map
     return user_map
 
 
-def _enrich_owner_name(results: list[dict], user_map: dict[str, str]) -> None:
-    """owner_name이 비어있으면 user_map에서 보강."""
+def _enrich_owner_info(results: list[dict], user_map: dict[str, dict]) -> None:
+    """owner_id 로 user_map 조회 → owner_name(빈 경우만) + owner_email 보강."""
     for r in results:
-        if not r["owner_name"] and r["owner_id"]:
-            r["owner_name"] = user_map.get(str(r["owner_id"]), "")
+        oid = str(r.get("owner_id") or "")
+        if not oid:
+            continue
+        info = user_map.get(oid)
+        if not info:
+            continue
+        if not r.get("owner_name"):
+            r["owner_name"] = info.get("name", "")
+        if not r.get("owner_email"):
+            r["owner_email"] = info.get("email", "")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -443,6 +480,7 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
             "name": "",
             "owner_id": "",
             "owner_name": "",
+            "owner_email": "",
             "rsid": "",
             "description": "",
             "tags": "",
@@ -461,6 +499,7 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
         "name": data.get("name", ""),
         "owner_id": owner.get("id", "") if isinstance(owner, dict) else "",
         "owner_name": owner.get("name", "") if isinstance(owner, dict) else "",
+        "owner_email": "",
         "rsid": data.get("rsid", ""),
         "description": data.get("description", ""),
         "tags": tag_names,
@@ -541,6 +580,7 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
             "name": item.get("name", ""),
             "owner_id": owner.get("id", "") if isinstance(owner, dict) else "",
             "owner_name": owner.get("name", "") if isinstance(owner, dict) else "",
+            "owner_email": "",
             "rsid": item.get("rsid", ""),
             "description": item.get("description", ""),
             "tags": tag_names,
@@ -635,11 +675,11 @@ def main() -> int:
 
     print()
 
-    # owner_name 보강 (AA API가 owner.name을 빈값으로 반환하는 경우)
-    user_map = _load_user_map()
+    # owner 이름/이메일 보강 — GET /users 직접 조회 (외부 CSV 의존 없음)
+    user_map = _load_user_map(headers, gcid)
     if user_map:
-        _enrich_owner_name(results, user_map)
-        print(f"  owner_name 보강: cnx_aa_id CSV ({len(user_map)}명)")
+        _enrich_owner_info(results, user_map)
+        print(f"  owner 보강(/users): {len(user_map)}명")
     print()
 
     # CSV 출력 — lookup/ 하위
@@ -647,7 +687,7 @@ def main() -> int:
     csv_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.csv"
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        w.writerow(["segment_id", "name", "owner_id", "owner_name", "rsid",
+        w.writerow(["segment_id", "name", "owner_id", "owner_name", "owner_email", "rsid",
                      "description", "tags", "structure", "error"])
         for r in results:
             # structure: decompiled DSL을 한 줄로
@@ -661,7 +701,7 @@ def main() -> int:
                     structure = "(decompile error)"
             w.writerow([
                 r["segment_id"], r["name"], r["owner_id"], r["owner_name"],
-                r["rsid"], r["description"], r["tags"], structure, r["error"],
+                r["owner_email"], r["rsid"], r["description"], r["tags"], structure, r["error"],
             ])
     print(f"CSV: {csv_path}")
 
@@ -703,7 +743,7 @@ def main() -> int:
         print(f"\n{'─' * 50}")
         print(f"  ID: {r['segment_id']}")
         print(f"  Name: {r['name']}")
-        print(f"  Owner: {r['owner_name']} ({r['owner_id']})")
+        print(f"  Owner: {r['owner_name']} <{r['owner_email']}> ({r['owner_id']})")
         print(f"  RSID: {r['rsid']}")
         if r["tags"]:
             print(f"  Tags: {r['tags']}")
