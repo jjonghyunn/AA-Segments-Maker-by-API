@@ -1,7 +1,8 @@
 # aa_segment_lookup_from_pjt.py
 # 2026-05-19  Jonghyun Park w/ Claude
+# ── 변경 이력 (git 히스토리 스크럽됨 — 아래 changelog 가 변경 기록) ──
 # updated: 2026-06-05  v1.1 — owner_email 컬럼 추가 + owner 이름/이메일을 GET /users 직접 조회로 보강 (외부 user-id CSV 의존 제거)
-# updated: 2026-05-22  — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
+# updated: 2026-05-22       — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
 # 특정 AA Workspace project 가 사용하는 모든 segment 들을 일괄 lookup.
 """
 AA project id → project definition GET → 안에 박힌 모든 segment-ref id 추출 →

@@ -1,10 +1,11 @@
-# segment_lookup.py
+# aa_segment_lookup.py
 # 2026-05-15  Jonghyun Park w/ Claude
+# ── 변경 이력 (git 히스토리 스크럽됨 — 아래 changelog 가 변경 기록) ──
 # updated: 2026-06-05  v1.1 — owner_email 컬럼 추가 + owner 이름/이메일을 GET /users 직접 조회로 보강 (외부 user-id CSV 의존 제거)
-# updated: 2026-05-15 13:00  — owner_name을 외부 user-id CSV에서 보강
-# updated: 2026-05-18       — --search 키워드 nargs='+' 로 AND 매칭 (공백 구분), 사용법 주석 보완
-# updated: 2026-05-22       — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
 # updated: 2026-05-26       — sequence 처리: wrap 분기 제거, 모든 sequence/prefix/suffix 에 [sequence-after/before/all] 라벨 + scope 감쌈
+# updated: 2026-05-22       — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
+# updated: 2026-05-18       — --search 키워드 nargs='+' 로 AND 매칭 (공백 구분), 사용법 주석 보완
+# updated: 2026-05-15 13:00  — owner_name 을 외부 user-id CSV 에서 보강 (v1.1 에서 GET /users 로 대체)
 """
 세그먼트 ID 리스트 → 기본 정보 CSV + DSL 구조 파일(.dsl) 출력.
 

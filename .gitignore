@@ -12,6 +12,11 @@ users_*.csv
 _debug_*.json
 _debug_*.csv
 
+# Backups / local work copies — never commit (may contain unsanitized values)
+*backup*/
+*backup*
+old_local_backup/
+
 # Python
 __pycache__/
 *.pyc
