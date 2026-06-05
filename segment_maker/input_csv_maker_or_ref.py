@@ -4,7 +4,7 @@
 """
 raw csv 예:
     segment name, or_seg-id
-    temp.product recommendation 1~14, "s200001591_69f17c11..\ns200001591_69f17ca0..\n..."
+    temp.product recommendation 1~14, "s200001591_xxxxxxxx..\ns200001591_yyyyyyyy..\n..."
 
 처리:
     각 row 의 or_seg-id cell 안 — 줄바꿈 / 콤마 / 세미콜론 / 공백 으로 segment id 분리 →
@@ -12,9 +12,9 @@ raw csv 예:
 
 DSL 출력 예:
     hit(
-      @s200001591_69f17c11..
+      @s200001591_xxxxxxxx..
       OR
-      @s200001591_69f17ca0..
+      @s200001591_yyyyyyyy..
       OR
       ...
     )

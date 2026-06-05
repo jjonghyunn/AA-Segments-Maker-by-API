@@ -6,13 +6,13 @@ panel 안의 segment ID 들을 다른 키워드 패턴의 segment 로 자동 swa
 
 용도:
   · source 프로젝트(예: 2026 CAMPAIGN NAME, 69d4...) 의 panel[0] 구조를 그대로 복사하되,
-    그 안에 박혀있는 "[CAMPAIGN NAME]" 계열 segment ID 들을 "[26 JH]" 계열 segment ID 들로 swap.
+    그 안에 박혀있는 "[CAMPAIGN NAME]" 계열 segment ID 들을 "[NEW CAMPAIGN NAME]" 계열 segment ID 들로 swap.
   · target 프로젝트(미리 UI 에서 본인 계정으로 만든 빈 프로젝트, 6a02...) 의 definition 을
     수정해서 PUT.
 
 매칭 룰 (이름 정규화):
   · "[CAMPAIGN NAME] ALL SITES_Internal_GNB"  ─┐
-    "[26 JH] Internal_GNB"             │ → 정규화 후 둘 다 "internal_gnb"
+    "[NEW CAMPAIGN NAME] Internal_GNB"             │ → 정규화 후 둘 다 "internal_gnb"
                                        ┘
   · NAME_NORMALIZATION_PATTERNS 의 regex 순서대로 적용해서 비교 키 도출.
   · 매칭 안 되는 segment 는 별도 표시 (CSV 의 MatchStatus 컬럼).
@@ -58,7 +58,7 @@ COMPANY_ID = "company_id"
 # source = 복제 원본. Workspace URL 의 /workspace/edit/{이부분}
 SOURCE_PROJECT_ID = "YOUR_PROJECT_ID"   # CAMPAIGN NAME 캠페인 프로젝트
 # target = 미리 UI 에서 빈 프로젝트로 생성해둔 곳 (user1_login owner)
-TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # 26 JH 캠페인 프로젝트
+TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # NEW CAMPAIGN NAME 캠페인 프로젝트
 
 # source 의 어느 panel 을 가져올지 (0-based index, 0 = 첫 번째)
 SOURCE_PANEL_INDEX = 0
@@ -67,19 +67,19 @@ SOURCE_PANEL_INDEX = 0
 # source panel 에 박혀있는 segment 들이 매칭될 OLD 키워드 (사실 사용 안 함 — 검증용)
 OLD_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME"]
 # target segment 들이 매칭될 NEW 키워드 (회사 전체 /segments paginate 후 클라 필터)
-NEW_KEYWORDS = ["[26 JH]", "26 JH"]
+NEW_KEYWORDS = ["[NEW CAMPAIGN NAME]", "NEW CAMPAIGN NAME"]
 
 # ─── 이름 정규화 패턴 (logical match 용) ─────────────────────────────
 # segment ID 는 다르지만 "같은 논리적 컨셉" 인 경우 매칭하려고 이름을 정규화해서 비교.
 # 예) "[CAMPAIGN NAME] ALL SITES_Internal_GNB"  ─┐
-#     "[26 JH] Internal_GNB"             │ → 정규화 후 둘 다 "internal_gnb" → 매칭
+#     "[NEW CAMPAIGN NAME] Internal_GNB"             │ → 정규화 후 둘 다 "internal_gnb" → 매칭
 #                                        ┘
 # 각 항목은 (regex, replacement) 튜플. 순서대로 re.sub 적용됨 (대소문자 무시).
 # ⚠️ 의미를 바꾸는 단어(예: "Order") 는 제거하지 말고 표준화만 할 것.
 NAME_NORMALIZATION_PATTERNS = [
     (r"^\[\d{2}\s+[A-Z]+\]\s+ALL\s+SITES[_\s]+", ""),  # "[CAMPAIGN NAME] ALL SITES_X" → "X"
     (r"^\[\d{2}\s+[A-Z]+\]\s+ALL\s+SITES\s*", ""),     # "[CAMPAIGN NAME] ALL SITES X" → "X" (variant)
-    (r"^\[\d{2}\s+[A-Z]+\]\s+",                ""),    # "[CAMPAIGN NAME] X" / "[26 JH] X" → "X"
+    (r"^\[\d{2}\s+[A-Z]+\]\s+",                ""),    # "[CAMPAIGN NAME] X" / "[NEW CAMPAIGN NAME] X" → "X"
     (r"\s+&\s+",                               " "),   # "X & Y" → "X Y"
 ]
 
@@ -88,11 +88,11 @@ NAME_NORMALIZATION_PATTERNS = [
 # 자동 매핑보다 우선 적용. dry-run 결과로 NO_MATCH / AMBIGUOUS 잡힌 것 중
 # 이름이 살짝 달라 매칭 안 됐지만 의미상 같은 것을 여기 박아두면 됨.
 MANUAL_OVERRIDES = {
-    # [CAMPAIGN NAME] ALL SITES_Internal_Home GNB (Shop)  →  [26 JH] Internal_Home GNB
+    # [CAMPAIGN NAME] ALL SITES_Internal_Home GNB (Shop)  →  [NEW CAMPAIGN NAME] Internal_Home GNB
     "segment_id_placeholder": "segment_id_placeholder",
-    # [CAMPAIGN NAME] ALL SITES_logged In (p10) - Visitor  →  [26 JH] Logged In Visitor
+    # [CAMPAIGN NAME] ALL SITES_logged In (p10) - Visitor  →  [NEW CAMPAIGN NAME] Logged In Visitor
     "segment_id_placeholder": "segment_id_placeholder",
-    # [CAMPAIGN NAME] ALL SITES_logged Out (p10) - Visitor →  [26 JH] Logged Out Visitor
+    # [CAMPAIGN NAME] ALL SITES_logged Out (p10) - Visitor →  [NEW CAMPAIGN NAME] Logged Out Visitor
     "segment_id_placeholder": "segment_id_placeholder",
 }
 
@@ -108,10 +108,7 @@ COLLAPSE_ALL_SUBPANELS = True
 RENAME_PANEL = True
 PANEL_NAME_REPLACEMENTS = [
     (r"\[ALL\s+SITES\]\s*",   ""),                              # "[ALL SITES] " 제거
-    (r"\[26\s+MD\]",          "[26 JH]"),                       # "[CAMPAIGN NAME]" → "[26 JH]"
-    (r"26\s+campaign_name'?s\s+Day", "26 JH"),                         # campaign 표식
-    (r"campaign_name'?s\s+Day",      "JH"),
-    (r"\bMD\b",               "JH"),
+    (r"\[CAMPAIGN NAME\]",     "[NEW CAMPAIGN NAME]"),            # source 캠페인 표식 → new 표식
 ]
 
 # ─── 출력 ──────────────────────────────────────────────────────────
@@ -388,7 +385,7 @@ def main() -> int:
     # 3) 회사 전체에서 NEW_KEYWORDS segment 들 fetch
     print(f"\n[3] Fetching all segments matching {NEW_KEYWORDS}...")
     new_segs = _list_segments_by_keyword(headers, gcid, NEW_KEYWORDS)
-    print(f"  → 매칭된 [26 JH] 계열 segment: {len(new_segs)} 개")
+    print(f"  → 매칭된 [NEW CAMPAIGN NAME] 계열 segment: {len(new_segs)} 개")
     new_by_norm: dict[str, list[dict]] = {}
     for it in new_segs:
         norm = _normalize_name(it.get("name", ""))
@@ -457,7 +454,7 @@ def main() -> int:
                 "MatchStatus":   f"AMBIGUOUS({len(cand)})",
             })
 
-    # 매핑 안 된 NEW segment (참고 — target 에만 있고 source 에 안 쓰인 26 JH segment)
+    # 매핑 안 된 NEW segment (참고 — target 에만 있고 source 에 안 쓰인 NEW CAMPAIGN NAME segment)
     used_new_ids = {v for v in mapping.values()}
     leftover_new = [it for it in new_segs if it["id"] not in used_new_ids]
 
@@ -467,7 +464,7 @@ def main() -> int:
     print(f"    OK (manual): {sum(1 for r in rows if r['MatchStatus'] == 'OK (manual)')}")
     print(f"    NO_MATCH   : {len(unmapped_src)}")
     print(f"    AMBIGUOUS  : {len(ambiguous)}")
-    print(f"    leftover [26 JH] segments not used: {len(leftover_new)}")
+    print(f"    leftover [NEW CAMPAIGN NAME] segments not used: {len(leftover_new)}")
 
     print("\n  ── 매핑 표 ─────────────────────────────────────────────────")
     for r in rows:
@@ -479,7 +476,7 @@ def main() -> int:
             print(f"        status: {r['MatchStatus']}  normalized: '{r['NormalizedName']}'")
 
     if leftover_new:
-        print("\n  ── target [26 JH] segments NOT used (참고) ─────────────────")
+        print("\n  ── target [NEW CAMPAIGN NAME] segments NOT used (참고) ─────────────────")
         for it in leftover_new[:30]:
             print(f"    · {it['id']}  {it.get('name', '')}")
         if len(leftover_new) > 30:
