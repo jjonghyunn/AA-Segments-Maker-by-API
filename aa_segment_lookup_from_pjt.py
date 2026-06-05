@@ -1,5 +1,6 @@
 # aa_segment_lookup_from_pjt.py
 # 2026-05-19  Jonghyun Park w/ Claude
+# updated: 2026-06-05  v1.1 — owner_email 컬럼 추가 + owner 이름/이메일을 GET /users 직접 조회로 보강 (외부 user-id CSV 의존 제거)
 # updated: 2026-05-22  — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
 # 특정 AA Workspace project 가 사용하는 모든 segment 들을 일괄 lookup.
 """
@@ -31,7 +32,7 @@ from aa_segment_lookup import (
     _load_auth_headers,
     _lookup_segment,
     _load_user_map,
-    _enrich_owner_name,
+    _enrich_owner_info,
     decompile_definition,
     format_dsl_block,
     _set_daterange_auth,
@@ -204,11 +205,11 @@ def main() -> int:
             print(f"OK — {info['name']}")
     print()
 
-    # owner_name 보강
-    user_map = _load_user_map()
+    # owner 이름/이메일 보강 — GET /users 직접 조회
+    user_map = _load_user_map(headers, gcid)
     if user_map:
-        _enrich_owner_name(results, user_map)
-        print(f"  owner_name 보강: cnx_aa_id CSV ({len(user_map)}명)")
+        _enrich_owner_info(results, user_map)
+        print(f"  owner 보강(/users): {len(user_map)}명")
     print()
 
     # 출력 파일명 — lookup/ 하위
@@ -221,7 +222,7 @@ def main() -> int:
     # CSV
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        w.writerow(["segment_id", "name", "owner_id", "owner_name", "rsid",
+        w.writerow(["segment_id", "name", "owner_id", "owner_name", "owner_email", "rsid",
                      "description", "tags", "structure", "error"])
         for r in results:
             structure = ""
@@ -233,7 +234,7 @@ def main() -> int:
                     structure = "(decompile error)"
             w.writerow([
                 r["segment_id"], r["name"], r["owner_id"], r["owner_name"],
-                r["rsid"], r["description"], r["tags"], structure, r["error"],
+                r["owner_email"], r["rsid"], r["description"], r["tags"], structure, r["error"],
             ])
     print(f"CSV: {csv_path}")
 
