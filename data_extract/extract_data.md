@@ -103,7 +103,7 @@ API가 422/400을 반환하면 (메트릭이 너무 많거나 dateRange가 긴 �
 columnTree에 DateRange 컴포넌트가 있으면:
 1. `GET /dateranges/{id}?expansion=definition`으로 실제 날짜 범위 조회 (시작 시 일괄 prefetch + 캐시)
 2. metricFilter에 `dateRange` + `dateRangeId` 둘 다 포함하여 정확한 값 추출
-3. segments 칼럼에 dateRange 이름 표시 (예: `[DE 26 MD 직전 4주] (2026. 3. 12 ~ 2026. 4. 8)`)
+3. segments 칼럼에 dateRange 이름 표시 (예: `[CAMPAIGN NAME 직전 4주] (2026. 3. 12 ~ 2026. 4. 8)`)
 
 > 주의: 2년 이상 긴 dateRange는 API가 `max network bytes exceeded` (422)로 거부할 수 있음. Workspace UI는 내부 캐시로 처리하지만 raw API에는 제한 있음.
 
