@@ -73,6 +73,7 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 
 - **v1** (`extract_data.py`) — 단일 project, panel 의 RSID·dateRange 그대로
 - **v2** (`extract_data_v2.py`) — `sites_input.csv` 의 row 별로 RSID + dateRange override → 같은 panel 구조를 여러 site 에 적용. site 별 별도 CSV (`extract_data_<rsid>_<ts>.csv`)
+- **v3 → v3.4 (권장)** (`extract_data_v3.4.py`) — v2 의 `sites_input` 기반 멀티사이트 구조 유지 + `site_registry.py` 로 site_code ↔ RSID 매핑 분리. RSID override 를 레지스트리에서 자동 해석하여 input CSV 에 RSID 직접 기입 불필요. v3.4 에서 안정화
 
 상세: `data_extract/extract_data.md`
 
