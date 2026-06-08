@@ -531,9 +531,6 @@ v2 contents 시리즈 베이스 + main 의 site loop 를 `ThreadPoolExecutor` �
 | 파일 | 폴더 |
 |---|---|
 | `extract_data_v3_contents.py` | `_contents/` |
-| `extract_data_v3_contents_tier2_cc_03.py` | `_contents_tier2_cc_03/` |
-| `extract_data_v3_contents_recomm_after14may.py` | `1st_cutoff17may_after14may_only_recomm/` |
-| `extract_data_v3_contents_recomm_before14may.py` | `1st_cutoff17may_before14may_only_recomm/` |
 
 ## v2 contents 대비 차이
 
