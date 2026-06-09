@@ -1,4 +1,5 @@
-# dateranges/ — Adobe Analytics Date Range 일괄 도구 모음
+# dateranges/ — Adobe Analytics Date Range 일괄 도구 모음  
+<sub>2026-06-09  Jonghyun Park w/ Claude</sub>  
 
 회사 전체 Date Range 컴포넌트를 **조회 / 갱신 / 생성 / upsert** 하는 4종 도구. 단일 record CRUD 는 상위 폴더의 `aa_daterange.py` 사용.
 

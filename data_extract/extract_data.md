@@ -1,5 +1,7 @@
 # extract_data.py / extract_data_v2.py / extract_data_v3.py / extract_data_v3.1.py / extract_data_v3.2.py / extract_data_v3.3.py / extract_data_v3.4.py  
-<sub>2026-06-04  Jonghyun Park w/ Claude</sub>  Adobe Workspace project의 모든 panel × reportlet에서 세그먼트/메트릭 이름 + 실제 데이터 값을 **동시다발적으로** 추출.
+<sub>2026-06-04  Jonghyun Park w/ Claude</sub>  
+
+Adobe Workspace project의 모든 panel × reportlet에서 세그먼트/메트릭 이름 + 실제 데이터 값을 **동시다발적으로** 추출.
 
 | 파일 | 용도 |
 |---|---|

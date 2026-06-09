@@ -1,4 +1,5 @@
-# column_filler/ — tb_column_name_mapping CSV 의 빈 column 자동 채움
+# column_filler/ — tb_column_name_mapping CSV 의 빈 column 자동 채움  
+<sub>2026-06-09  Jonghyun Park w/ Claude</sub>  
 
 캠페인 시즌이 바뀌어서 `extract_panel_tables_json_v2.0.py` 로 새 매핑 CSV 를 뽑았을 때, **이전 시즌의 column 컬럼 정리본** 을 참조해서 새 CSV 의 column 컬럼을 유사도 기반으로 자동 채워주는 유틸.
 
