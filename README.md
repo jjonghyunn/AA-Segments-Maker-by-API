@@ -1,9 +1,9 @@
-# AA_segment_maker
+# AA_segment_maker  
+<sub>2026-05-04  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
-작성: 2026-05-04  Jonghyun Park w/ Claude  
-최종 업데이트: 2026-06-05
+최종 업데이트: 2026-06-09
 
 ---
 

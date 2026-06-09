@@ -1,6 +1,6 @@
 # segment_share/ — segment 키워드 매칭 → 일괄 share 추가 (운영 사본)
 
-repo: https://github.com/wimterrr/AA-Segments-Maker-by-API/tree/main/segment_share (예정)
+repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_share (예정)
 
 운영 사본 — 실제 KEYWORDS / SHARE_USER_IDS / AUTH 경로 박혀있는 작업본. generic 변경은 repo 사본에 동기화.
 
