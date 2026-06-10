@@ -223,7 +223,7 @@ EXTRA_SEGMENTS: list[dict] = [
     # 예) {"name_keywords": ["visitor id", "d=mid", "null"], "panel_scope": "all"},
     #     → 패널 안에 그 키워드들이 모두 포함된 세그가 1개뿐이면 그걸로 자동 확정
     # 예시 1 — ID 직접 지정 (이름 검색 생략):
-    {"segment_id": "세그먼트_아이디_넘버", "panel_scope": "all"},
+    # {"segment_id": "세그먼트_아이디_넘버", "panel_scope": "all"},
     # {"segment_id": "세그먼트_아이디_넘버", "panel_scope": "all"},  # [US] Excluded EPP
     # {"segment_id": "세그먼트_아이디_넘버", "panel_scope": "all" },  # [US] Excluded APP
     # 예시 2 — 풀네임 substring 검색:
