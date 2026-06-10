@@ -1,8 +1,12 @@
-# segment_lookup.py
+# aa_segment_lookup.py
 # 2026-05-15  Jonghyun Park w/ Claude
-# updated: 2026-05-15 13:00  — owner_name을 company_name_aa_id CSV에서 보강
-# updated: 2026-05-18       — --search 키워드 nargs='+' 로 AND 매칭 (공백 구분), 사용법 주석 보완
+# ── 변경 이력 (git 히스토리 스크럽됨 — 아래 changelog 가 변경 기록) ──
+# updated: 2026-06-05  v1.2 — --search 전 키워드를 연속 substring AND (첫 키워드 토큰화 버그 수정) + SEARCH_RESULT_LIMIT 등 상단 상수화 + 초과 시 경고
+# updated: 2026-06-05  v1.1 — owner_email 컬럼 추가 + owner 이름/이메일을 GET /users 직접 조회로 보강 (외부 user-id CSV 의존 제거)
 # updated: 2026-05-26       — sequence 처리: wrap 분기 제거, 모든 sequence/prefix/suffix 에 [sequence-after/before/all] 라벨 + scope 감쌈
+# updated: 2026-05-22       — 결과 CSV/DSL 출력 위치를 같은 폴더의 lookup/ 하위로 분리 (LOOKUP_DIR)
+# updated: 2026-05-18       — --search 키워드 nargs='+' 로 AND 매칭 (공백 구분), 사용법 주석 보완
+# updated: 2026-05-15 13:00  — owner_name 을 외부 user-id CSV 에서 보강 (v1.1 에서 GET /users 로 대체)
 """
 세그먼트 ID 리스트 → 기본 정보 CSV + DSL 구조 파일(.dsl) 출력.
 
@@ -20,8 +24,8 @@
   python segment_lookup.py --search "campaign" --rsid sscompany_name4mstglobal
 
   # 이름 키워드 AND 검색 (여러 개 — 공백 구분, 각 quote 로 감쌈)
-  python segment_lookup.py --search "[CAMPAIGN NAME]" "recomm"               # AND 매칭
-  python segment_lookup.py --search "[CAMPAIGN NAME]" "US_CC" --limit 500
+  python segment_lookup.py --search "[us] p" "visit"      # 이름에 "[us] p" 와 "visit" 둘 다
+  python segment_lookup.py --search "[CAMPAIGN NAME]" "US_CC" --limit 2000
 
   주의: --search 키워드 list 는 **공백 구분** (콤마 박지 말 것).
         PowerShell 에서 콤마 (`,`) 는 array operator 라 native exe 전달 시 처리 불일치 가능.
@@ -29,9 +33,10 @@
         ✅ --search "[CAMPAIGN NAME]" "recomm"     (정확 — argparse nargs='+' 가 공백 구분)
 
   검색 동작:
-    · 첫 키워드  → AA API server-side `name` 파라미터로 사전 필터 (가장 specific 한 것 앞에 둘 것)
-    · 나머지 키워드 → client-side 에서 case-insensitive substring 으로 AND 추가 매칭 (name + description)
-    · --limit (default 50) — server-side 사전 필터 결과 상한. AND 결과가 적으면 limit 늘리기.
+    · 각 키워드(첫 키워드 포함)를 이름(+설명)에 **연속 substring** 으로 AND 매칭 (대소문자 무시).
+      → "[us] p" 는 공백까지 통째로 한 substring (단어로 안 쪼갬).
+    · 서버 `name` 파라미터는 매칭 수단이 아니라 가장 긴 완전단어 1개로 속도용 prefetch 만.
+    · --limit (기본 SEARCH_RESULT_LIMIT) — 결과 상한. 초과하면 경고 후 상위 N 만 출력.
 """
 from __future__ import annotations
 
@@ -55,16 +60,18 @@ import aanalytics2 as api2
 AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
 COMPANY_ID = "your_aa_company_id"
 
+# ─── 검색(--search) 설정 ───────────────────────────────────────────
+SEARCH_RESULT_LIMIT = 1000          # --search 결과 최대 건수 (--limit 로 덮어쓰기 가능)
+SEARCH_MATCH_IN_DESCRIPTION = True  # 키워드를 이름+description 에서 찾을지 (False=이름만)
+SEARCH_PREFILTER_MIN_WORD = 2       # server-side name prefetch 에 쓸 "완전단어" 최소 길이
+
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
 # ════════════════════════════════════════════════════════════════════
 
 OUTPUT_DIR = Path(__file__).resolve().parent
+LOOKUP_DIR = OUTPUT_DIR / "lookup"          # 결과 CSV/DSL 출력 위치 — 코드 폴더 어지럽지 않게 분리
 RESULT_PREFIX = "segment_lookup_"
-
-# ─── AA user 매핑 CSV (owner_name 보강용) ─────────────────────────
-# 상위 폴더의 company_name_aa_id_*.csv 자동 탐색. 없으면 owner_name 빈값 그대로.
-AA_USER_CSV_DIR = Path(__file__).resolve().parent.parent
 
 # ─── 변수 단축어 (decompile용) ────────────────────────────────────
 VARIABLE_ALIASES: dict[str, str] = {
@@ -365,32 +372,72 @@ def format_dsl_block(name: str, description: str, rsid: str,
 
 
 # ═══════════════════════════════════════════════════════════════════
-# AA user CSV → loginId → name 매핑 (owner_name 보강)
+# AA /users 직접 조회 → loginId → {name, email} (owner 보강)
+#   외부 CSV 의존 제거 — find_user_id.py 와 동일하게 GET /users 페이지 순회로
+#   회사 사용자 전체를 받아 owner_id(numeric loginId) → 이름/이메일 매핑.
 # ═══════════════════════════════════════════════════════════════════
 
-def _load_user_map() -> dict[str, str]:
-    """company_name_aa_id_*.csv → {loginId(str): fullName} dict. 없으면 빈 dict."""
-    import glob
-    pattern = str(AA_USER_CSV_DIR / "company_name_aa_id_*.csv")
-    files = sorted(glob.glob(pattern), reverse=True)
-    if not files:
-        return {}
-    user_map: dict[str, str] = {}
-    with open(files[0], "r", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            lid = row.get("loginId", "").strip()
-            name = row.get("fullName", "").strip()
-            if lid and name:
-                user_map[lid] = name
+_USER_PAGE_SIZE = 400          # /users 한 페이지 최대 (Adobe API max=1000)
+_USER_MAX_PAGES = 100          # 페이지 순회 상한
+_USER_MAP_CACHE: dict[str, dict] | None = None   # 실행 1회만 조회
+
+
+def _iter_users(headers: dict, gcid: str):
+    """AA /users 엔드포인트 페이지 순회 generator (find_user_id.py 와 동일)."""
+    url = f"https://analytics.adobe.io/api/{gcid}/users"
+    page = 0
+    while page < _USER_MAX_PAGES:
+        r = requests.get(url, headers=headers,
+                         params={"limit": _USER_PAGE_SIZE, "page": page}, timeout=120)
+        if r.status_code != 200:
+            print(f"  WARN: GET /users 실패 page {page} — {r.status_code} {r.reason}")
+            break
+        body = r.json()
+        items = body.get("content") if isinstance(body, dict) else body
+        if not items:
+            break
+        for u in items:
+            yield u
+        if isinstance(body, dict) and body.get("lastPage", True):
+            break
+        page += 1
+
+
+def _load_user_map(headers: dict, gcid: str) -> dict[str, dict]:
+    """GET /users → {loginId(str): {"name": fullName, "email": email}}. 실행 1회 캐시.
+    실패 시 빈 dict (owner_name/owner_email 빈값 유지)."""
+    global _USER_MAP_CACHE
+    if _USER_MAP_CACHE is not None:
+        return _USER_MAP_CACHE
+    user_map: dict[str, dict] = {}
+    try:
+        for u in _iter_users(headers, gcid):
+            lid = str(u.get("loginId") or "").strip()
+            if not lid:
+                continue
+            user_map[lid] = {
+                "name": (u.get("fullName") or "").strip(),
+                "email": (u.get("email") or "").strip(),
+            }
+    except Exception as e:
+        print(f"  WARN: user map 로드 실패 — {e}")
+    _USER_MAP_CACHE = user_map
     return user_map
 
 
-def _enrich_owner_name(results: list[dict], user_map: dict[str, str]) -> None:
-    """owner_name이 비어있으면 user_map에서 보강."""
+def _enrich_owner_info(results: list[dict], user_map: dict[str, dict]) -> None:
+    """owner_id 로 user_map 조회 → owner_name(빈 경우만) + owner_email 보강."""
     for r in results:
-        if not r["owner_name"] and r["owner_id"]:
-            r["owner_name"] = user_map.get(str(r["owner_id"]), "")
+        oid = str(r.get("owner_id") or "")
+        if not oid:
+            continue
+        info = user_map.get(oid)
+        if not info:
+            continue
+        if not r.get("owner_name"):
+            r["owner_name"] = info.get("name", "")
+        if not r.get("owner_email"):
+            r["owner_email"] = info.get("email", "")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -441,6 +488,7 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
             "name": "",
             "owner_id": "",
             "owner_name": "",
+            "owner_email": "",
             "rsid": "",
             "description": "",
             "tags": "",
@@ -459,6 +507,7 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
         "name": data.get("name", ""),
         "owner_id": owner.get("id", "") if isinstance(owner, dict) else "",
         "owner_name": owner.get("name", "") if isinstance(owner, dict) else "",
+        "owner_email": "",
         "rsid": data.get("rsid", ""),
         "description": data.get("description", ""),
         "tags": tag_names,
@@ -467,14 +516,27 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
     }
 
 
+def _pick_prefilter_word(kw_list: list[str]) -> str:
+    """모든 키워드를 공백 split → `[a-z0-9]+` 이고 길이 ≥ SEARCH_PREFILTER_MIN_WORD 인
+    토큰 중 가장 긴 것 1개 반환. 서버 `name` prefetch(volume 축소)용. 없으면 ''."""
+    cand: list[str] = []
+    for kw in kw_list:
+        for tok in re.findall(r"[a-z0-9]+", kw.lower()):
+            if len(tok) >= SEARCH_PREFILTER_MIN_WORD:
+                cand.append(tok)
+    return max(cand, key=len) if cand else ""
+
+
 def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
-                     rsid: str = "", limit: int = 50) -> list[dict]:
+                     rsid: str = "", limit: int = SEARCH_RESULT_LIMIT) -> list[dict]:
     """GET /segments — 이름 키워드 검색. 결과를 _lookup_segment 포맷으로 반환.
 
-    keywords:
-      · str → 단일 키워드 (기존 동작)
-      · list[str] → 모두 (AND) substring 매칭. 첫 키워드만 server-side `name` 필터 (가장 specific 한 거 앞에 둘 것),
-                     나머지는 client-side 에서 case-insensitive substring AND 추가 매칭.
+    매칭: keywords 의 **모든** 키워드(첫 키워드 포함)를 case-insensitive **연속 substring** 으로
+          이름(+ SEARCH_MATCH_IN_DESCRIPTION 시 description)에 AND 매칭.
+          예) --search "[us] p" "visit" → 이름에 "[us] p" 와 "visit" 가 둘 다 들어있는 세그.
+
+    Adobe 서버 `name` 필터는 **단어(토큰) 매칭**이라 부분단어("[us] p" 의 "p")를 못 잡으므로
+    매칭 수단으로 쓰지 않고, 가장 긴 완전단어 1개만 **속도용 prefetch** 로 사용(없으면 미사용).
     """
     if isinstance(keywords, str):
         kw_list = [keywords]
@@ -482,16 +544,19 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
         kw_list = [k for k in (keywords or []) if k]
     if not kw_list:
         return []
+    match_kws = [k.lower() for k in kw_list]          # 첫 키워드 포함 전부 substring 매칭
     url = f"https://analytics.adobe.io/api/{gcid}/segments"
     base_params: dict[str, Any] = {
         "expansion": "definition,name,description,owner,tags,reportSuiteName",
-        "name": kw_list[0],          # server-side: 첫 키워드만 (AA API 가 단일값 받음)
         "includeType": "all",
     }
+    prefilter = _pick_prefilter_word(kw_list)         # 서버 volume 축소용 (매칭 수단 아님)
+    if prefilter:
+        base_params["name"] = prefilter
     if rsid:
         base_params["rsids"] = rsid
 
-    # paging — limit 결과 받을 때까지 페이지 순회. AA API max page size = 1000.
+    # paging — 매칭 후보를 전부 받음(중간에 안 자름). AA API max page size = 1000.
     PAGE_SIZE = 1000
     MAX_PAGES = 50
     items: list[dict] = []
@@ -506,28 +571,24 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
         if not rows:
             break
         items.extend(rows)
-        is_last = bool(data.get("lastPage")) or len(rows) < PAGE_SIZE
-        if len(items) >= limit and limit > 0:
-            items = items[:limit] if not isinstance(keywords, list) or len(keywords) <= 1 else items
-            # AND 매칭이 더 있을 수 있어서 client-side 필터 전엔 자르지 말고 전체 유지
-            if isinstance(keywords, list) and len(keywords) > 1:
-                pass   # 그냥 계속 받음 (AND 필터 후 자름)
-            else:
-                break
-        if is_last:
+        if bool(data.get("lastPage")) or len(rows) < PAGE_SIZE:
             break
-    if limit and not (isinstance(keywords, list) and len(keywords) > 1):
-        items = items[:limit]
-    # client-side AND — 나머지 키워드들 모두 (case-insensitive) 매칭
-    extra_kws = [k.lower() for k in kw_list[1:]]
-    if extra_kws:
-        items = [
-            it for it in items
-            if all(kw in (it.get("name", "") + " " + (it.get("description") or "")).lower() for kw in extra_kws)
-        ]
-    # AND 필터 후 limit 자름 (multi keyword 케이스)
-    if limit and isinstance(keywords, list) and len(keywords) > 1:
-        items = items[:limit]
+
+    # client-side AND — 모든 키워드를 substring 으로 (첫 키워드 포함)
+    def _hay(it: dict) -> str:
+        s = it.get("name", "") or ""
+        if SEARCH_MATCH_IN_DESCRIPTION:
+            s = s + " " + (it.get("description") or "")
+        return s.lower()
+    matched = [it for it in items if all(kw in _hay(it) for kw in match_kws)]
+
+    # 조용한 절단 방지 — 초과 시 경고 후 자름
+    total = len(matched)
+    if limit and total > limit:
+        print(f"  ⚠️ {total}건 매칭 — 상위 {limit}건만 출력. --limit 또는 SEARCH_RESULT_LIMIT 올리기.")
+        matched = matched[:limit]
+    items = matched
+
     results: list[dict] = []
     for item in items:
         owner = item.get("owner", {})
@@ -539,6 +600,7 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
             "name": item.get("name", ""),
             "owner_id": owner.get("id", "") if isinstance(owner, dict) else "",
             "owner_name": owner.get("name", "") if isinstance(owner, dict) else "",
+            "owner_email": "",
             "rsid": item.get("rsid", ""),
             "description": item.get("description", ""),
             "tags": tag_names,
@@ -565,11 +627,12 @@ def main() -> int:
     parser.add_argument("ids", nargs="*", help="segment ID(s)")
     parser.add_argument("--from-file", help="segment ID 목록 파일 (한 줄에 하나)")
     parser.add_argument("--search", nargs="+", default=None,
-                        help="세그먼트 이름 키워드 검색 (여러 개 박으면 AND 매칭). "
-                             "공백 구분 (콤마 X). 첫 키워드만 server-side 필터, 나머지는 client-side AND. "
-                             "예: --search \"[CAMPAIGN NAME]\" \"recomm\"  /  --search \"[CAMPAIGN NAME]\" \"US_CC\" --limit 500")
+                        help="세그먼트 이름 키워드 검색 (여러 개 박으면 모두 AND). "
+                             "공백 구분 (콤마 X). 각 키워드는 이름(+설명)에 **연속 substring** 으로 매칭 "
+                             "(공백 포함). 예: --search \"[us] p\" \"visit\"  /  --search \"[CAMPAIGN NAME]\" \"US_CC\"")
     parser.add_argument("--rsid", default="", help="검색 시 RSID 필터 (선택)")
-    parser.add_argument("--limit", type=int, default=500, help="검색 결과 최대 건수 (기본 500)")
+    parser.add_argument("--limit", type=int, default=SEARCH_RESULT_LIMIT,
+                        help=f"검색 결과 최대 건수 (기본 SEARCH_RESULT_LIMIT={SEARCH_RESULT_LIMIT})")
     args = parser.parse_args()
 
     # ID 수집
@@ -633,18 +696,19 @@ def main() -> int:
 
     print()
 
-    # owner_name 보강 (AA API가 owner.name을 빈값으로 반환하는 경우)
-    user_map = _load_user_map()
+    # owner 이름/이메일 보강 — GET /users 직접 조회 (외부 CSV 의존 없음)
+    user_map = _load_user_map(headers, gcid)
     if user_map:
-        _enrich_owner_name(results, user_map)
-        print(f"  owner_name 보강: company_name_aa_id CSV ({len(user_map)}명)")
+        _enrich_owner_info(results, user_map)
+        print(f"  owner 보강(/users): {len(user_map)}명")
     print()
 
-    # CSV 출력
-    csv_path = OUTPUT_DIR / f"{RESULT_PREFIX}{timestamp}.csv"
+    # CSV 출력 — lookup/ 하위
+    LOOKUP_DIR.mkdir(parents=True, exist_ok=True)
+    csv_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.csv"
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        w.writerow(["segment_id", "name", "owner_id", "owner_name", "rsid",
+        w.writerow(["segment_id", "name", "owner_id", "owner_name", "owner_email", "rsid",
                      "description", "tags", "structure", "error"])
         for r in results:
             # structure: decompiled DSL을 한 줄로
@@ -658,12 +722,12 @@ def main() -> int:
                     structure = "(decompile error)"
             w.writerow([
                 r["segment_id"], r["name"], r["owner_id"], r["owner_name"],
-                r["rsid"], r["description"], r["tags"], structure, r["error"],
+                r["owner_email"], r["rsid"], r["description"], r["tags"], structure, r["error"],
             ])
     print(f"CSV: {csv_path}")
 
-    # DSL 출력
-    dsl_path = OUTPUT_DIR / f"{RESULT_PREFIX}{timestamp}.dsl"
+    # DSL 출력 — lookup/ 하위
+    dsl_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.dsl"
     dsl_blocks: list[str] = []
     for r in results:
         if r["definition"] is None:
@@ -700,7 +764,7 @@ def main() -> int:
         print(f"\n{'─' * 50}")
         print(f"  ID: {r['segment_id']}")
         print(f"  Name: {r['name']}")
-        print(f"  Owner: {r['owner_name']} ({r['owner_id']})")
+        print(f"  Owner: {r['owner_name']} <{r['owner_email']}> ({r['owner_id']})")
         print(f"  RSID: {r['rsid']}")
         if r["tags"]:
             print(f"  Tags: {r['tags']}")
