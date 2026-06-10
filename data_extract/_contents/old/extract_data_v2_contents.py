@@ -4,7 +4,7 @@
 extract_data_v2.py 베이스 + device 분기 추가.
 
 v2 차이:
-  · PROJECT_ID = NYNY contents 후속 프로젝트 (YOUR_PROJECT_ID)
+  · PROJECT_ID = NYNY contents 후속 프로젝트 (YOUR_ID)
   · 각 site × device 5종(pc/mobile/app/android/ios) 으로 payload 분기
   · device 치환 = `json pc to mo_app_android_ios replacer_260127.py` 룰 그대로
       - PC_ID 를 device 별 visit segment 로 swap
@@ -59,12 +59,12 @@ from site_registry import lookup_site, SiteInfo
 
 # ─── 인증 ──────────────────────────────────────────────────────────
 # Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-COMPANY_ID = "company_id"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
+COMPANY_ID = "your_aa_company_id"
 
 # ─── 대상 프로젝트 ──────────────────────────────────────────────────
 PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis | API (user_id)
-# https://experience.adobe.com/#/@company_name/so:company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
+# https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
 
 # ─── input / 출력 ──────────────────────────────────────────────────
 SITES_INPUT_CSV = Path(__file__).resolve().parent / "sites_input.csv"
@@ -101,24 +101,24 @@ SETTINGS_FALLBACK = {
 # base = PC (치환 없음). 나머지 4개 device 는 PC segment 를 자기 visit segment 로 swap,
 # app/android/ios 는 추가로 [Global] Excluded APP segment 도 swap.
 PC_NAME           = "PC User (visit)"
-PC_ID             = "segment_id_placeholder"
+PC_ID             = "세그먼트_아이디_넘버"
 EXCLUDED_APP_NAME = "[Global] Excluded APP"
-EXCLUDED_APP_ID   = "segment_id_placeholder"
+EXCLUDED_APP_ID   = "세그먼트_아이디_넘버"
 ALL_VISIT_NAME    = "All Visit"
-ALL_VISIT_ID      = "segment_id_placeholder"
+ALL_VISIT_ID      = "세그먼트_아이디_넘버"
 APP_ONLY_NAME     = "[Global] App Only"
-APP_ONLY_ID       = "segment_id_placeholder"
+APP_ONLY_ID       = "세그먼트_아이디_넘버"
 
 DEVICES: dict[str, dict] = {
     "pc":      {"pc_replace": None,
                 "excluded_replace": None},
-    "mobile":  {"pc_replace": ("Mobile User (Visit)", "segment_id_placeholder"),
+    "mobile":  {"pc_replace": ("Mobile User (Visit)", "세그먼트_아이디_넘버"),
                 "excluded_replace": None},
     "app":     {"pc_replace": (APP_ONLY_NAME, APP_ONLY_ID),
                 "excluded_replace": (ALL_VISIT_NAME, ALL_VISIT_ID)},
-    "android": {"pc_replace": ("Android - Visit", "segment_id_placeholder"),
+    "android": {"pc_replace": ("Android - Visit", "세그먼트_아이디_넘버"),
                 "excluded_replace": (APP_ONLY_NAME, APP_ONLY_ID)},
-    "ios":     {"pc_replace": ("iOS - Visit", "segment_id_placeholder"),
+    "ios":     {"pc_replace": ("iOS - Visit", "세그먼트_아이디_넘버"),
                 "excluded_replace": (APP_ONLY_NAME, APP_ONLY_ID)},
 }
 

@@ -52,14 +52,13 @@ from site_registry import lookup_site, SiteInfo
 # ════════════════════════════════════════════════════════════════════
 
 # ─── 인증 ──────────────────────────────────────────────────────────
-# Adobe Analytics OAuth S2S auth json — 각자 환경에 맞게 변경
-AUTH_JSON_PATH = r"C:\Users\user_name\path\to\auth.json"
-COMPANY_ID = "company_id"
+AUTH_JSON_PATH = str(Path(__file__).resolve().parent.parent.parent / "aa_auth.json")
+COMPANY_ID = "your_company_id"
 
 # ─── 대상 프로젝트 ──────────────────────────────────────────────────
 # v1 과 동일 — 같은 project 의 panel/reportlet 구조를 여러 site (rsid) 로 추출
 PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME | Contents cc09 cmpnt v26 | API (user_id)
-# https://experience.adobe.com/#/@company_name/so:company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
+# https://experience.adobe.com/#/@company_name/so:your_company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
 
 # ─── input / 출력 ──────────────────────────────────────────────────
 SITES_INPUT_CSV = Path(__file__).resolve().parent / "sites_input.csv"
@@ -752,63 +751,33 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
     extract_path = OUTPUT_DIR / f"extract_data_{site.site_code}_{ts}.csv"
     mapping_path = OUTPUT_DIR / f"column_mapping_{site.site_code}_{ts}.csv"
 
-    # dim_short — task 들의 dimension 마지막 토큰 (variables/evar26 → evar26).
-    # 여러 dimension 섞여있으면 generic "dim_value" 로 fallback.
-    dim_short_set = set()
-    for t in tasks:
-        did = t.get("dimension_id", "")
-        if did and "/" in did:
-            dim_short_set.add(did.split("/")[-1])
-        elif did:
-            dim_short_set.add(did)
-    dim_short = next(iter(dim_short_set)) if len(dim_short_set) == 1 else "dim_value"
-
-    # long format unpivot: 1 row = 1 dimension value × 1 metric position
+    max_metrics = max((len(t["metric_names"]) for t in tasks), default=0)
     with open(extract_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         header = ["site_code", "rsid", "start_date", "end_date",
-                  "panel", "table", "reportlet", "dimension", "dimension_name",
-                  "itemId", dim_short,
-                  "value_n", "metric", "segments",
-                  "value1"]
+                  "panel", "table", "reportlet", "dimension", "dimension_name", "itemId", "value"]
+        header += [f"value{i+1}" for i in range(max_metrics)]
+        header += ["status", "error"]
         w.writerow(header)
         for t in tasks:
-            if not t["ok"]:
-                continue
             dim_id = t.get("dimension_id", "")
             dim_name = t.get("dimension_name", "")
-            metric_names = t.get("metric_names") or []
-            seg_names_per_metric = t.get("seg_names_per_metric") or []
             base_cols = [site.site_code, site.rsid, start_date, end_date,
                          t["panel_name"], t["tb_name"], t["reportlet_name"], dim_id, dim_name]
+            if not t["ok"]:
+                w.writerow(base_cols + ["", "", *[""] * max_metrics, "FAIL", t["error"]])
+                continue
             summary = t.get("summary_data", [])
             rows = t["rows"]
             if summary and not rows:
-                # summary 만 (dimension row 없음) — itemId/dim_value 비우고 metric N개 unpivot
-                for i, v in enumerate(summary, start=1):
-                    m_name = metric_names[i-1] if i-1 < len(metric_names) else ""
-                    seg_list = seg_names_per_metric[i-1] if i-1 < len(seg_names_per_metric) else []
-                    seg_str = "; ".join(s for s in seg_list if s)
-                    w.writerow(base_cols + ["", "(summary)", f"value{i}", m_name, seg_str,
-                                            v if v is not None else ""])
+                padded = list(summary) + [None] * (max_metrics - len(summary))
+                w.writerow(base_cols + ["", "(summary)", *padded, "OK", ""])
             else:
-                # outer loop = metric (value_n), inner loop = dimension rows
-                # → value1 전체 dim → value2 전체 dim ... (의도 csv 의 정렬)
-                max_data = max((len(r.get("data") or []) for r in rows), default=0)
-                n = max(len(metric_names), max_data)
-                for i in range(n):
-                    m_name = metric_names[i] if i < len(metric_names) else ""
-                    seg_list = seg_names_per_metric[i] if i < len(seg_names_per_metric) else []
-                    seg_str = "; ".join(s for s in seg_list if s)
-                    vn = f"value{i+1}"
-                    for r in rows:
-                        item_id = r.get("itemId", "")
-                        dim_val = r.get("value", "")
-                        data = r.get("data") or []
-                        v = data[i] if i < len(data) else ""
-                        w.writerow(base_cols + [item_id, dim_val, vn, m_name, seg_str,
-                                                v if v is not None else ""])
-    print(f"  CSV: {extract_path.name}  ({dim_short} long unpivot)")
+                for r in rows:
+                    data = r.get("data", [])
+                    padded = data + [None] * (max_metrics - len(data))
+                    w.writerow(base_cols + [r.get("itemId", ""), r.get("value", ""), *padded, "OK", ""])
+    print(f"  CSV: {extract_path.name}")
 
     with open(mapping_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)

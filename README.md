@@ -15,7 +15,6 @@ AA_segment_maker/
 │   ├── aa_create_segment_v2.3.py   (v2.3 — CSV 입력, 생성+업데이트, AA validator patch. **현재 권장**)
 │   ├── aa_segment_lookup.py        (ID/이름 검색 → CSV + .dsl 역변환)
 │   ├── aa_segment_lookup_from_pjt.py (project 안 panel 의 segment 들 일괄 lookup)
-│   ├── segment_lookup.py           (구버전 — aa_segment_lookup 으로 대체됨)
 │   ├── aa_delete_segment.py        (안전 삭제, 3중 안전장치)
 │   ├── input_csv_maker.py          (raw seg_make_ref → v2.3 input CSV 자동 변환)
 │   ├── input_csv_maker_*.py        (us / cc00 / or_ref / scenario / replace / from_ref(_batch / _us_hit) variant)
@@ -37,11 +36,10 @@ AA_segment_maker/
 ├── panel_maker/            # 첫 panel/전체 panel 복제 + segment swap (recomm variant 포함)
 ├── segment_share/          # 본인 owner segment 키워드 매칭 → 일괄 share 추가
 ├── column_filler/          # tb_column_name_mapping 빈 컬럼 유사도 자동 채움
-├── old/                    # 구버전 아카이브 (aa_create_segment v1/v2/v2.1/v2.2 등)
-└── (루트 유지)             _inspect_panel.py · site_registry.py(old/ 가 참조) · cleanup_recent_json.py
+└── (루트 유지)             cleanup_recent_json.py
 ```
 
-> 참고: `data_extract_test/` 폴더는 일회성 테스트 잔재 — 운영 아님.
+> 구버전은 **각 도구 폴더의 `old/`** 에 보관 (루트 old/ 해체, 2026-06-10). 활성 경로엔 항상 최신 1개만.
 
 ---
 
@@ -52,7 +50,7 @@ AA_segment_maker/
 | 도구 | 설명 |
 |---|---|
 | **v2.3 (CSV) — 권장** | CSV 입력 (structure 칼럼) → 생성(POST) / 업데이트(PUT). dry-run CSV 자동, AA validator patch (event-exists / segment-ref auto-fetch + cache / NOT container) |
-| v2 (구조 텍스트, `old/`) | SQL-like DSL → AA JSON 자동 변환. 다중 일괄 생성, `@segment_id` 참조, THEN/NOT 복합 (레거시 — `old/` 보관) |
+| v2 (구조 텍스트, `old/`) | SQL-like DSL → AA JSON 자동 변환. 다중 일괄 생성, `@segment_id` 참조, THEN/NOT 복합 (레거시 — `segment_maker/old/` 보관) |
 | `input_csv_maker(_*).py` | raw `seg_make_ref_*.csv` → v2.3 input CSV + `.dsl` + `_WARN.csv` 자동 변환. variant 별로 us / cc00 / or_ref / scenario / replace / from_ref 룰 차이 |
 | `aa_segment_lookup.py` | ID 또는 이름 키워드로 검색 → CSV (owner 이름/이메일 + structure 포함) + `.dsl` 역변환. 결과는 `lookup/` 하위. `--search` 는 모든 키워드(첫 키워드 포함)를 이름 **연속 substring** 으로 AND (v1.2), owner 보강은 AA `GET /users` (v1.1). `SEARCH_RESULT_LIMIT` 상수로 상한 조정 |
 | `aa_segment_lookup_from_pjt.py` | project 의 panel 들이 참조하는 segment 목록 일괄 lookup (출력 포맷 동일, `lookup/` 하위) |
