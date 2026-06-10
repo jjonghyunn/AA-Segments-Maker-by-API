@@ -26,8 +26,8 @@ AA_segment_maker/
 │   ├── compare_panel_segments.py   (panel 세그먼트 차집합 비교)
 │   ├── extract_panel_tables_json_v2.0.py (+ .md)  (panel→JSON 추출 + 상세 문서)
 │   └── find_user_id.py             (AA 사용자 numeric loginId 검색)
-├── data_extract/           # Workspace 리포트 데이터 추출 (extract_data_v3.5.py 권장 + _contents 등 캠페인 variant)
-│   ├── extract_data_v3.5.py        (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼)
+├── data_extract/           # Workspace 리포트 데이터 추출 (extract_data_v3.6.py 권장 + _contents 등 캠페인 variant)
+│   ├── extract_data_v3.6.py        (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼 + site 병렬)
 │   ├── RESHAPE_standard_v1.1.py    (추출본 union 정제 — breakdown 행 모드 + device/bd passthrough)
 │   ├── site_registry.py            (site_code ↔ rsid 매핑)
 │   └── _contents/ …                (캠페인별 추출·정제 variant)
@@ -74,7 +74,7 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 
 - **v1** (`extract_data.py`) — 단일 project, panel 의 RSID·dateRange 그대로
 - **v2** (`extract_data_v2.py`) — `sites_input.csv` 의 row 별로 RSID + dateRange override → 같은 panel 구조를 여러 site 에 적용. site 별 별도 CSV (`extract_data_<rsid>_<ts>.csv`)
-- **v3 → v3.5 (권장)** (`extract_data_v3.5.py`) — v2 의 `sites_input` 기반 멀티사이트 구조 유지 + `site_registry.py` 로 site_code ↔ RSID 매핑 분리. v3.5: **N단계 dimension breakdown** (행 item 을 하위 차원으로 재귀 분해, `bd{k}_*` 컬럼) + **device 컬럼** (컬럼 세그명에서 Mobile/PC/Android/iOS/App 추출)
+- **v3 → v3.6 (권장)** (`extract_data_v3.6.py`) — v2 의 `sites_input` 기반 멀티사이트 구조 유지 + `site_registry.py` 로 site_code ↔ RSID 매핑 분리. v3.5: **N단계 dimension breakdown** (행 item 을 하위 차원으로 재귀 분해, `bd{k}_*` 컬럼) + **device 컬럼** (컬럼 세그명에서 Mobile/PC/Android/iOS/App 추출). v3.6: **site 단위 병렬** (`SITE_WORKERS`, 기본 5곳 동시, `--site-workers`)
 - **정제** (`RESHAPE_standard_v1.1.py`) — 추출본 union 정제. breakdown 행 모드(`include`/`exclude`/`only`) + device/bd passthrough + `_old` SITE CODE 정규화
 
 상세: `data_extract/extract_data.md`
