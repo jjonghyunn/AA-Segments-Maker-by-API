@@ -1,5 +1,5 @@
 # extract_data.py / v2 / v3 / v3.1 / v3.2 / v3.3 / v3.4 / v3.5 / extract_data_v3.6.py  
-<sub>2026-06-10  Jonghyun Park w/ Claude</sub>  
+<sub>2026-06-11  Jonghyun Park w/ Claude</sub>  
 
 Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트릭 이름 + 실제 데이터 값을 동시다발적으로 추출.
 ## 파일 목록
@@ -7,7 +7,7 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 | 파일 | 용도 |
 |---|---|
 | `extract_data_v3.6.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** |
-| `RESHAPE_standard_v1.1.py` | extract_data 출력 → `_union_standard_*.csv` union 정제 (범용). v1.1: breakdown 행 모드(`BREAKDOWN_ROWS_MODE`) + device/bd 컬럼 passthrough + `_old` 접미사 SITE CODE 정규화 |
+| `RESHAPE_standard_v1.2.py` | extract_data 출력 → `_union_standard_*.csv` union 정제 (범용). v1.2: metric / Panel name 출력 컬럼 추가. v1.1: breakdown 행 모드(`BREAKDOWN_ROWS_MODE`) + device/bd 컬럼 passthrough + `_old` 접미사 SITE CODE 정규화 |
 | `site_registry.py` | `site_code → (subsidiary, country, rsid)` 매핑. `lookup_site()` 함수 제공 |
 
 ## v3.6 신규 기능 (2026-06-10)
@@ -218,7 +218,7 @@ output/
 
 - dim1 총계 행: `bd{k}_*` 전부 공백
 - breakdown 행: `itemId`/디멘션 컬럼 = **부모(dim1) item**, `bd1_*` = 1단계 하위 item, `bd2_*` = 2단계 …
-- 같은 dim1 item 의 총계와 breakdown 이 둘 다 들어있으므로 **단순 합산 시 이중집계 주의** — `bd1_itemId` 빈칸 여부로 필터해서 사용 (RESHAPE_standard_v1.1 의 `BREAKDOWN_ROWS_MODE` 참고)
+- 같은 dim1 item 의 총계와 breakdown 이 둘 다 들어있으므로 **단순 합산 시 이중집계 주의** — `bd1_itemId` 빈칸 여부로 필터해서 사용 (RESHAPE_standard_v1.2 의 `BREAKDOWN_ROWS_MODE` 참고)
 
 ## Fallback (개별 metric 추출)
 
@@ -229,7 +229,7 @@ API 가 422/400 을 반환하면 (메트릭이 너무 많거나 dateRange 가 �
 columnTree 에 DateRange 컴포넌트가 있으면:
 1. `GET /dateranges/{id}?expansion=definition` 으로 실제 날짜 범위 조회 (시작 시 일괄 prefetch + 캐시)
 2. metricFilter 에 `dateRange` + `dateRangeId` 둘 다 포함하여 정확한 값 추출
-3. segments 칼럼에 dateRange 이름 표시 (예: `[DE 26 MD 직전 4주] (2026. 3. 12 ~ 2026. 4. 8)`)
+3. segments 칼럼에 dateRange 이름 표시 (예: `[DE CAMPAIGN NAME 직전 4주] (2026. 3. 12 ~ 2026. 4. 8)`)
 
 > 주의: 2년 이상 긴 dateRange 는 API 가 `max network bytes exceeded` (422) 로 거부할 수 있음. Workspace UI 는 내부 캐시로 처리하지만 raw API 에는 제한 있음.
 
@@ -246,7 +246,7 @@ columnTree 에 DateRange 컴포넌트가 있으면:
 3. breakdown 쓰는 경우 `--site <한곳> --breakdown-top-n 5` 로 소규모 검증 (총계 = breakdown 합 확인)
 4. OK 면 전체 실행 — `python extract_data_v3.6.py`
 5. `output/` 폴더의 사이트별 CSV 검토. 실패 site (FAIL 표시) 만 따로 `--site <code>` 로 재시도
-6. union 정제 필요 시 `python RESHAPE_standard_v1.1.py` (breakdown 행 처리 모드는 `BREAKDOWN_ROWS_MODE`)
+6. union 정제 필요 시 `python RESHAPE_standard_v1.2.py` (breakdown 행 처리 모드는 `BREAKDOWN_ROWS_MODE`)
 
 ## 의존성
 

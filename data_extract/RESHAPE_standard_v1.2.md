@@ -1,5 +1,5 @@
-# RESHAPE_standard_v1.1.py  
-<sub>2026-06-10  Jonghyun Park w/ Claude</sub>  
+# RESHAPE_standard_v1.2.py  
+<sub>2026-06-11  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_*.py` 가 site 별로 떨군 추출 CSV 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -44,6 +44,11 @@
   - `"only"`: breakdown 행만
 - **passthrough 컬럼** — 입력에 `device` / `bd{k}_dimension/itemId/value` 컬럼이 있으면 출력에 그대로 따라옴. v3.4 이하 출력(bd 컬럼 없음)은 모드 무관 전체 처리.
 
+### 출력 컬럼 추가 (v1.2)
+
+- **metric** — 입력 `metric` 컬럼 passthrough (`value_n` 다음 위치). 어떤 metric 의 값인지 바로 확인.
+- **Panel name** — 입력 `panel` 컬럼 passthrough (`reportlet` 왼쪽). 어느 panel 에서 온 값인지 검수용.
+
 ---
 
 ## 거르기 / 가공 동작
@@ -81,17 +86,18 @@
 
 ```
 TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [VALUE (원본)],
-rsid, start_date, end_date, value_n, <디멘션>, segments
-[, device, bd1_dimension, bd1_itemId, bd1_value, …] [, reportlet]
+rsid, start_date, end_date, value_n, metric, <디멘션>, segments
+[, device, bd1_dimension, bd1_itemId, bd1_value, …], Panel name [, reportlet]
 ```
 - `<디멘션>` 자리는 자동 감지된 디멘션 이름(`campaign`, `evar26` …)
 - `VALUE (원본)` 은 환율이 적용된 경우에만 추가
 - `device` / `bd{k}_*` 는 입력(extract_data_v3.5+)에 있을 때만 passthrough
+- `metric` / `Panel name` 은 입력 `metric` / `panel` 컬럼 passthrough (v1.2)
 
 ## 실행
 
 ```bash
-python RESHAPE_standard_v1.1.py
+python RESHAPE_standard_v1.2.py
 ```
 - 같은 폴더에 `site_registry.py` 필요 (site_code → 국가/rsid)
 - 입력: 같은 폴더 `output/extract_data_*.csv`

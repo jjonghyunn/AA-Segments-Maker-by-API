@@ -1,5 +1,6 @@
-# RESHAPE_standard_v1.1.py
-# 2026-06-10  Jonghyun Park w/ Claude
+# RESHAPE_standard_v1.2.py
+# 2026-06-11  Jonghyun Park w/ Claude
+# v1.2 (2026-06-11): 출력 컬럼 추가 — metric (value_n 다음), Panel name (reportlet 왼쪽)
 # v1.1 (2026-06-10): extract_data_v3.5 출력 대응 —
 #   · breakdown 행(bd{k}_itemId 채워진 행) 처리 모드 BREAKDOWN_ROWS_MODE 추가
 #     ("exclude" 기본 = dim1 총계만 union, 이중집계 방지 / "only" / "include")
@@ -42,7 +43,8 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
 
 출력 컬럼:
   TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [VALUE (원본)],
-  rsid, start_date, end_date, value_n, <디멘션>, segments [, reportlet]
+  rsid, start_date, end_date, value_n, metric, <디멘션>, segments,
+  Panel name [, reportlet]
 """
 from __future__ import annotations
 
@@ -292,8 +294,9 @@ def process() -> int:
     base_headers = ["TIER", "SUBS", "COUNTRY", "SITE CODE", "ITEM", "VALUE"]
     if apply_fx:
         base_headers.append("VALUE (원본)")
-    base_headers += ["rsid", "start_date", "end_date", "value_n", dim_header, "segments"]
+    base_headers += ["rsid", "start_date", "end_date", "value_n", "metric", dim_header, "segments"]
     base_headers += passthrough_cols   # v1.1: device / bd{k}_* 있으면 그대로 출력
+    base_headers.append("Panel name")  # v1.2: 입력 'panel' 컬럼 passthrough
     out_headers = base_headers + (["reportlet"] if INCLUDE_REPORTLET else [])
 
     # 3) site filter
@@ -371,8 +374,10 @@ def process() -> int:
             "start_date": start_date,
             "end_date": end_date,
             "value_n": value_n,
+            "metric": metric,
             dim_header: dim_val,
             "segments": segments,
+            "Panel name": (r.get("panel") or "").strip(),
         }
         if apply_fx:
             row_out["VALUE (원본)"] = origin
