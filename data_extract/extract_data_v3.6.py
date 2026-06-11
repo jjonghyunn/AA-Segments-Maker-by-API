@@ -180,9 +180,9 @@ DEVICE_SEGMENT_RULES: list[tuple[str, str]] = [
 # [US] panel 은 us site 에서만 추출 (다른 site 일 땐 자동 skip).
 # [Global] panel 은 기본 모든 site 에서 추출. 단 us 에서는 [US] 와 중복되니
 # 기본 skip — 같이 뽑고 싶으면 --include-global-for-us flag.
-US_SITE_CODE         = "us"
-US_PANEL_PREFIX      = "[US]"
-GLOBAL_PANEL_PREFIX  = "[Global]"
+US_SITE_CODE         = "us_old"
+US_PANEL_PREFIX      = "US"
+GLOBAL_PANEL_PREFIX  = "Global"
 INCLUDE_GLOBAL_FOR_US = False  # CLI --include-global-for-us 로 override
 
 # ─── 추가 세그먼트 (이름 검색 → globalFilter 적용) ─────────────────
