@@ -1,6 +1,7 @@
 # RESHAPE_standard_v1.2.py
 # 2026-06-11  Jonghyun Park w/ Claude
 # v1.2 (2026-06-11): 출력 컬럼 추가 — metric (value_n 다음), Panel name (reportlet 왼쪽)
+#                    + EXCLUDE_OUTPUT_COLUMNS — 출력에서 뺄 컬럼 선택 옵션
 # v1.1 (2026-06-10): extract_data_v3.5 출력 대응 —
 #   · breakdown 행(bd{k}_itemId 채워진 행) 처리 모드 BREAKDOWN_ROWS_MODE 추가
 #     ("exclude" 기본 = dim1 총계만 union, 이중집계 방지 / "only" / "include")
@@ -45,6 +46,7 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
   TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [VALUE (원본)],
   rsid, start_date, end_date, value_n, metric, <디멘션>, segments,
   Panel name [, reportlet]
+  (EXCLUDE_OUTPUT_COLUMNS 에 지정한 컬럼은 출력에서 제외)
 """
 from __future__ import annotations
 
@@ -120,6 +122,11 @@ DROP_ZERO_VALUE = False
 # ─── 검수용 reportlet 컬럼 ──────────────────────────────────────────
 # True 면 출력 CSV 제일 우측에 reportlet 컬럼 추가 (어떤 reportlet 에서 왔는지 검수용).
 INCLUDE_REPORTLET = True
+
+# ─── 출력 컬럼 제외 (옵션) ──────────────────────────────────────────
+# 출력 CSV 에서 빼고 싶은 컬럼명 나열 (대소문자 무시). 빈 리스트면 전부 유지.
+#   예) ["Panel name", "value_n", "reportlet"]
+EXCLUDE_OUTPUT_COLUMNS: list[str] = []
 
 # ─── breakdown 행 처리 (extract_data_v3.5+ 출력 대응) ───────────────
 # v3.5 extract_data 는 dim1 총계 행 + breakdown 행(bd{k}_itemId 채워짐)이 한 파일에 같이 있음.
@@ -298,6 +305,12 @@ def process() -> int:
     base_headers += passthrough_cols   # v1.1: device / bd{k}_* 있으면 그대로 출력
     base_headers.append("Panel name")  # v1.2: 입력 'panel' 컬럼 passthrough
     out_headers = base_headers + (["reportlet"] if INCLUDE_REPORTLET else [])
+    if EXCLUDE_OUTPUT_COLUMNS:   # v1.2: 출력 컬럼 제외 옵션
+        _excl = {c.strip().lower() for c in EXCLUDE_OUTPUT_COLUMNS}
+        dropped = [c for c in out_headers if c.lower() in _excl]
+        out_headers = [c for c in out_headers if c.lower() not in _excl]
+        if dropped:
+            print(f"[columns] 제외: {dropped}")
 
     # 3) site filter
     if SITES_FILTER:
@@ -400,7 +413,8 @@ def process() -> int:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTPUT_DIR / f"{OUTPUT_BASENAME}_{_ts_now()}.csv"
     with open(out_path, "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=out_headers, quoting=csv.QUOTE_MINIMAL)
+        w = csv.DictWriter(f, fieldnames=out_headers, quoting=csv.QUOTE_MINIMAL,
+                           extrasaction="ignore")  # 제외 컬럼 키 무시
         w.writeheader()
         for r in out_rows:
             r["VALUE"] = _fmt_num(r.get("VALUE", ""))

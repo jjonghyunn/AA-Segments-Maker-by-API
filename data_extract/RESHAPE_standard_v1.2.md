@@ -48,6 +48,7 @@
 
 - **metric** — 입력 `metric` 컬럼 passthrough (`value_n` 다음 위치). 어떤 metric 의 값인지 바로 확인.
 - **Panel name** — 입력 `panel` 컬럼 passthrough (`reportlet` 왼쪽). 어느 panel 에서 온 값인지 검수용.
+- **`EXCLUDE_OUTPUT_COLUMNS`** — 출력에서 빼고 싶은 컬럼명 나열 (대소문자 무시). 빈 리스트(기본)면 전부 유지. 예) `["Panel name", "value_n"]`
 
 ---
 
@@ -79,6 +80,7 @@
 | `APPLY_CURRENCY` · `CURRENCY_CSV` · `CURRENCY_METRIC_KEYWORD` | revenue 환율 적용 | 금액 metric 환산할 때 |
 | `DROP_ZERO_VALUE` | VALUE==0 행 제외 | 0 행이 많아 빼고 싶을 때 |
 | `INCLUDE_REPORTLET` | 검수용 reportlet 컬럼 추가 | 출처 확인 필요할 때 |
+| `EXCLUDE_OUTPUT_COLUMNS` | 출력에서 뺄 컬럼명 리스트 (대소문자 무시, 빈 리스트=전부 유지) | 안 쓰는 컬럼 빼고 가볍게 뽑을 때 |
 
 ---
 
@@ -93,6 +95,7 @@ rsid, start_date, end_date, value_n, metric, <디멘션>, segments
 - `VALUE (원본)` 은 환율이 적용된 경우에만 추가
 - `device` / `bd{k}_*` 는 입력(extract_data_v3.5+)에 있을 때만 passthrough
 - `metric` / `Panel name` 은 입력 `metric` / `panel` 컬럼 passthrough (v1.2)
+- `EXCLUDE_OUTPUT_COLUMNS` 에 지정한 컬럼은 위 목록에서 제외 (v1.2)
 
 ## 실행
 
