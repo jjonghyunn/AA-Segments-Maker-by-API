@@ -1,17 +1,17 @@
-# RESHAPE_standard_v1.2.py  
-<sub>2026-06-11  Jonghyun Park w/ Claude</sub>  
+# RESHAPE_standard_v1.3.py  
+<sub>2026-06-12  Jonghyun Park w/ Claude</sub>  
 
-`extract_data_*.py` 가 site 별로 떨군 추출 CSV 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
+`extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
 
-> 입력은 `extract_data_*.csv` (디멘션 **항목별** 값이 들어있는 long 형식) 이다.
-> `column_mapping_*.csv` (요약본)가 아니다 — 디멘션 항목 값은 extract_data 에만 있다.
+> 입력은 `stack_data_extract_*.csv` (디멘션 **항목별** 값이 들어있는 long 형식, 구버전 `extract_data_*` 호환) 이다.
+> `table_data_extract_*.csv` (가로형, 기존 `column_mapping_*` 대체)가 아니다 — RESHAPE 가 쓰는 long 형식은 stack 쪽이다.
 
 ---
 
 ## 한눈에 — 무엇을 해주나
 
-`output/` 폴더의 `extract_data_{site}_{날짜}.csv` 들을 모아:
+`output/` 폴더의 `stack_data_extract_{site}_{날짜}.csv` (구버전 `extract_data_*` 포함) 들을 모아:
 
 1. **site 별 최신 파일 1개씩만** 골라서 세로로 union
 2. 분석에 바로 쓰기 좋은 컬럼들로 재배치 + 아래 가공 추가
@@ -19,7 +19,7 @@
 
 ### 입력 → 출력 (한 행 예시)
 
-입력 `extract_data_*.csv` 의 한 행:
+입력 `stack_data_extract_*.csv` 의 한 행:
 
 | site_code | … | campaign | value_n | metric | segments | value1 |
 |---|---|---|---|---|---|---|
@@ -35,6 +35,11 @@
 - **COUNTRY** = `site_registry` 로 site_code 를 국가명으로
 - **SITE CODE** = `SITE_CODE_RENAME` 표기 치환 + **`_old` 접미사 일괄 제거** (v1.1, `uk_old`→`uk` 등 — `SITE_CODE_STRIP_OLD`)
 - 디멘션 컬럼명(`campaign`)은 **추출한 디멘션 그대로** 따라온다 (evar26 이면 `evar26` 으로)
+
+### 입력 파일명 개편 대응 (v1.3)
+
+- extract_data_v3.7 부터 출력이 `stack_data_extract_*`(long unpivot) / `table_data_extract_*`(가로형) 2종으로 분리 — RESHAPE 입력은 **stack** 쪽.
+- 구버전 `extract_data_*` 파일명도 계속 인식 (같은 site 면 ts 최신 파일 승리).
 
 ### extract_data_v3.5 출력 대응 (v1.1)
 
@@ -100,10 +105,10 @@ rsid, start_date, end_date, value_n, metric, <디멘션>, segments
 ## 실행
 
 ```bash
-python RESHAPE_standard_v1.2.py
+python RESHAPE_standard_v1.3.py
 ```
 - 같은 폴더에 `site_registry.py` 필요 (site_code → 국가/rsid)
-- 입력: 같은 폴더 `output/extract_data_*.csv`
+- 입력: 같은 폴더 `output/stack_data_extract_*.csv` (+구버전 `extract_data_*.csv`)
 - 결과: `output/_union_standard_{날짜시간}.csv`
 - revenue 행이 있으면 `currency.csv` (1열 site_code + 헤더에 `YYYY-MM-DD` 컬럼들) 도 같은 폴더에 필요
 

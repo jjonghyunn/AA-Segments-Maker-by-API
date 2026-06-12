@@ -1,5 +1,8 @@
-# RESHAPE_standard_v1.2.py
-# 2026-06-11  Jonghyun Park w/ Claude
+# RESHAPE_standard_v1.3.py
+# 2026-06-12  Jonghyun Park w/ Claude
+# v1.3 (2026-06-12): extract_data_v3.7 파일명 개편 대응 — 입력 패턴을
+#                    stack_data_extract_* (신규) + extract_data_* (구버전 호환) 둘 다 인식.
+#                    (v3.7 의 table_data_extract_* 가로형은 RESHAPE 입력 아님 — stack 만 사용)
 # v1.2 (2026-06-11): 출력 컬럼 추가 — metric (value_n 다음), Panel name (reportlet 왼쪽)
 #                    + EXCLUDE_OUTPUT_COLUMNS — 출력에서 뺄 컬럼 선택 옵션
 # v1.1 (2026-06-10): extract_data_v3.5 출력 대응 —
@@ -15,8 +18,9 @@ extract_data 추출본을 union 으로 합치는 범용(standard) 정제 — v1.
 extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 처리.
 
 무엇을 하나:
-  · 입력 : <폴더>/output/extract_data_{site}_YYMMDD_HHMM.csv
-           (column_mapping_*.csv 아님 — 디멘션 항목별 값은 extract_data 에 들어있음)
+  · 입력 : <폴더>/output/stack_data_extract_{site}_YYMMDD_HHMM.csv
+           (구버전 extract_data_{site}_*.csv 도 호환 인식.
+            table_data_extract_*.csv 가로형 아님 — 디멘션 항목별 값은 stack(long) 에 들어있음)
   · site 별 최신 ts 파일 1개씩만 골라 세로로 union
   · ITEM 컬럼 = segments 의 ';' split 제일 우측 토큰 (양끝 공백 trim)
         예) 'Landing Page; Email' → 'Email'
@@ -142,7 +146,8 @@ BREAKDOWN_ROWS_MODE = "include"
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
 # ════════════════════════════════════════════════════════════════════
-RE_TS_FILE = re.compile(r"^extract_data_(.+)_(\d{6}_\d{4})\.csv$")
+# v1.3: 신규 stack_data_extract_* + 구버전 extract_data_* 둘 다 인식
+RE_TS_FILE = re.compile(r"^(?:stack_data_extract|extract_data)_(.+)_(\d{6}_\d{4})\.csv$")
 _DIM_EXCLUDE_LOWER = {v.strip().lower() for v in DIM_EXCLUDE_VALUES if v.strip()}
 
 
@@ -213,13 +218,14 @@ def find_latest_per_site(input_dir: Path) -> tuple[list[Path], dict[str, str]]:
     """site 별로 각자 최신 ts 의 extract_data csv 1개만 반환.
     return: (paths_list, {site: ts})"""
     by_site: dict[str, list[tuple[str, Path]]] = defaultdict(list)
-    for p in input_dir.glob("extract_data_*.csv"):
-        m = RE_TS_FILE.match(p.name)
-        if not m:
-            continue
-        by_site[m.group(1)].append((m.group(2), p))
+    for pattern in ("stack_data_extract_*.csv", "extract_data_*.csv"):   # v1.3: 신규 + 구버전
+        for p in input_dir.glob(pattern):
+            m = RE_TS_FILE.match(p.name)
+            if not m:
+                continue
+            by_site[m.group(1)].append((m.group(2), p))
     if not by_site:
-        raise FileNotFoundError(f"{input_dir} 에 extract_data_*_YYMMDD_HHMM.csv 없음")
+        raise FileNotFoundError(f"{input_dir} 에 stack_data_extract_*(또는 extract_data_*)_YYMMDD_HHMM.csv 없음")
     paths: list[Path] = []
     site_to_ts: dict[str, str] = {}
     for site, entries in by_site.items():

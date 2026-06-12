@@ -1,5 +1,16 @@
-# extract_data_v3.6.py
-# 2026-06-10  Jonghyun Park w/ Claude
+# extract_data_v3.7.py
+# 2026-06-12  Jonghyun Park w/ Claude
+# v3.7 (2026-06-12): 레벨별 limit 분리 + 실제 행수 cap 적용 —
+#                    LIMIT_LV1(dim1/1st level) / LIMIT_BD(breakdown/2nd level~) 로 분리.
+#                    v3.6 까지 LIMIT 은 API page 크기로만 쓰여 페이지네이션(MAX_PAGES)이
+#                    계속 돌아 행수 제한이 실제로 안 걸렸음 → _fetch_all_pages 에 max_rows
+#                    cap 추가(초과분 truncate). 0 = 무제한(기존 동작). CLI --limit / --limit-bd.
+#                    + 출력 CSV 2종 개편:
+#                      · stack_data_extract_* (기존 extract_data_*) — long unpivot 유지 (세로 스택).
+#                      · table_data_extract_* (기존 column_mapping_* 대체) — AA 테이블 모양 가로형:
+#                        1행 = item(또는 breakdown/총계 행), value1..N 컬럼 + seg_value1..N 컬럼.
+#                        seg_value{i} = "metric;; segments" (metric 맨앞, 구분자 ';;' — segments
+#                        내부 구분자가 '; ' 라 세미콜론 2개로 분리. SEG_VALUE_SEP 상수).
 # v3.6 (2026-06-10): site 단위 병렬 처리 포팅 (_contents 시리즈의 SITE_WORKERS) —
 #                    SITE_WORKERS>1 이면 여러 site 동시 추출. 동시 API 요청 = SITE_WORKERS × workers.
 #                    SITE_WORKERS=1 이면 v3.5 와 100% 동일(순차). CLI --site-workers 로 override.
@@ -68,6 +79,30 @@ v3.6 (2026-06-10) 추가:
   · 주의: 동시 API 요청 ≈ SITE_WORKERS × workers (+ breakdown 단계 동시 호출).
       429(throttling) 자주 보이면 SITE_WORKERS 5 → 3 → 2 로 줄일 것.
   · site 병렬 시 콘솔 로그는 site 간 섞여 출력됨 (결과 CSV 는 site 별 파일이라 영향 없음).
+
+v3.7 (2026-06-12) 추가:
+  · 레벨별 limit 분리 — LIMIT 1개 → LIMIT_LV1 / LIMIT_BD 2개.
+      LIMIT_LV1 : dim1(1st level) reportlet 당 최대 행 수.
+      LIMIT_BD  : breakdown(2nd level~) 부모 item 1개당 레벨별 최대 하위 행 수.
+      각각 CLI --limit / --limit-bd 로 override. 0 = 무제한(v3.6 동작).
+  · 행수 cap 실제 적용 — v3.6 까지는 settings.limit 이 "API 1 page 크기"로만 쓰여서
+      _fetch_all_pages 가 MAX_PAGES(100) 까지 페이지네이션을 계속 돌아 limit 이 무력했음
+      (LIMIT=200 이어도 200행 × 100 page = 사실상 전체 행 수집).
+      v3.7 은 _fetch_all_pages(max_rows=N) 로 누적 행이 N 도달 시 중단 + 초과분 truncate.
+  · breakdown 호출도 v3.6 까지 module LIMIT 만 참조(--limit 무시) → LIMIT_BD + --limit-bd 로 정리.
+  · 출력 CSV 2종 파일명·구조 개편 (OUTPUT_BASENAME_STACK / OUTPUT_BASENAME_TABLE 상수):
+      stack_data_extract_<site>_<ts>.csv  (기존 extract_data_*)
+        — long unpivot 세로 스택 유지. 1행 = item × value_n.
+          컬럼: itemId/dim값/value_n/metric/segments/device/value1/bd{k}_* (v3.6 과 동일 구조).
+          RESHAPE_standard_* 등 후처리 입력용.
+      table_data_extract_<site>_<ts>.csv  (기존 column_mapping_* 대체)
+        — AA Workspace 테이블 모양 가로형. 1행 = dimension item.
+          value1..N = 컬럼 stack 별 값 (N = site 내 테이블들의 최대 컬럼 수).
+          seg_value{i} = "metric;; segments" — metric 을 맨앞에 두고 SEG_VALUE_SEP(';;')로 결합
+          (segments 내부 구분자가 '; ' 라 세미콜론 2개 사용. 예:
+           "Visits;; [part_name] All Page Track - PF Only; [Device] Mobile").
+          테이블 블록 순서: "(summary)" 총계 행 → dim1 item 행들 → breakdown 행들(bd{k}_* 컬럼).
+          기존 column_mapping 의 value_n/metric/segments/data_value 세로 행은 이 가로형으로 대체.
 """
 from __future__ import annotations
 
@@ -98,7 +133,7 @@ COMPANY_ID = "your_aa_company_id"
 
 # ─── 대상 프로젝트 ──────────────────────────────────────────────────
 # v1 과 동일 — 같은 project 의 panel/reportlet 구조를 여러 site (rsid) 로 추출
-PROJECT_ID = "YOUR_PROJECT_ID" 
+PROJECT_ID = "YOUR_PROJECT_ID"
 # PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME Campaign Revisit & Repurchase Analysis _(AU)
 # https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
 
@@ -107,6 +142,14 @@ SITES_INPUT_CSV = Path(__file__).resolve().parent / "sites_input.csv"
 OUTPUT_DIR      = Path(__file__).resolve().parent / "output"
 # 출력 CSV 파일명 prefix. "" = 기존 동작. 예: "excl-seg_"(세그 제외 적용본), "full_"(세그 없는 전체)
 OUTPUT_PREFIX   = ""
+# 출력 CSV basename (v3.7 파일명 개편):
+#   stack = 기존 extract_data_* (long unpivot, 1행 = item × value_n. RESHAPE 입력용 세로 스택)
+#   table = 기존 column_mapping_* 대체 (AA 테이블 모양 가로형, 1행 = item. 아래 SEG_VALUE_SEP 참고)
+OUTPUT_BASENAME_STACK = "stack_data_extract"
+OUTPUT_BASENAME_TABLE = "table_data_extract"
+# seg_value{i} 컬럼 구분자 (table CSV) — "metric;; segments" 형태로 metric 을 맨앞에 두고 결합.
+# segments 내부 구분자가 '; ' 라 세미콜론 2개(';;')로 분리 (split 시 SEG_VALUE_SEP 로 1회 split).
+SEG_VALUE_SEP = ";; "
 
 # ─── 요청 설정 ─────────────────────────────────────────────────────
 MAX_WORKERS = 6
@@ -115,8 +158,13 @@ MAX_WORKERS = 6
 SITE_WORKERS = 5
 REQUEST_TIMEOUT = 600
 MAX_RETRIES = 10
-LIMIT = 50000     # API 1 page 최대 (mktchannel 등 multi-value dimension 대응)
-MAX_PAGES = 100   # LIMIT × MAX_PAGES = 500만 row capacity / reportlet
+# 레벨별 행 수 상한 (v3.7) — 0 = 무제한 (MAX_PAGES 페이지네이션까지 전체 수집, v3.6 동작)
+#   LIMIT_LV1 : dim1(1st level) reportlet 당 최대 행 수. CLI --limit 로 override.
+#   LIMIT_BD  : breakdown(2nd level~) 부모 item 1개당 레벨별 최대 하위 행 수. CLI --limit-bd.
+#   ※ BREAKDOWN_TOP_N > 0 이면 breakdown 은 TOP_N 이 우선 (레벨별 상위 N 만 분해).
+LIMIT_LV1 = 50000
+LIMIT_BD  = 50000
+MAX_PAGES = 100   # 무제한(0) 모드 페이지네이션 상한 (PAGE_SIZE_UNCAPPED × MAX_PAGES / reportlet)
 
 # ─── panel 필터 (v1 동일) ──────────────────────────────────────────
 # 처리 대상 panel 을 이름으로 좁히는 필터.
@@ -268,13 +316,15 @@ SETTINGS_FALLBACK = {
     "countRepeatInstances": True,
     "includeAnnotations": True,
     "nonesBehavior": "return-nones",
-    "limit": LIMIT,
+    "limit": LIMIT_LV1,
     "page": 0,
 }
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
 # ════════════════════════════════════════════════════════════════════
+# 무제한(limit=0) 모드일 때 API 1 page 크기 (cap 모드에선 settings.limit = cap 으로 1~수 page)
+PAGE_SIZE_UNCAPPED = 5000
 SEG_ID_RE = re.compile(r"^s\d+_[0-9a-f]+$")
 _DATE_RANGE_CACHE: dict[str, str] = {}
 _SEG_NAME_CACHE: dict[str, str] = {}    # segment_id → fresh name (via /segments/{id} GET)
@@ -1005,7 +1055,7 @@ def _build_breakdown_payload(base_payload: dict,
     mc["metricFilters"] = mfilters
     payload["metricContainer"] = mc
     payload.setdefault("settings", {})
-    payload["settings"]["limit"] = min(limit, 100000)
+    payload["settings"]["limit"] = min(limit, 100000) if limit > 0 else PAGE_SIZE_UNCAPPED
     payload["settings"]["page"] = 0
     return payload
 
@@ -1021,7 +1071,8 @@ def _run_breakdowns(task: dict, headers: dict, gcid: str, *, workers: int) -> in
     base = task["payload"]
     dim1_id = task.get("dimension_id", "")
     dim1_name = task.get("dimension_name", "")
-    per_level_limit = BREAKDOWN_TOP_N if BREAKDOWN_TOP_N > 0 else min(LIMIT, 100000)
+    # v3.7: breakdown 레벨당(부모 item 당) 행 cap — TOP_N 우선, 아니면 LIMIT_BD (0 = 무제한)
+    per_level_limit = BREAKDOWN_TOP_N if BREAKDOWN_TOP_N > 0 else LIMIT_BD
 
     # frontier 항목: {"pairs":[(dim,item),...], "path":[(dim,name,item,value),...]}
     frontier: list[dict] = []
@@ -1043,6 +1094,7 @@ def _run_breakdowns(task: dict, headers: dict, gcid: str, *, workers: int) -> in
         for fr in frontier:
             bp = _build_breakdown_payload(base, fr["pairs"], bd_dim_id, limit=per_level_limit)
             sub_tasks.append({"payload": bp, "tb_name": f"{task['tb_name']}/L{level}",
+                              "max_rows": per_level_limit,   # v3.7: 페이지네이션 행 cap
                               "rows": [], "summary_data": [], "ok": False, "error": "", "_fr": fr})
         next_frontier: list[dict] = []
         with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -1086,10 +1138,13 @@ def _post_reports(session: requests.Session, headers: dict, gcid: str, payload: 
     raise RuntimeError("post_reports: unexpected fall-through")
 
 
-def _fetch_all_pages(session: requests.Session, headers: dict, gcid: str, payload: dict) -> tuple[list[dict], list[float]]:
+def _fetch_all_pages(session: requests.Session, headers: dict, gcid: str, payload: dict,
+                     max_rows: int = 0) -> tuple[list[dict], list[float]]:
+    """페이지네이션 수집. max_rows > 0 이면 누적 행이 max_rows 도달 시 중단 + 초과분 truncate (v3.7).
+    max_rows = 0 이면 무제한 (MAX_PAGES 까지, v3.6 동작)."""
     all_rows = []
     summary_data: list[float] = []
-    limit = int(payload.get("settings", {}).get("limit", LIMIT))
+    limit = int(payload.get("settings", {}).get("limit", PAGE_SIZE_UNCAPPED))
     for page in range(MAX_PAGES):
         payload["settings"]["page"] = page
         res = _post_reports(session, headers, gcid, payload)
@@ -1107,6 +1162,9 @@ def _fetch_all_pages(session: requests.Session, headers: dict, gcid: str, payloa
         if not rows:
             break
         all_rows.extend(rows)
+        if max_rows and len(all_rows) >= max_rows:
+            del all_rows[max_rows:]
+            break
         if res.get("lastPage") is True:
             break
         total_pages = res.get("totalPages")
@@ -1141,7 +1199,8 @@ def _extract_one(task: dict, headers: dict, gcid: str) -> dict:
     session = requests.Session()
     try:
         payload = json.loads(json.dumps(task["payload"]))
-        rows, summary_data = _fetch_all_pages(session, headers, gcid, payload)
+        rows, summary_data = _fetch_all_pages(session, headers, gcid, payload,
+                                              max_rows=int(task.get("max_rows") or 0))
         task["rows"] = rows
         task["summary_data"] = summary_data
         task["ok"] = True
@@ -1255,7 +1314,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                                       override_rsid=site.rsid,
                                       override_date_range=date_range_def,
                                       extra_segment_ids=extra_ids_for_panel)
-            payload["settings"]["limit"] = min(limit, 100000)
+            payload["settings"]["limit"] = min(limit, 100000) if limit > 0 else PAGE_SIZE_UNCAPPED
             tasks.append({
                 "order": task_order,
                 "panel_idx": p_idx,
@@ -1263,6 +1322,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                 "reportlet_name": r_name,
                 "tb_name": tb_name,
                 "payload": payload,
+                "max_rows": limit,   # v3.7: dim1(1st level) 행 cap (0=무제한)
                 "seg_names_per_metric": seg_names_per_metric,
                 "metric_names": metric_names,
                 "panel_segments": panel_seg_names,
@@ -1313,10 +1373,10 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                   f"breakdown rows {len(t['breakdown_rows'])}개 (호출 {calls}회)")
         print(f"  breakdown 소요: {datetime.now() - bd_start}  (총 호출 {total_bd_calls}회)")
 
-    # CSV 저장 — 파일명 prefix = rsid
+    # CSV 저장 (v3.7 파일명 개편 — 기존 extract_data_* → stack, column_mapping_* → table)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    extract_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}extract_data_{site.site_code}_{ts}.csv"
-    mapping_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}column_mapping_{site.site_code}_{ts}.csv"
+    stack_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_STACK}_{site.site_code}_{ts}.csv"
+    table_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_TABLE}_{site.site_code}_{ts}.csv"
 
     # dim_short — task 들의 dimension 마지막 토큰 (variables/evar26 → evar26).
     # 여러 dimension 섞여있으면 generic "dim_value" 로 fallback.
@@ -1336,7 +1396,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                         for t in tasks for br in (t.get("breakdown_rows") or [])),
                        default=0)
     bd_blank = [""] * (3 * max_bd_depth)
-    with open(extract_path, "w", newline="", encoding="utf-8-sig") as f:
+    with open(stack_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         header = ["site_code", "rsid", "start_date", "end_date",
                   "panel", "table", "reportlet", "dimension", "dimension_name",
@@ -1409,26 +1469,71 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                                 bd_cells += ["", "", ""]
                         w.writerow(base_cols + [p0[2], p0[3], vn, m_name, seg_str, device,
                                                 v if v is not None else ""] + bd_cells)
-    print(f"  CSV: {extract_path.name}  ({dim_short} long unpivot, bd depth={max_bd_depth})")
+    print(f"  stack CSV: {stack_path.name}  ({dim_short} long unpivot, bd depth={max_bd_depth})")
 
-    with open(mapping_path, "w", newline="", encoding="utf-8-sig") as f:
+    # ─── table_data_extract (v3.7, 기존 column_mapping 대체) — AA 테이블 모양 가로형 ───
+    #   1행 = dimension item (또는 breakdown 행, 또는 "(summary)" 총계 행).
+    #   value1..N = 컬럼 stack 별 값 (N = site 내 테이블들의 최대 컬럼 수, 모자라면 빈칸).
+    #   seg_value{i} = "metric;; segments" — metric 맨앞 + SEG_VALUE_SEP(';;') + 컬럼 stack 세그 ('; ' join).
+    #   테이블 블록 순서: (summary) 총계 행 → dim1 item 행들 → breakdown 행들 (bd{k}_* 컬럼).
+    def _task_nvals(t: dict) -> int:
+        n = max(len(t.get("metric_names") or []), len(t.get("summary_data") or []))
+        n = max(n, max((len(r.get("data") or []) for r in (t.get("rows") or [])), default=0))
+        n = max(n, max((len(br.get("data") or []) for br in (t.get("breakdown_rows") or [])), default=0))
+        return n
+    site_max_vals = max((_task_nvals(t) for t in tasks if t["ok"]), default=0)
+
+    def _seg_values(t: dict) -> list[str]:
+        out: list[str] = []
+        metric_names = t.get("metric_names") or []
+        seg_names_per_metric = t.get("seg_names_per_metric") or []
+        for i in range(site_max_vals):
+            m_name = metric_names[i] if i < len(metric_names) else ""
+            seg_list = seg_names_per_metric[i] if i < len(seg_names_per_metric) else []
+            seg_str = "; ".join(s for s in seg_list if s)
+            out.append(f"{m_name}{SEG_VALUE_SEP}{seg_str}" if (m_name and seg_str) else (m_name or seg_str))
+        return out
+
+    def _vals_row(data: list) -> list:
+        return [(data[i] if i < len(data) and data[i] is not None else "")
+                for i in range(site_max_vals)]
+
+    with open(table_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        w.writerow(["site_code", "rsid", "start_date", "end_date",
-                    "panel", "table", "reportlet", "dimension", "dimension_name",
-                    "value_n", "metric", "segments", "data_value"])
+        header = ["site_code", "rsid", "start_date", "end_date",
+                  "panel", "table", "reportlet", "dimension", "dimension_name",
+                  "itemId", dim_short]
+        header += [f"value{i}" for i in range(1, site_max_vals + 1)]
+        header += [f"seg_value{i}" for i in range(1, site_max_vals + 1)]
+        for k in range(1, max_bd_depth + 1):
+            header += [f"bd{k}_dimension", f"bd{k}_itemId", f"bd{k}_value"]
+        w.writerow(header)
         for t in tasks:
+            if not t["ok"]:
+                continue
+            base_cols = [site.site_code, site.rsid, start_date, end_date,
+                         t["panel_name"], t["tb_name"], t["reportlet_name"],
+                         t.get("dimension_id", ""), t.get("dimension_name", "")]
+            seg_vals = _seg_values(t)
             summary = t.get("summary_data", [])
-            dim_id = t.get("dimension_id", "")
-            dim_name = t.get("dimension_name", "")
-            for i, (seg_list, m_name) in enumerate(zip(t["seg_names_per_metric"], t["metric_names"]), start=1):
-                seg_str = "; ".join(seg_list) if seg_list else ""
-                val = summary[i - 1] if i - 1 < len(summary) else ""
-                if isinstance(val, float) and val == int(val):
-                    val = int(val)
-                w.writerow([site.site_code, site.rsid, start_date, end_date,
-                            t["panel_name"], t["tb_name"], t["reportlet_name"], dim_id, dim_name,
-                            f"value{i}", m_name, seg_str, val])
-    print(f"  mapping CSV: {mapping_path.name}")
+            if summary:
+                w.writerow(base_cols + ["", "(summary)"] + _vals_row(summary) + seg_vals + bd_blank)
+            for r in t["rows"]:
+                w.writerow(base_cols + [r.get("itemId", ""), r.get("value", "")]
+                           + _vals_row(r.get("data") or []) + seg_vals + bd_blank)
+            for br in t.get("breakdown_rows") or []:
+                path = br["path"]
+                p0 = path[0]   # (dim1_id, dim1_name, item_id, value)
+                bd_cells: list = []
+                for k in range(1, max_bd_depth + 1):
+                    if k < len(path):
+                        bdid, _bdname, bditem, bdval = path[k]
+                        bd_cells += [bdid, bditem, bdval]
+                    else:
+                        bd_cells += ["", "", ""]
+                w.writerow(base_cols + [p0[2], p0[3]]
+                           + _vals_row(br.get("data") or []) + seg_vals + bd_cells)
+    print(f"  table CSV: {table_path.name}  (가로형 1행/item, value1..{site_max_vals}, bd depth={max_bd_depth})")
     print(f"  결과: 성공 {n_ok} / 실패 {n_fail}")
     return {"site": site, "tasks": tasks, "n_ok": n_ok, "n_fail": n_fail}
 
@@ -1443,7 +1548,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="사이트별 RSID + dateRange override 데이터 추출 (v3: EXTRA_SEGMENTS 옵션)")
     parser.add_argument("--dry-run", action="store_true", help="payload 생성까지만")
     parser.add_argument("--workers", type=int, default=MAX_WORKERS, help=f"병렬 워커 수 (default {MAX_WORKERS})")
-    parser.add_argument("--limit", type=int, default=LIMIT, help=f"dimension row 제한 (default {LIMIT})")
+    parser.add_argument("--limit", type=int, default=LIMIT_LV1,
+                        help=f"1st level(dim1) reportlet 당 최대 행 수 (default {LIMIT_LV1}, 0=무제한)")
+    parser.add_argument("--limit-bd", type=int, default=LIMIT_BD, metavar="N",
+                        help=f"breakdown(2nd level~) 부모 item 당 레벨별 최대 행 수 "
+                             f"(default {LIMIT_BD}, 0=무제한. BREAKDOWN_TOP_N>0 이면 TOP_N 우선)")
     parser.add_argument("--site", action="append", default=[], metavar="SITE_CODE",
                         help="특정 site 만 처리 (여러 개 가능). 없으면 sites_input.csv 전체")
     parser.add_argument("--include-global-for-us", action="store_true",
@@ -1466,14 +1575,17 @@ def main() -> int:
         globals()["BREAKDOWN_TOP_N"] = args.breakdown_top_n
     if args.breakdown_dims is not None:
         globals()["BREAKDOWN_DIMENSIONS"] = [d.strip() for d in args.breakdown_dims.split(",") if d.strip()]
+    # v3.7: breakdown limit 은 _run_breakdowns 가 module 전역을 참조 → CLI 값으로 갱신
+    globals()["LIMIT_BD"] = args.limit_bd
 
     ts = datetime.now().strftime("%y%m%d_%H%M")
-    print(f"[{ts}] extract_data_v3.6.py")
+    print(f"[{ts}] extract_data_v3.7.py")
     print(f"  project       : {PROJECT_ID}")
     print(f"  input         : {SITES_INPUT_CSV.name}")
     print(f"  workers       : {args.workers}")
     print(f"  site workers  : {args.site_workers}  (1=순차)")
-    print(f"  limit         : {args.limit}")
+    print(f"  limit (lv1)   : {args.limit if args.limit > 0 else '무제한'}  (dim1 행 cap)")
+    print(f"  limit (bd)    : {args.limit_bd if args.limit_bd > 0 else '무제한'}  (breakdown 부모 item 당 행 cap)")
     print(f"  EXTRA_SEGMENTS: {len(EXTRA_SEGMENTS)}건")
     if BREAKDOWN_ENABLED:
         _bd_dims = BREAKDOWN_DIMENSIONS or "(테이블 breakdowns 자동감지)"
