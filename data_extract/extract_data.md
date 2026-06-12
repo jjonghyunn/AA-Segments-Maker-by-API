@@ -1,14 +1,22 @@
-# extract_data.py / v2 / v3 / v3.1 / v3.2 / v3.3 / v3.4 / v3.5 / extract_data_v3.7.py  
+# data_extract/extract_data.md  
 <sub>2026-06-12  Jonghyun Park w/ Claude</sub>  
-
 Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트릭 이름 + 실제 데이터 값을 동시다발적으로 추출.
 ## 파일 목록
 
 | 파일 | 용도 |
 |---|---|
-| `extract_data_v3.7.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** + **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + **stack/table 출력 2종** |
+| `extract_data_v3.8.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** + **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + **stack/table 출력 2종** + **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성) |
 | `RESHAPE_standard_v1.3.py` | extract_data 출력 → `_union_standard_*.csv` union 정제 (범용). v1.3: `stack_data_extract_*` 입력 패턴 대응 (구버전 `extract_data_*` 호환). v1.2: metric / Panel name 출력 컬럼 추가 + `EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션. v1.1: breakdown 행 모드(`BREAKDOWN_ROWS_MODE`) + device/bd 컬럼 passthrough + `_old` 접미사 SITE CODE 정규화 |
 | `site_registry.py` | `site_code → (subsidiary, country, rsid)` 매핑. `lookup_site()` 함수 제공 |
+
+## v3.8 신규 기능 (2026-06-12)
+
+1. **device 케이스별 반복 추출 (`DEVICE_CASES`)** — 대상 프로젝트 패널에 device 세그가 전혀 없을 때, 패널마다 device 세그 stack 을 globalFilter 로 끼워 케이스별로 각각 추출.
+   - 케이스 1개 = `{"device": 라벨, "segment_ids": [세그ID...], ("requires_app": True)}` — 리스트 추가/삭제로 케이스 수 자유 증감. **기본은 전부 주석(비활성)** = v3.7 과 100% 동일 동작. 코드 상단 주석의 5케이스(PC/Mobile/App/Android/iOS) 예시를 주석 해제해서 사용.
+   - task 수 = 패널 × 테이블 × 케이스 수 — API 호출 그만큼 증가 (429 빈발 시 `--site-workers` 축소).
+   - 출력: stack CSV `device` 컬럼 = 케이스 라벨 + `segments` 에 케이스 세그 name append, **table CSV 에 `device` 컬럼 신설**.
+2. **`app_O_X.csv` 룰** — site 별 App 론치 O/X. **X site 는 `requires_app` 케이스 제외** (PC/Mobile 류만). lookup: ① site_code 그대로 → ② `_old` 접미사 제거 → ③ 미매칭이면 경고 후 X 간주. 파일 없으면 전 site O 간주.
+3. **`DEVICE_CASE_SITE_OVERRIDES`** — site 별 세그 치환 (`{site: {원본id: 대체id}}`). 구/별도 suite 라서 [Global] 세그가 0행을 만드는 site 용. 검증: `us_old`(구 US suite)는 `[Global] Excluded APP`/`[Global] App Only` 가 0행 (PC User/Mobile User 는 정상) → Excluded APP 을 `[US] Excluded APP` 으로 치환하면 정상 추출.
 
 ## v3.7 신규 기능 (2026-06-12)
 
@@ -53,20 +61,20 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 
 → "프로젝트 URL 만 넣으면 구조 파악 + 데이터 추출 + 추가 segment 적용까지 한번에" 되는 단일 스크립트.
 
-## extract_data_v3.7.py 사용법
+## extract_data_v3.8.py 사용법
 
 ```bash
-python extract_data_v3.7.py                       # sites_input.csv 의 모든 site 처리
-python extract_data_v3.7.py --site us             # us 하나만
-python extract_data_v3.7.py --site us --site uk   # 여러 개 좁히기
-python extract_data_v3.7.py --dry-run             # payload 생성까지만 (API 호출 안 함)
-python extract_data_v3.7.py --workers 8           # 병렬 워커 수 (기본 6)
-python extract_data_v3.7.py --limit 200          # 1st level(dim1) reportlet 당 행 수 cap (0=무제한)
-python extract_data_v3.7.py --limit-bd 50        # breakdown 부모 item 당 레벨별 행 수 cap (0=무제한)
-python extract_data_v3.7.py --include-global-for-us            # us site 에서도 [Global] panel 추출
-python extract_data_v3.7.py --site-workers 3                   # site 3곳 동시 처리 (기본 5, 1=순차)
-python extract_data_v3.7.py --breakdown-top-n 5                # breakdown 레벨별 상위 5개만 (검증/성능)
-python extract_data_v3.7.py --breakdown-dims "variables/product,variables/evar92"  # 분해 차원 명시
+python extract_data_v3.8.py                       # sites_input.csv 의 모든 site 처리
+python extract_data_v3.8.py --site us             # us 하나만
+python extract_data_v3.8.py --site us --site uk   # 여러 개 좁히기
+python extract_data_v3.8.py --dry-run             # payload 생성까지만 (API 호출 안 함)
+python extract_data_v3.8.py --workers 8           # 병렬 워커 수 (기본 6)
+python extract_data_v3.8.py --limit 200          # 1st level(dim1) reportlet 당 행 수 cap (0=무제한)
+python extract_data_v3.8.py --limit-bd 50        # breakdown 부모 item 당 레벨별 행 수 cap (0=무제한)
+python extract_data_v3.8.py --include-global-for-us            # us_old site 에서도 Global panel 추출
+python extract_data_v3.8.py --site-workers 3                   # site 3곳 동시 처리 (기본 5, 1=순차)
+python extract_data_v3.8.py --breakdown-top-n 5                # breakdown 레벨별 상위 5개만 (검증/성능)
+python extract_data_v3.8.py --breakdown-dims "variables/product,variables/evar92"  # 분해 차원 명시
 ```
 
 ## 사용자 설정 (상단 상수)
@@ -106,6 +114,7 @@ de,2026-05-12,2026-05-17
 - `site_code` — `site_registry._SITE_MASTER` 의 key. 매핑에 없으면 fallback `sscompany_name4{site_code 의 _ 제거}` 사용
 - `start_date` / `end_date` — ISO `YYYY-MM-DD`. v3 가 `YYYY-MM-DDT00:00:00.000/다음날T00:00:00.000` 형식 (AA 컨벤션) 으로 자동 변환
 - 빈 줄 / `#` 시작 라인 자동 skip
+- **예시 파일 동봉** — 같은 폴더 `sites_input.csv` 가 바로 실행 가능한 템플릿 (US 2행 분할 / 언어변형 site 규칙 주석 포함). 실제 캠페인 site·기간으로 행만 교체
 
 ## site_registry 매핑 lookup 흐름
 
@@ -114,7 +123,7 @@ row 의 site_code (예: "au")
     ↓
 lookup_site("au")  ──  _SITE_MASTER 에서 찾기
     ↓
-SiteInfo(subsidiary="FRNH", country="Australia", site_code="au", rsid="sscompany_name4au")
+SiteInfo(subsidiary="SEAU", country="Australia", site_code="au", rsid="sscompany_name4au")
     ↓
 payload 의 "rsid" → "sscompany_name4au"
 payload 의 globalFilters[dateRange] → "2026-05-14T00:00:00.000/2026-05-18T00:00:00.000"
@@ -253,9 +262,9 @@ columnTree 에 DateRange 컴포넌트가 있으면:
 ## 권장 사용 흐름
 
 1. `sites_input.csv` 의 site 들 + 캠페인 시즌의 start/end 채움
-2. `python extract_data_v3.7.py --dry-run --site us` 로 한 site payload 확인
+2. `python extract_data_v3.8.py --dry-run --site us` 로 한 site payload 확인
 3. breakdown 쓰는 경우 `--site <한곳> --breakdown-top-n 5` 로 소규모 검증 (총계 = breakdown 합 확인)
-4. OK 면 전체 실행 — `python extract_data_v3.7.py`
+4. OK 면 전체 실행 — `python extract_data_v3.8.py`
 5. `output/` 폴더의 사이트별 CSV 검토. 실패 site (FAIL 표시) 만 따로 `--site <code>` 로 재시도
 6. union 정제 필요 시 `python RESHAPE_standard_v1.3.py` (breakdown 행 처리 모드는 `BREAKDOWN_ROWS_MODE`)
 
@@ -269,5 +278,5 @@ Mac venv 사용 예 (Python 3.13):
 
 ```bash
 cd data_extract
-DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib .venv/bin/python3.13 extract_data_v3.7.py
+DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib .venv/bin/python3.13 extract_data_v3.8.py
 ```

@@ -1,5 +1,14 @@
-# extract_data_v3.7.py
+# extract_data_v3.8.py
 # 2026-06-12  Jonghyun Park w/ Claude
+# v3.8 (2026-06-12): device 케이스별 반복 추출 (DEVICE_CASES) —
+#                    프로젝트 패널에 device 세그가 전혀 없을 때, 패널마다 (Seg1, Seg2) 세그 stack 을
+#                    globalFilter 로 끼워 케이스별로 각각 추출. 케이스 수는 DEVICE_CASES 상수로
+#                    자유 증감 (기본 5: PC/Mobile/App/Android/iOS — Downloads\device_case5.csv 참고).
+#                    + app_O_X.csv 룰 — App 론치 X site 는 requires_app 케이스 제외(PC/Mobile 만).
+#                      `_old` 접미사 site 는 `_old` 뗀 site명의 O/X 를 따름, 미매칭 site 는 경고 후 X 간주.
+#                    + DEVICE_CASE_SITE_OVERRIDES — 구/별도 suite 에서 [Global] 세그가 0행을 만드는
+#                      site 용 세그 치환 (us_old: [Global] Excluded APP → [US] Excluded APP).
+#                    DEVICE_CASES=[] 면 v3.7 과 100% 동일 동작 (옵트인).
 # v3.7 (2026-06-12): 레벨별 limit 분리 + 실제 행수 cap 적용 —
 #                    LIMIT_LV1(dim1/1st level) / LIMIT_BD(breakdown/2nd level~) 로 분리.
 #                    v3.6 까지 LIMIT 은 API page 크기로만 쓰여 페이지네이션(MAX_PAGES)이
@@ -103,6 +112,24 @@ v3.7 (2026-06-12) 추가:
            "Visits;; [part_name] All Page Track - PF Only; [Device] Mobile").
           테이블 블록 순서: "(summary)" 총계 행 → dim1 item 행들 → breakdown 행들(bd{k}_* 컬럼).
           기존 column_mapping 의 value_n/metric/segments/data_value 세로 행은 이 가로형으로 대체.
+
+v3.8 (2026-06-12) 추가:
+  · DEVICE_CASES — 패널마다 (Seg1, Seg2) device 세그 stack 을 globalFilter 로 끼워
+    케이스별로 반복 추출. 대상 프로젝트 패널에 device 세그가 전혀 없는 경우용.
+      - 케이스 1개 = {"device": 라벨, "segment_ids": [세그ID 2개+], ("requires_app": True)}
+        — 리스트에 dict 추가/삭제로 케이스 수 자유 증감 (코드 어디에도 케이스 수 하드코딩 없음).
+      - task 수 = 패널 × 테이블 × 적용 케이스 수 — API 호출이 그만큼 늘어남 (429 시 --site-workers 축소).
+      - stack CSV 의 device 컬럼 = 케이스 라벨, segments 컬럼에 케이스 세그 name 도 append.
+        table CSV 에는 device 컬럼이 새로 추가됨 (같은 테이블이 케이스 수만큼 반복되므로 행 구분용).
+  · app_O_X.csv — site_code 별 App 론치 O/X. X site 는 requires_app=True 케이스를 제외하고
+    추출 (기본 케이스 셋에선 PC/Mobile 만). lookup 룰:
+      ① site_code 그대로 → ② `_old` 접미사 제거 후 재시도 (us_old 처럼 직접 있으면 ① 에서 매칭)
+      → ③ 둘 다 없으면 경고 출력 후 X 간주. 파일이 없으면 전 site O 간주.
+  · DEVICE_CASE_SITE_OVERRIDES — site 별 세그 치환 ({site: {원본id: 대체id}}).
+    구/별도 suite 라서 [Global] 세그가 0행을 만드는 site 용. 검증: us_old 는
+    [Global] Excluded APP / [Global] App Only 가 0행 (PC User/Mobile User 는 정상)
+    → Excluded APP 을 [US] Excluded APP 으로 치환하면 정상 추출.
+  · DEVICE_CASES = [] 면 v3.7 과 100% 동일 동작 (옵트인).
 """
 from __future__ import annotations
 
@@ -223,6 +250,45 @@ DEVICE_SEGMENT_RULES: list[tuple[str, str]] = [
     (r"\bMobile\b",               "Mobile"),
     (r"\bApp\b",                  "App"),
 ]
+
+# ─── device 케이스별 반복 추출 (v3.8) ────────────────────────────────
+# 프로젝트 패널에 device 세그가 전혀 없을 때, 패널마다 세그 stack 을 globalFilter 로
+# 끼워 케이스별로 각각 추출. 케이스 1개 = dict 1개 — 리스트에 추가/삭제로 자유 증감.
+#   device       : 출력 CSV device 컬럼에 박히는 라벨
+#   segment_ids  : 그 케이스에 끼울 세그 ID 들 (개수 자유)
+#   requires_app : True 면 app_O_X.csv 의 O site 에서만 추출 (X site 는 이 케이스 skip)
+# [] 면 v3.7 과 100% 동일 동작 (케이스 반복 없이 1회 추출).
+# ※ task 수 = 패널 × 테이블 × 케이스 수 — API 호출 그만큼 증가. 429 빈발 시 --site-workers 축소.
+# ※ 대상 프로젝트 패널에 device 세그가 이미 있으면 이 옵션 불필요 — 기본 전부 주석(비활성).
+#    패널에 device 세그가 없을 때만 아래 케이스들 주석 해제 + 본인 환경 세그 ID 로 교체해 사용.
+DEVICE_CASES: list[dict] = [
+    # {"device": "PC",      "segment_ids": ["세그먼트_아이디_넘버",    # Excluded APP segment
+    #                                       "세그먼트_아이디_넘버"]},  # PC User (Visit) segment
+    # {"device": "Mobile",  "segment_ids": ["세그먼트_아이디_넘버",    # Excluded APP segment
+    #                                       "세그먼트_아이디_넘버"]},  # Mobile User (Visit) segment
+    # {"device": "App",     "segment_ids": ["세그먼트_아이디_넘버",    # App Only segment
+    #                                       "세그먼트_아이디_넘버"],   # All Visits segment
+    #  "requires_app": True},
+    # {"device": "Android", "segment_ids": ["세그먼트_아이디_넘버",    # App Only segment
+    #                                       "세그먼트_아이디_넘버"],   # Android Visit segment
+    #  "requires_app": True},
+    # {"device": "iOS",     "segment_ids": ["세그먼트_아이디_넘버",    # App Only segment
+    #                                       "세그먼트_아이디_넘버"],   # iOS Visit segment
+    #  "requires_app": True},
+]
+
+# App 론치 O/X csv — 컬럼: site_code, App 론치 (O/X). X site 는 requires_app 케이스 제외.
+# `_old` 접미사 site 가 csv 에 없으면 `_old` 뗀 site명의 O/X 를 따름. 그래도 없으면 경고 후 X 간주.
+# 파일 자체가 없으면 전 site O 간주 (모든 케이스 추출).
+APP_OX_CSV = Path(__file__).resolve().parent / "app_O_X.csv"
+
+# site 별 device 세그 치환 — {site_code: {원본_seg_id: 대체_seg_id}}.
+# 구/별도 suite 라서 공용 세그가 0행을 만드는 site 용. DEVICE_CASES 사용 시에만 의미 있음.
+# 예) us_old 구 suite 에서 글로벌 Excluded APP 이 0행 → US 전용 Excluded APP 으로 치환.
+DEVICE_CASE_SITE_OVERRIDES: dict[str, dict[str, str]] = {
+    # "us_old": {"세그먼트_아이디_넘버": "세그먼트_아이디_넘버"},
+}
+
 
 # ─── site × panel prefix 룰 ─────────────────────────────────────────
 # [US] panel 은 us site 에서만 추출 (다른 site 일 땐 자동 skip).
@@ -1249,6 +1315,46 @@ def _load_sites_input(path: Path) -> list[tuple[str, str, str]]:
     return rows
 
 
+# ─── app_O_X.csv 로드 + device 케이스 선택 (v3.8) ──────────────────
+def _load_app_ox(path: Path) -> dict[str, str] | None:
+    """app_O_X.csv → {site_code: "O"|"X"}. 1열 = site_code, 2열 = O/X (헤더명 무관, 위치 기준).
+    파일 없으면 None (전 site O 간주)."""
+    if not path.exists():
+        return None
+    ox: dict[str, str] = {}
+    with open(path, encoding="utf-8-sig") as f:
+        rows = list(csv.reader(f))
+    for r in rows[1:]:   # 헤더 skip
+        if len(r) < 2:
+            continue
+        site = (r[0] or "").strip()
+        flag = (r[1] or "").strip().upper()
+        if site and flag in ("O", "X"):
+            ox[site] = flag
+    return ox
+
+
+def _app_flag(site_code: str, ox_map: dict[str, str] | None) -> str:
+    """site 의 App 론치 O/X. ① 그대로 → ② `_old` 접미사 제거 후 → ③ 경고 + X 간주.
+    ox_map 이 None (csv 없음) 이면 O."""
+    if ox_map is None:
+        return "O"
+    sc = site_code.strip()
+    if sc in ox_map:
+        return ox_map[sc]
+    if sc.endswith("_old") and sc[:-4] in ox_map:
+        return ox_map[sc[:-4]]
+    print(f"  ⚠ app_O_X.csv 에 '{sc}' 없음 (_old 제거 후에도 미매칭) → X 간주 (PC/Mobile 류만 추출)")
+    return "X"
+
+
+def _cases_for_flag(app_flag: str) -> list[dict]:
+    """app 론치 flag(O/X)에 적용할 DEVICE_CASES 부분집합. X 면 requires_app 케이스 제외."""
+    if app_flag == "O":
+        return list(DEVICE_CASES)
+    return [c for c in DEVICE_CASES if not c.get("requires_app")]
+
+
 def _should_skip_panel(panel_name: str, site_code: str, include_global_for_us: bool) -> tuple[bool, str]:
     """site × panel prefix 룰 적용. (skip, reason) 반환."""
     is_us = site_code.lower() == US_SITE_CODE
@@ -1276,9 +1382,11 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                   site: SiteInfo, start_date: str, end_date: str,
                   *, workers: int, limit: int, dry_run: bool, ts: str,
                   include_global_for_us: bool,
-                  resolved_extras: list[tuple[str, object]] | None = None) -> dict:
+                  resolved_extras: list[tuple[str, object]] | None = None,
+                  app_ox: dict[str, str] | None = None) -> dict:
     """한 site 의 모든 panel × reportlet 추출 + CSV 저장.
-    resolved_extras: [(segment_id, panel_scope), ...] — v3 신규."""
+    resolved_extras: [(segment_id, panel_scope), ...] — v3 신규.
+    app_ox: app_O_X.csv 로드 결과 (v3.8 DEVICE_CASES 케이스 선택용, None=csv 없음=전 site O)."""
     date_range_def = _build_date_range_definition(start_date, end_date)
     print(f"\n{'═'*78}\nSITE: {site.site_code}  →  rsid={site.rsid}  ({start_date} ~ {end_date})\n{'═'*78}")
     if resolved_extras:
@@ -1286,6 +1394,19 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
         for sid, scope in resolved_extras:
             scope_str = "all panels" if scope == "all" else f"panel keyword {scope}"
             print(f"    + {sid}  '{_SEG_NAME_CACHE.get(sid, '')}'  → {scope_str}")
+
+    # v3.8: 이 site 에 적용할 device 케이스 (DEVICE_CASES=[] 면 [None] = 케이스 반복 없음)
+    site_cases: list = [None]
+    site_seg_override: dict[str, str] = {}
+    if DEVICE_CASES:
+        _flag = _app_flag(site.site_code, app_ox)
+        site_cases = _cases_for_flag(_flag)
+        _labels = [c["device"] for c in site_cases]
+        print(f"  device cases ({len(_labels)}, app={_flag}): {', '.join(_labels)}")
+        site_seg_override = DEVICE_CASE_SITE_OVERRIDES.get(site.site_code) or {}
+        for _src, _dst in site_seg_override.items():
+            print(f"  [seg-override] {_SEG_NAME_CACHE.get(_src) or _src} → "
+                  f"{_SEG_NAME_CACHE.get(_dst) or _dst}")
 
     tasks: list[dict] = []
     task_order = 0
@@ -1309,33 +1430,43 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                 x, y = assigned_num
                 slug = f"{x}_{y}_{slug}" if not slug.startswith(f"{x}_{y}_") else slug
             tb_name = slug if slug else f"table_{r_idx}"
-            payload, seg_names_per_metric, metric_names, panel_seg_names, dim_id, dim_name = \
-                _build_report_payload(project, panel, rep,
-                                      override_rsid=site.rsid,
-                                      override_date_range=date_range_def,
-                                      extra_segment_ids=extra_ids_for_panel)
-            payload["settings"]["limit"] = min(limit, 100000) if limit > 0 else PAGE_SIZE_UNCAPPED
-            tasks.append({
-                "order": task_order,
-                "panel_idx": p_idx,
-                "panel_name": p_name,
-                "reportlet_name": r_name,
-                "tb_name": tb_name,
-                "payload": payload,
-                "max_rows": limit,   # v3.7: dim1(1st level) 행 cap (0=무제한)
-                "seg_names_per_metric": seg_names_per_metric,
-                "metric_names": metric_names,
-                "panel_segments": panel_seg_names,
-                "dimension_id": dim_id,
-                "dimension_name": dim_name,
-                "breakdown_chain": _detect_breakdown_chain(rep) if BREAKDOWN_ENABLED else [],
-                "breakdown_rows": [],
-                "rows": [],
-                "summary_data": [],
-                "ok": False,
-                "error": "",
-            })
-            task_order += 1
+            # v3.8: device 케이스별 task 1개씩 (case=None 이면 v3.7 동작 — 1개)
+            for case in site_cases:
+                # site 별 세그 치환 적용 (DEVICE_CASE_SITE_OVERRIDES — us_old 류)
+                case_seg_ids = [site_seg_override.get(s, s) for s in case["segment_ids"]] if case else []
+                payload, seg_names_per_metric, metric_names, panel_seg_names, dim_id, dim_name = \
+                    _build_report_payload(project, panel, rep,
+                                          override_rsid=site.rsid,
+                                          override_date_range=date_range_def,
+                                          extra_segment_ids=extra_ids_for_panel + case_seg_ids)
+                payload["settings"]["limit"] = min(limit, 100000) if limit > 0 else PAGE_SIZE_UNCAPPED
+                if case:
+                    # 케이스 세그 name 을 각 컬럼 stack 에 append — CSV segments 컬럼에 드러나고
+                    # _parse_device 도 같은 라벨 도출 (검증용 일관성)
+                    case_names = [_SEG_NAME_CACHE.get(sid) or sid for sid in case_seg_ids]
+                    seg_names_per_metric = [list(lst) + case_names for lst in seg_names_per_metric]
+                tasks.append({
+                    "order": task_order,
+                    "panel_idx": p_idx,
+                    "panel_name": p_name,
+                    "reportlet_name": r_name,
+                    "tb_name": tb_name,
+                    "device_case": case["device"] if case else "",   # v3.8
+                    "payload": payload,
+                    "max_rows": limit,   # v3.7: dim1(1st level) 행 cap (0=무제한)
+                    "seg_names_per_metric": seg_names_per_metric,
+                    "metric_names": metric_names,
+                    "panel_segments": panel_seg_names,
+                    "dimension_id": dim_id,
+                    "dimension_name": dim_name,
+                    "breakdown_chain": _detect_breakdown_chain(rep) if BREAKDOWN_ENABLED else [],
+                    "breakdown_rows": [],
+                    "rows": [],
+                    "summary_data": [],
+                    "ok": False,
+                    "error": "",
+                })
+                task_order += 1
     print(f"  payload {len(tasks)}개 생성")
 
     if dry_run:
@@ -1350,7 +1481,8 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             done_count += 1
             result = fut.result()
             status = "OK" if result["ok"] else f"FAIL: {result['error'][:50]}"
-            print(f"    [{done_count}/{len(tasks)}] {result['tb_name']}: {len(result['rows'])} rows — {status}")
+            dev_tag = f" [{result['device_case']}]" if result.get("device_case") else ""
+            print(f"    [{done_count}/{len(tasks)}] {result['tb_name']}{dev_tag}: {len(result['rows'])} rows — {status}")
     elapsed = datetime.now() - start_time
     print(f"  소요: {elapsed}")
 
@@ -1369,7 +1501,8 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             chain_str = " → ".join(d for d, _ in t["breakdown_chain"])
             calls = _run_breakdowns(t, headers, gcid, workers=workers)
             total_bd_calls += calls
-            print(f"    {t['tb_name']}: dim1 {len(t['rows'])}행 → [{chain_str}] "
+            dev_tag = f" [{t['device_case']}]" if t.get("device_case") else ""
+            print(f"    {t['tb_name']}{dev_tag}: dim1 {len(t['rows'])}행 → [{chain_str}] "
                   f"breakdown rows {len(t['breakdown_rows'])}개 (호출 {calls}회)")
         print(f"  breakdown 소요: {datetime.now() - bd_start}  (총 호출 {total_bd_calls}회)")
 
@@ -1423,7 +1556,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                     m_name = metric_names[i-1] if i-1 < len(metric_names) else ""
                     seg_list = seg_names_per_metric[i-1] if i-1 < len(seg_names_per_metric) else []
                     seg_str = "; ".join(s for s in seg_list if s)
-                    device = _parse_device(seg_list)
+                    device = t.get("device_case") or _parse_device(seg_list)   # v3.8: 케이스 라벨 우선
                     w.writerow(base_cols + ["", "(summary)", f"value{i}", m_name, seg_str, device,
                                             v if v is not None else ""] + bd_blank)
             else:
@@ -1435,7 +1568,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                     m_name = metric_names[i] if i < len(metric_names) else ""
                     seg_list = seg_names_per_metric[i] if i < len(seg_names_per_metric) else []
                     seg_str = "; ".join(s for s in seg_list if s)
-                    device = _parse_device(seg_list)
+                    device = t.get("device_case") or _parse_device(seg_list)   # v3.8: 케이스 라벨 우선
                     vn = f"value{i+1}"
                     for r in rows:
                         item_id = r.get("itemId", "")
@@ -1453,7 +1586,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                     m_name = metric_names[i] if i < len(metric_names) else ""
                     seg_list = seg_names_per_metric[i] if i < len(seg_names_per_metric) else []
                     seg_str = "; ".join(s for s in seg_list if s)
-                    device = _parse_device(seg_list)
+                    device = t.get("device_case") or _parse_device(seg_list)   # v3.8: 케이스 라벨 우선
                     vn = f"value{i+1}"
                     for br in bd_rows:
                         path = br["path"]
@@ -1502,6 +1635,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
         w = csv.writer(f)
         header = ["site_code", "rsid", "start_date", "end_date",
                   "panel", "table", "reportlet", "dimension", "dimension_name",
+                  "device",   # v3.8: 같은 테이블이 device 케이스 수만큼 반복 — 행 구분용
                   "itemId", dim_short]
         header += [f"value{i}" for i in range(1, site_max_vals + 1)]
         header += [f"seg_value{i}" for i in range(1, site_max_vals + 1)]
@@ -1513,7 +1647,8 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                 continue
             base_cols = [site.site_code, site.rsid, start_date, end_date,
                          t["panel_name"], t["tb_name"], t["reportlet_name"],
-                         t.get("dimension_id", ""), t.get("dimension_name", "")]
+                         t.get("dimension_id", ""), t.get("dimension_name", ""),
+                         t.get("device_case", "")]   # v3.8
             seg_vals = _seg_values(t)
             summary = t.get("summary_data", [])
             if summary:
@@ -1579,7 +1714,7 @@ def main() -> int:
     globals()["LIMIT_BD"] = args.limit_bd
 
     ts = datetime.now().strftime("%y%m%d_%H%M")
-    print(f"[{ts}] extract_data_v3.7.py")
+    print(f"[{ts}] extract_data_v3.8.py")
     print(f"  project       : {PROJECT_ID}")
     print(f"  input         : {SITES_INPUT_CSV.name}")
     print(f"  workers       : {args.workers}")
@@ -1587,6 +1722,20 @@ def main() -> int:
     print(f"  limit (lv1)   : {args.limit if args.limit > 0 else '무제한'}  (dim1 행 cap)")
     print(f"  limit (bd)    : {args.limit_bd if args.limit_bd > 0 else '무제한'}  (breakdown 부모 item 당 행 cap)")
     print(f"  EXTRA_SEGMENTS: {len(EXTRA_SEGMENTS)}건")
+    # v3.8: device 케이스 + app_O_X
+    app_ox = _load_app_ox(APP_OX_CSV)
+    if DEVICE_CASES:
+        _case_labels = ", ".join(c["device"] for c in DEVICE_CASES)
+        print(f"  DEVICE_CASES  : {len(DEVICE_CASES)}건 ({_case_labels})  — task 수 = 패널×테이블×케이스")
+        if app_ox is None:
+            print(f"  app_O_X       : {APP_OX_CSV.name} 없음 → 전 site O 간주 (모든 케이스 추출)")
+        else:
+            _n_o = sum(1 for v in app_ox.values() if v == "O")
+            _n_x = sum(1 for v in app_ox.values() if v == "X")
+            print(f"  app_O_X       : {APP_OX_CSV.name}  O={_n_o} X={_n_x}  "
+                  f"(X site 는 requires_app 케이스 제외, 미매칭 site 는 _old 제거→X 간주)")
+    else:
+        print(f"  DEVICE_CASES  : 0건 (케이스 반복 없음 — v3.7 동작)")
     if BREAKDOWN_ENABLED:
         _bd_dims = BREAKDOWN_DIMENSIONS or "(테이블 breakdowns 자동감지)"
         _bd_topn = "전체" if BREAKDOWN_TOP_N == 0 else f"레벨별 상위 {BREAKDOWN_TOP_N}"
@@ -1632,6 +1781,34 @@ def main() -> int:
         if sid:
             resolved_extras.append((sid, spec.get("panel_scope", "all")))
 
+    # v3.8: DEVICE_CASES 세그 ID 검증 + fresh name prefetch (_SEG_NAME_CACHE 적재)
+    if DEVICE_CASES:
+        print(f"\n[device cases] {len(DEVICE_CASES)}건 세그 name 조회:")
+        for case in DEVICE_CASES:
+            label = case.get("device", "")
+            seg_ids = case.get("segment_ids") or []
+            if not (label and seg_ids):
+                raise SystemExit(f"❌ DEVICE_CASES 항목 형식 오류 (device/segment_ids 필수): {case}")
+            names = []
+            for sid in seg_ids:
+                if not (isinstance(sid, str) and SEG_ID_RE.match(sid)):
+                    raise SystemExit(f"❌ DEVICE_CASES '{label}' 의 segment_id 형식 오류: {sid!r}")
+                nm = _fetch_segment_name(headers, gcid, sid)
+                if not nm:
+                    raise SystemExit(f"❌ DEVICE_CASES '{label}' 세그 name 조회 실패 (존재/권한 확인): {sid}")
+                names.append(nm)
+            print(f"  [{label}] " + " + ".join(f"'{n}'" for n in names))
+        # site 별 치환 세그 name 도 prefetch (출력 CSV segments 컬럼용)
+        for _site, _mapping in DEVICE_CASE_SITE_OVERRIDES.items():
+            for _src, _dst in _mapping.items():
+                for sid in (_src, _dst):
+                    if not (isinstance(sid, str) and SEG_ID_RE.match(sid)):
+                        raise SystemExit(f"❌ DEVICE_CASE_SITE_OVERRIDES '{_site}' 세그 ID 형식 오류: {sid!r}")
+                nm = _fetch_segment_name(headers, gcid, _dst)
+                if not nm:
+                    raise SystemExit(f"❌ DEVICE_CASE_SITE_OVERRIDES '{_site}' 대체 세그 name 조회 실패: {_dst}")
+                print(f"  [override:{_site}] '{_SEG_NAME_CACHE.get(_src) or _src}' → '{nm}'")
+
     # EXTRA(추가) vs SKIP_PANEL_SEGMENT_KEYWORDS(제거) 충돌 검사 (v3.4)
     #   같은 세그를 EXTRA로 추가 + SKIP로 제거하면 모순 → 경고 후 중단
     if SKIP_PANEL_SEGMENT_KEYWORDS and resolved_extras:
@@ -1654,7 +1831,8 @@ def main() -> int:
                              workers=args.workers, limit=args.limit,
                              dry_run=args.dry_run, ts=ts,
                              include_global_for_us=args.include_global_for_us,
-                             resolved_extras=resolved_extras)
+                             resolved_extras=resolved_extras,
+                             app_ox=app_ox)
 
     results = []
     if args.site_workers <= 1:
