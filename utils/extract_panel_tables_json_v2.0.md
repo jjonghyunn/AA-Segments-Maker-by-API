@@ -30,7 +30,7 @@
 
 ## 공개 repo
 
-이 폴더는 `https://github.com/wimterrr/AA-Segments-Maker-by-API` 와 매핑됨. repo 커밋 시 sanitize:
+이 폴더는 `https://github.com/jjonghyunn/AA-Segments-Maker-by-API` 와 매핑됨. repo 커밋 시 sanitize:
 - `AUTH_JSON_PATH` → 플레이스홀더 경로
 - `COMPANY_ID` → `"your_aa_company_id"`
 - `PROJECT_ID` → 빈 값 또는 `"YOUR_PROJECT_ID"`

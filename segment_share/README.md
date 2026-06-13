@@ -120,4 +120,4 @@ KEYWORDS=['visit'] 매칭 segment: M개
 
 - `../utils/find_user_id.py` — email/login/name 으로 numeric loginId 찾기
 - `../company_name_aa_id_*.csv` — 회사 전체 user id 매핑 (`find_user_id.py --all --csv ...` 로 생성)
-- `../segment_maker/aa_create_segment_v2.2.py` — segment 생성 시 `OWNER_ID` 설정으로 본인 명의 보장
+- `../segment_maker/aa_create_segment_v2.3.py` — segment 생성 시 `OWNER_ID` 설정으로 본인 명의 보장

@@ -26,4 +26,4 @@ python find_user_id.py --all --csv users.csv       # 전체 사용자 CSV dump
 ## extract_panel_tables_json_v2.0.py
 
 상단 상수(`PROJECT_ID`, `OUTPUT_CSV_DIR`, `JSON_ROOT` 등)만 바꿔서 캠페인별로 재사용.
-상세 문서: 루트의 `extract_panel_tables_json_v2.0.md` 참조.
+상세 문서: 같은 폴더의 [`extract_panel_tables_json_v2.0.md`](extract_panel_tables_json_v2.0.md) 참조.
