@@ -1108,6 +1108,23 @@ def _detect_breakdown_chain(reportlet: dict) -> list[tuple[str, str]]:
     return chain
 
 
+def _breakdown_top_branches(reportlet: dict) -> list[str]:
+    """freeformTable.breakdowns 의 top-level 가지 dimension id 들을 전부 반환.
+    auto-detect(_detect_breakdown_chain)는 가지[0] 만 쓰므로, 가지가 2개+면
+    의도와 다른 차원(variables)이 잡혔을 수 있음 → 콘솔에서 BD가지 수로 경고."""
+    if BREAKDOWN_DIMENSIONS:
+        return []
+    ff = reportlet.get("freeformTable") or {}
+    out: list[str] = []
+    for e in (ff.get("breakdowns") or []):
+        if not isinstance(e, dict):
+            continue
+        ds = e.get("dimensionSettings") or []
+        did = (ds[0].get("dimension") or {}).get("id", "") if (ds and isinstance(ds[0], dict)) else ""
+        out.append(did or "?")
+    return out
+
+
 def _build_breakdown_payload(base_payload: dict,
                              ancestor_pairs: list[tuple[str, str]],
                              bd_dim_id: str, *, limit: int) -> dict:
@@ -1468,6 +1485,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                     "dimension_id": dim_id,
                     "dimension_name": dim_name,
                     "breakdown_chain": _detect_breakdown_chain(rep) if BREAKDOWN_ENABLED else [],
+                    "breakdown_branches": _breakdown_top_branches(rep) if BREAKDOWN_ENABLED else [],
                     "breakdown_rows": [],
                     "rows": [],
                     "summary_data": [],
@@ -1510,8 +1528,13 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             calls = _run_breakdowns(t, headers, gcid, workers=workers)
             total_bd_calls += calls
             dev_tag = f" [{t['device_case']}]" if t.get("device_case") else ""
+            br = t.get("breakdown_branches") or []
+            used = t["breakdown_chain"][0][0] if t["breakdown_chain"] else ""
+            others = list(dict.fromkeys(d for d in br if d != used))
+            bd_tag = (f"  ⚠ BD가지 {len(br)}개 (다른가지: {', '.join(others)})"
+                      if len(br) > 1 else f"  · BD가지 {len(br)}개")
             print(f"    {t['tb_name']}{dev_tag}: dim1 {len(t['rows'])}행 → [{chain_str}] "
-                  f"breakdown rows {len(t['breakdown_rows'])}개 (호출 {calls}회)")
+                  f"breakdown rows {len(t['breakdown_rows'])}개 (호출 {calls}회){bd_tag}")
         print(f"  breakdown 소요: {datetime.now() - bd_start}  (총 호출 {total_bd_calls}회)")
 
     # CSV 저장 (v3.7 파일명 개편 — 기존 extract_data_* → stack, column_mapping_* → table)
