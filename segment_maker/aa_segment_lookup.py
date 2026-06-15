@@ -1,6 +1,9 @@
 # aa_segment_lookup.py
 # 2026-05-15  Jonghyun Park w/ Claude
 # ── 변경 이력 (git 히스토리 스크럽됨 — 아래 changelog 가 변경 기록) ──
+# updated: 2026-06-15       — --search 결과에 날짜 필터 추가: --modified-after / --modified-before (YYYY-MM-DD).
+#                            ⚠ AA 세그먼트 API 는 생성일(created)을 제공하지 않음 → 마지막 수정일(modified) 기준.
+#                            after 만=이후, before 만=이전, 둘 다=두 날짜 사이(both inclusive). CSV 에 modified 컬럼 추가.
 # updated: 2026-06-05  v1.2 — --search 전 키워드를 연속 substring AND (첫 키워드 토큰화 버그 수정) + SEARCH_RESULT_LIMIT 등 상단 상수화 + 초과 시 경고
 # updated: 2026-06-05  v1.1 — owner_email 컬럼 추가 + owner 이름/이메일을 GET /users 직접 조회로 보강 (외부 user-id CSV 의존 제거)
 # updated: 2026-05-26       — sequence 처리: wrap 분기 제거, 모든 sequence/prefix/suffix 에 [sequence-after/before/all] 라벨 + scope 감쌈
@@ -26,6 +29,11 @@
   # 이름 키워드 AND 검색 (여러 개 — 공백 구분, 각 quote 로 감쌈)
   python segment_lookup.py --search "[us] p" "visit"      # 이름에 "[us] p" 와 "visit" 둘 다
   python segment_lookup.py --search "[CAMPAIGN NAME]" "US_CC" --limit 2000
+
+  # 날짜 필터 (수정일 modified 기준 — AA 가 생성일 미제공. YYYY-MM-DD)
+  python segment_lookup.py --search "campaign" --modified-after 2025-01-01      # 이후
+  python segment_lookup.py --search "campaign" --modified-before 2025-07-01     # 이전
+  python segment_lookup.py --search "campaign" --modified-after 2025-01-01 --modified-before 2025-07-01  # 사이
 
   주의: --search 키워드 list 는 **공백 구분** (콤마 박지 말 것).
         PowerShell 에서 콤마 (`,`) 는 array operator 라 native exe 전달 시 처리 불일치 가능.
@@ -479,7 +487,7 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
     url = f"https://analytics.adobe.io/api/{gcid}/segments/{seg_id}"
     r = requests.get(
         url, headers=headers,
-        params={"expansion": "definition,name,description,owner,tags,reportSuiteName"},
+        params={"expansion": "definition,name,description,owner,tags,reportSuiteName,modified"},
         timeout=60,
     )
     if r.status_code != 200:
@@ -490,6 +498,7 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
             "owner_name": "",
             "owner_email": "",
             "rsid": "",
+            "modified": "",
             "description": "",
             "tags": "",
             "definition": None,
@@ -509,6 +518,7 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
         "owner_name": owner.get("name", "") if isinstance(owner, dict) else "",
         "owner_email": "",
         "rsid": data.get("rsid", ""),
+        "modified": data.get("modified", ""),
         "description": data.get("description", ""),
         "tags": tag_names,
         "definition": data.get("definition"),
@@ -528,7 +538,8 @@ def _pick_prefilter_word(kw_list: list[str]) -> str:
 
 
 def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
-                     rsid: str = "", limit: int = SEARCH_RESULT_LIMIT) -> list[dict]:
+                     rsid: str = "", limit: int = SEARCH_RESULT_LIMIT,
+                     modified_after: str = "", modified_before: str = "") -> list[dict]:
     """GET /segments — 이름 키워드 검색. 결과를 _lookup_segment 포맷으로 반환.
 
     매칭: keywords 의 **모든** 키워드(첫 키워드 포함)를 case-insensitive **연속 substring** 으로
@@ -547,7 +558,7 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
     match_kws = [k.lower() for k in kw_list]          # 첫 키워드 포함 전부 substring 매칭
     url = f"https://analytics.adobe.io/api/{gcid}/segments"
     base_params: dict[str, Any] = {
-        "expansion": "definition,name,description,owner,tags,reportSuiteName",
+        "expansion": "definition,name,description,owner,tags,reportSuiteName,modified",
         "includeType": "all",
     }
     prefilter = _pick_prefilter_word(kw_list)         # 서버 volume 축소용 (매칭 수단 아님)
@@ -582,6 +593,26 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
         return s.lower()
     matched = [it for it in items if all(kw in _hay(it) for kw in match_kws)]
 
+    # 날짜 필터 (modified 기준 — AA 생성일 미제공). date 부분(YYYY-MM-DD)만 비교, both inclusive.
+    # ⚠ 속도 최적화 아님: AA 가 modified 를 서버측 필터 파라미터로 안 받아, 일단 키워드 후보를
+    #    전부 받아온 뒤(=병목: 서버 페이징 + /users 유저맵 로드) 클라이언트에서 거르는 구조다.
+    #    → 날짜 범위를 좁혀도 전체 속도는 거의 그대로(후처리 decompile/CSV 만 약간 절약).
+    #    실제 속도는 --search 키워드를 더 구체적으로 / --rsid 로 줄일 것.
+    if modified_after or modified_before:
+        before_n = len(matched)
+        def _date_ok(it: dict) -> bool:
+            d = (it.get("modified") or "")[:10]      # 'YYYY-MM-DD'
+            if not d:
+                return False                          # modified 없으면 필터 시 제외
+            if modified_after and d < modified_after:
+                return False
+            if modified_before and d > modified_before:
+                return False
+            return True
+        matched = [it for it in matched if _date_ok(it)]
+        rng = f"{modified_after or '…'} ~ {modified_before or '…'}"
+        print(f"  📅 modified 필터({rng}): {before_n} → {len(matched)}건")
+
     # 조용한 절단 방지 — 초과 시 경고 후 자름
     total = len(matched)
     if limit and total > limit:
@@ -602,6 +633,7 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
             "owner_name": owner.get("name", "") if isinstance(owner, dict) else "",
             "owner_email": "",
             "rsid": item.get("rsid", ""),
+            "modified": item.get("modified", ""),
             "description": item.get("description", ""),
             "tags": tag_names,
             "definition": item.get("definition"),
@@ -633,7 +665,22 @@ def main() -> int:
     parser.add_argument("--rsid", default="", help="검색 시 RSID 필터 (선택)")
     parser.add_argument("--limit", type=int, default=SEARCH_RESULT_LIMIT,
                         help=f"검색 결과 최대 건수 (기본 SEARCH_RESULT_LIMIT={SEARCH_RESULT_LIMIT})")
+    parser.add_argument("--modified-after", default="", metavar="YYYY-MM-DD",
+                        help="이 날짜 이후(>=) 수정된 세그만 (--search 한정). "
+                             "AA 가 생성일 미제공 → 마지막 수정일 modified 기준")
+    parser.add_argument("--modified-before", default="", metavar="YYYY-MM-DD",
+                        help="이 날짜 이전(<=) 수정된 세그만. --modified-after 와 같이 주면 두 날짜 사이")
     args = parser.parse_args()
+
+    # 날짜 옵션 형식 검증 (YYYY-MM-DD)
+    for label, val in (("--modified-after", args.modified_after),
+                       ("--modified-before", args.modified_before)):
+        if val:
+            try:
+                datetime.strptime(val, "%Y-%m-%d")
+            except ValueError:
+                print(f"ERROR: {label} 형식은 YYYY-MM-DD 여야 합니다 (받은 값: {val!r})")
+                return 1
 
     # ID 수집
     seg_ids: list[str] = list(args.ids)
@@ -680,7 +727,9 @@ def main() -> int:
     results: list[dict] = []
     if search_mode:
         results = _search_segments(headers, gcid, args.search,
-                                   rsid=args.rsid, limit=args.limit)
+                                   rsid=args.rsid, limit=args.limit,
+                                   modified_after=args.modified_after,
+                                   modified_before=args.modified_before)
         print(f"  검색 결과: {len(results)}건")
         for r in results:
             print(f"    {r['segment_id']}  {r['name']}")
@@ -709,7 +758,7 @@ def main() -> int:
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["segment_id", "name", "owner_id", "owner_name", "owner_email", "rsid",
-                     "description", "tags", "structure", "error"])
+                     "modified", "description", "tags", "structure", "error"])
         for r in results:
             # structure: decompiled DSL을 한 줄로
             structure = ""
@@ -722,7 +771,8 @@ def main() -> int:
                     structure = "(decompile error)"
             w.writerow([
                 r["segment_id"], r["name"], r["owner_id"], r["owner_name"],
-                r["owner_email"], r["rsid"], r["description"], r["tags"], structure, r["error"],
+                r["owner_email"], r["rsid"], r.get("modified", ""), r["description"],
+                r["tags"], structure, r["error"],
             ])
     print(f"CSV: {csv_path}")
 
