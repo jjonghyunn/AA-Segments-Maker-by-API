@@ -1,5 +1,5 @@
-# RESHAPE_standard_v1.3.py  
-<sub>2026-06-12  Jonghyun Park w/ Claude</sub>  
+# RESHAPE_standard_v1.4.py  
+<sub>2026-06-15  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -36,6 +36,21 @@
 - **SITE CODE** = `SITE_CODE_RENAME` 표기 치환 + **`_old` 접미사 일괄 제거** (v1.1, `uk_old`→`uk` 등 — `SITE_CODE_STRIP_OLD`)
 - 디멘션 컬럼명(`campaign`)은 **추출한 디멘션 그대로** 따라온다 (evar26 이면 `evar26` 으로)
 
+### product category 분류 (v1.4)
+
+panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi Order` / `Best Selling Product`, 대소문자·언더바 무시)가 있으면, 그 행의 **제품코드(자동 감지된 디멘션 값)** 를 `product_category.yaml`(divisions → categories → include/exclude regex)로 분류해 `category` 컬럼을 추가한다.
+
+- **multi 모드** (`Multi Purchase` / `Multi Order`): 디멘션 값이 콤마로 묶인 다제품 (예: `SM-S928B,EP-T2510`) →
+  - `category` = 각 제품 카테고리를 **알파벳 오름차순**으로 콤마 조인 (ACC·Unknown 포함, 중복 유지)
+  - `category_non_acc_unknown_excl` = 같은 리스트에서 **ACC·Unknown 제외**
+- **single 모드** (`Best Selling Product`): 단일 제품 → `category` 만 (`category_non_acc_unknown_excl` 은 빈칸)
+- 어느 카테고리에도 안 걸리는 제품코드 → **`Unknown`**.
+- 분류 룰은 `product_category.yaml` 만 사용 (파일 순서대로 첫 매칭, division 은 매칭된 카테고리와 함께 결정).
+- `ADD_CATEGORY_COLUMN = True` 로 on/off. **yaml 이 없을 때**: 키워드 매칭 행이 있으면 경고만 하고 분류 skip, 매칭 행이 없으면 조용히 pass (정제는 정상 진행).
+- 키워드가 없는 행(예: Cross-Sell / Total Order)은 두 컬럼이 빈칸.
+
+> 모드 판정은 **table+reportlet(구체 필드) 우선**, 거기서 신호 없으면 panel fallback. 한 패널에 두 키워드가 다 있어도(예: `Multi Purchase & Best Selling Products`) table/reportlet 으로 정확히 구분된다.
+
 ### 입력 파일명 개편 대응 (v1.3)
 
 - extract_data_v3.7 부터 출력이 `stack_data_extract_*`(long unpivot) / `table_data_extract_*`(가로형) 2종으로 분리 — RESHAPE 입력은 **stack** 쪽.
@@ -60,7 +75,7 @@
 ## 거르기 / 가공 동작
 
 - **디멘션 값 제외** — `DIM_EXCLUDE_VALUES` 에 (대소문자 무시) **정확히 일치**하는 디멘션값 행은 버린다.
-  - 기본: `Unspecified`, `null`, `(summary)` ← 합계/미지정/빈값 라벨. 디멘션 종류에 따라 추가·제거.
+  - 기본: `Unspecified`, `null` ← 미지정/빈값 라벨. 디멘션 종류에 따라 추가·제거.
 - **환율 적용 (revenue 한정)** — `metric` 에 `revenue` 글자가 **포함되면**(부분일치, 대소문자 무시) `currency.csv` 환율을 곱한다.
   - `Revenue`, `Revenue (KRW)`, `Total Revenue` 등 전부 해당. `Entries`/`Visits` 같은 비-금액 metric 은 그대로.
   - revenue 행이 **있는데** `currency.csv` 가 **없으면** → 정제를 **멈추고** 파일을 넣어달라고 물어본다(조용히 미환산 진행 방지).
@@ -86,6 +101,11 @@
 | `DROP_ZERO_VALUE` | VALUE==0 행 제외 | 0 행이 많아 빼고 싶을 때 |
 | `INCLUDE_REPORTLET` | 검수용 reportlet 컬럼 추가 | 출처 확인 필요할 때 |
 | `EXCLUDE_OUTPUT_COLUMNS` | 출력에서 뺄 컬럼명 리스트 (대소문자 무시, 빈 리스트=전부 유지) | 안 쓰는 컬럼 빼고 가볍게 뽑을 때 |
+| `ADD_CATEGORY_COLUMN` | product 키워드 행에 category 컬럼 추가 (v1.4) | 제품코드 카테고리 분류가 필요할 때 |
+| `CATEGORY_YAML` | 분류 룰 yaml 경로 (기본 같은 폴더 `product_category.yaml`) | yaml 위치/룰 바꿀 때 |
+| `CATEGORY_UNKNOWN_LABEL` | 미분류 제품 라벨 (기본 `Unknown`) | 미분류 표기 바꿀 때 |
+| `CATEGORY_KEYWORD_RULES` | 키워드→모드(multi/single) 매핑 (우선순위 순) | 대상 테이블 키워드 추가/변경할 때 |
+| `CATEGORY_MULTI_SPLIT` · `CATEGORY_JOIN` | 멀티 제품 split / 결과 조인 구분자 (기본 `,`) | 구분자가 다를 때 |
 
 ---
 
@@ -93,10 +113,12 @@
 
 ```
 TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [VALUE (원본)],
-rsid, start_date, end_date, value_n, metric, <디멘션>, segments
+rsid, start_date, end_date, value_n, metric, <디멘션>,
+[category, category_non_acc_unknown_excl,] segments
 [, device, bd1_dimension, bd1_itemId, bd1_value, …], Panel name [, reportlet]
 ```
 - `<디멘션>` 자리는 자동 감지된 디멘션 이름(`campaign`, `evar26` …)
+- `category` / `category_non_acc_unknown_excl` 은 `ADD_CATEGORY_COLUMN=True` 이고 yaml 이 있을 때만 추가 (v1.4, `<디멘션>` 다음 위치)
 - `VALUE (원본)` 은 환율이 적용된 경우에만 추가
 - `device` / `bd{k}_*` 는 입력(extract_data_v3.5+)에 있을 때만 passthrough
 - `metric` / `Panel name` 은 입력 `metric` / `panel` 컬럼 passthrough (v1.2)
@@ -105,13 +127,14 @@ rsid, start_date, end_date, value_n, metric, <디멘션>, segments
 ## 실행
 
 ```bash
-python RESHAPE_standard_v1.3.py
+python RESHAPE_standard_v1.4.py
 ```
 - 같은 폴더에 `site_registry.py` 필요 (site_code → 국가/rsid)
+- `ADD_CATEGORY_COLUMN=True` 면 같은 폴더에 `product_category.yaml` 필요 (없고 키워드 매칭 행 있으면 경고 후 분류 skip)
 - 입력: 같은 폴더 `output/stack_data_extract_*.csv` (+구버전 `extract_data_*.csv`)
 - 결과: `output/_union_standard_{날짜시간}.csv`
 - revenue 행이 있으면 `currency.csv` (1열 site_code + 헤더에 `YYYY-MM-DD` 컬럼들) 도 같은 폴더에 필요
 
 ## 의존성
 
-표준 라이브러리(csv, re, pathlib 등)만 사용 + 같은 폴더 `site_registry.py`.
+표준 라이브러리(csv, re, pathlib 등) + `pyyaml`(category 분류용) + 같은 폴더 `site_registry.py`.

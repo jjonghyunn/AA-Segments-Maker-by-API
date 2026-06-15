@@ -1,5 +1,12 @@
-# RESHAPE_standard_v1.3.py
-# 2026-06-12  Jonghyun Park w/ Claude
+# RESHAPE_standard_v1.4.py
+# 2026-06-15  Jonghyun Park w/ Claude
+# v1.4 (2026-06-15): panel/table/reportlet 이름에 키워드(Multi Purchase·Multi Order·
+#                    Best Selling Product, 대소문자/언더바 무시) 가 있으면 product_category.yaml
+#                    (include/exclude regex) 로 제품코드를 분류해 'category' 컬럼 추가.
+#                    · multi(콤마 다제품): category(ACC·Unknown 포함, 알파벳 오름차순, 중복유지)
+#                                         + category_non_acc_unknown_excl(ACC·Unknown 제외)
+#                    · single(best selling, 단일 제품): category 만 (non_acc 컬럼 빈칸)
+#                    미분류 = Unknown. ADD_CATEGORY_COLUMN 으로 on/off. (pyyaml 필요)
 # v1.3 (2026-06-12): extract_data_v3.7 파일명 개편 대응 — 입력 패턴을
 #                    stack_data_extract_* (신규) + extract_data_* (구버전 호환) 둘 다 인식.
 #                    (v3.7 의 table_data_extract_* 가로형은 RESHAPE 입력 아님 — stack 만 사용)
@@ -12,7 +19,7 @@
 #
 # ※ [LOCAL ONLY / 마이너] 단발성 union 정제용 로컬 도구.
 """
-extract_data 추출본을 union 으로 합치는 범용(standard) 정제 — v1.0.
+extract_data 추출본을 union 으로 합치는 범용(standard) 정제 — v1.4.
 
 특정 디멘션에 묶이지 않음. cid(campaign), evar26 등 어떤 디멘션이든
 extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 처리.
@@ -26,6 +33,8 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
         예) 'Landing Page; Email' → 'Email'
   · VALUE = value1 값. revenue metric 이면 currency.csv 환율 적용, 그 외 원본 그대로
         (환율 적용된 batch 면 VALUE=환산값 + 'VALUE (원본)' 컬럼 추가)
+  · (v1.4) category : panel/table/reportlet 에 product 키워드 있으면 dim_value 를
+        product_category.yaml 로 분류한 카테고리 컬럼 추가 (ADD_CATEGORY_COLUMN)
   · DIM_EXCLUDE_VALUES 일치하는 디멘션값 행 제외 (Unspecified/null/(summary) 등, 대소문자 무시)
   · COUNTRY = site_registry 로 site_code → 국가명
   · 출력 : <폴더>/output/_union_standard_{ts}.csv
@@ -35,20 +44,31 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
   · revenue 행이 있는데 currency.csv 가 없으면 → 정제를 일시정지하고
     "currency.csv 넣고 Enter (q=중단)" 프롬프트로 파일 요청 (조용히 미환산 진행 방지)
 
+product category 분류 (v1.4):
+  · panel/table/reportlet 이름에 'Multi Purchase'/'Multi Order'/'Best Selling Product'
+    (대소문자·언더바 무시) 가 있으면 제품코드를 product_category.yaml 로 분류.
+  · multi (Multi Purchase/Multi Order): dim_value 가 콤마구분 다제품 →
+      category = 전체(ACC·Unknown 포함, 알파벳 오름차순, 중복유지)
+      category_non_acc_unknown_excl = ACC·Unknown 제외 (알파벳 오름차순, 중복유지)
+  · single (Best Selling Product): dim_value 단일 제품 → category 만 (non_acc 빈칸)
+  · 어느 카테고리에도 안 걸리면 Unknown.
+  · 분류 룰은 product_category.yaml(include/exclude regex) 만 사용 — 파일 순서대로 첫 매칭.
+
 처리 순서:
   1) output 스캔 → site 별 최신 extract_data_*.csv 로드
   2) 헤더에서 디멘션 값 컬럼 자동 감지 (DIM_COLUMN 으로 수동 지정도 가능)
   3) revenue metric 있으면 currency.csv 확인 (없으면 일시정지 후 요청)
   4) SITES_FILTER 있으면 그 site 만
   5) ITEM = segments 우측 토큰 / SITE CODE = SITE_CODE_RENAME 치환 (us_old→us)
-     revenue 면 환율 적용
+     revenue 면 환율 적용 / (v1.4) product 키워드 행이면 category 분류
   6) DIM_EXCLUDE_VALUES 에 일치하는 디멘션값 행 제외 (Unspecified/null/(summary) 등)
   7) (옵션) DROP_ZERO_VALUE 면 VALUE==0 행 제외
   8) _union_standard_{ts}.csv 저장
 
 출력 컬럼:
   TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [VALUE (원본)],
-  rsid, start_date, end_date, value_n, metric, <디멘션>, segments,
+  rsid, start_date, end_date, value_n, metric, <디멘션>,
+  [category, category_non_acc_unknown_excl,] segments,
   Panel name [, reportlet]
   (EXCLUDE_OUTPUT_COLUMNS 에 지정한 컬럼은 출력에서 제외)
 """
@@ -60,6 +80,8 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+
+import yaml
 
 from site_registry import lookup_site
 
@@ -113,6 +135,31 @@ CURRENCY_CSV = SCRIPT_DIR / "currency.csv"
 #       (정확히 'revenue' 일 필요 없음 — revenue 글자가 들어가면 됨)
 CURRENCY_METRIC_KEYWORD = "revenue"   # 부분일치(substring), 대소문자 무시
 
+# ─── product category 분류 (v1.4) ──────────────────────────────────
+# panel/table/reportlet 이름에 아래 키워드가 있으면 제품코드를
+# product_category.yaml 로 분류해 category 컬럼을 출력에 추가.
+# (yaml 이 없을 때: 키워드 매칭 행이 있으면 경고만 하고 분류 skip,
+#  키워드 매칭 행이 없으면 조용히 pass — 둘 다 정제는 정상 진행)
+ADD_CATEGORY_COLUMN = True
+# 분류 룰 yaml (divisions → categories → include/exclude regex). 같은 폴더 기본값.
+CATEGORY_YAML = SCRIPT_DIR / "product_category.yaml"
+# 어느 카테고리 include 에도 안 걸리는 제품코드 라벨.
+CATEGORY_UNKNOWN_LABEL = "Unknown"
+# 멀티 모드 dim_value 안에서 여러 제품코드를 나누는 구분자.
+CATEGORY_MULTI_SPLIT = ","
+# 분류 결과(여러 카테고리)를 한 셀에 조인할 구분자 (알파벳 오름차순 정렬 후 조인).
+CATEGORY_JOIN = ","
+# 키워드(소문자·언더바→공백 정규화 후 substring 매칭) → 모드. 리스트 순서 = 우선순위.
+#   "multi"  : dim_value 가 콤마구분 다제품 → category(ACC·Unknown 포함)
+#              + category_non_acc_unknown_excl(ACC·Unknown 제외)
+#   "single" : dim_value 단일 제품 → category 만 (non_acc 컬럼 빈칸)
+CATEGORY_KEYWORD_RULES: list[tuple[list[str], str]] = [
+    (["multi purchase", "multi order"], "multi"),
+    (["best selling product"],          "single"),
+]
+# 멀티 category_non_acc_unknown_excl 에서 빼는 카테고리 (ACC + 미분류 Unknown).
+CATEGORY_NON_ACC_EXCLUDE = {"ACC", CATEGORY_UNKNOWN_LABEL}
+
 # ─── 디멘션 값 제외 (값 전체 일치, 대소문자 무시) ───────────────────
 # 디멘션 값이 아래 목록 중 하나와 (양끝 공백 제거 후 대소문자 무시) 정확히 일치하면 그 행 제외.
 # 디멘션 종류에 따라 추가/제거하는 영역. 빈 리스트면 제외 없음.
@@ -149,6 +196,8 @@ BREAKDOWN_ROWS_MODE = "include"
 # v1.3: 신규 stack_data_extract_* + 구버전 extract_data_* 둘 다 인식
 RE_TS_FILE = re.compile(r"^(?:stack_data_extract|extract_data)_(.+)_(\d{6}_\d{4})\.csv$")
 _DIM_EXCLUDE_LOWER = {v.strip().lower() for v in DIM_EXCLUDE_VALUES if v.strip()}
+# 키워드 정규화: 소문자 + 언더바→공백 (table 'multi_order' ↔ 키워드 'multi order' 매칭용)
+_RE_NORMALIZE_KW = re.compile(r"[_]+")
 
 
 def _ts_now() -> str:
@@ -214,6 +263,73 @@ def item_from_segments(segments: str) -> str:
     return segments.split(SEG_SPLIT_CHAR)[-1].strip()
 
 
+# ─── product category 분류 (v1.4) ──────────────────────────────────
+def load_category_rules(path: Path):
+    """product_category.yaml → [(category_name, [include_re], [exclude_re]), …].
+    divisions·categories 의 파일 순서를 보존 (예: Smartthings 가 ACC 보다 먼저 매칭돼야 함).
+    division 명(ETC 등)은 출력 라벨이 아니라 그룹일 뿐 — leaf category 명만 사용."""
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    rules = []
+    for div in data.get("divisions", []) or []:
+        for cat in div.get("categories", []) or []:
+            name = cat.get("category", "")
+            inc = [re.compile(p) for p in (cat.get("include") or [])]
+            exc = [re.compile(p) for p in (cat.get("exclude") or [])]
+            rules.append((name, inc, exc))
+    return rules
+
+
+def classify_product(code: str, rules) -> str:
+    """제품코드 1개 → yaml 순서대로 첫 매칭 카테고리. 없으면 CATEGORY_UNKNOWN_LABEL.
+    (yaml include/exclude 패턴은 대문자·^…$ 앵커 기준 — 코드도 upper 로 맞춤)"""
+    c = (code or "").strip().upper()
+    if not c:
+        return CATEGORY_UNKNOWN_LABEL
+    for name, inc, exc in rules:
+        if any(r.search(c) for r in inc) and not any(r.search(c) for r in exc):
+            return name
+    return CATEGORY_UNKNOWN_LABEL
+
+
+def _normalize_kw_text(*parts: str) -> str:
+    """키워드 매칭용 정규화: 소문자 + 언더바→공백 (여러 필드 합침)."""
+    return _RE_NORMALIZE_KW.sub(" ", " ".join(p or "" for p in parts).lower())
+
+
+def detect_category_mode(panel: str, table: str, reportlet: str) -> str | None:
+    """panel/table/reportlet 이름으로 분류 모드 결정.
+    table+reportlet(구체 필드) 우선, 없으면 panel fallback (panel 은 두 키워드를 다 포함할 수 있어
+    모드 구분이 안 되므로 후순위). 매칭 없으면 None."""
+    spec = _normalize_kw_text(table, reportlet)
+    for keywords, mode in CATEGORY_KEYWORD_RULES:
+        if any(kw in spec for kw in keywords):
+            return mode
+    pan = _normalize_kw_text(panel)
+    for keywords, mode in CATEGORY_KEYWORD_RULES:
+        if any(kw in pan for kw in keywords):
+            return mode
+    return None
+
+
+def make_category_cells(dim_value: str, mode: str | None, rules) -> tuple[str, str]:
+    """(category, category_non_acc_unknown_excl) 반환.
+      · single : (단일 카테고리, "")  — best selling: category 만
+      · multi  : (전체 정렬조인, ACC·Unknown 제외 정렬조인) — 콤마 다제품
+      · None   : ("", "")"""
+    if mode is None:
+        return ("", "")
+    if mode == "single":
+        return (classify_product(dim_value, rules), "")
+    # multi: 콤마 split → 각 분류 (중복 유지) → 알파벳 오름차순 조인
+    parts = [p.strip() for p in (dim_value or "").split(CATEGORY_MULTI_SPLIT)]
+    cats = [classify_product(p, rules) for p in parts if p]
+    category = CATEGORY_JOIN.join(sorted(cats, key=str.lower))
+    non_excl = [c for c in cats if c not in CATEGORY_NON_ACC_EXCLUDE]
+    category_non_acc = CATEGORY_JOIN.join(sorted(non_excl, key=str.lower))
+    return (category, category_non_acc)
+
+
 def find_latest_per_site(input_dir: Path) -> tuple[list[Path], dict[str, str]]:
     """site 별로 각자 최신 ts 의 extract_data csv 1개만 반환.
     return: (paths_list, {site: ts})"""
@@ -265,6 +381,30 @@ def process() -> int:
     print(f"[dim] 디멘션 값 컬럼 = {dim_col!r} → 출력 헤더 {dim_header!r}")
     print(f"[load] total rows: {len(rows)}")
 
+    # v1.4: product category 분류 룰 로드 (ADD_CATEGORY_COLUMN 시)
+    #   · yaml 있으면 → 정상 분류 (do_category=True)
+    #   · yaml 없는데 product 키워드(table/panel/reportlet) 매칭 행이 있으면 → 경고만 하고 분류 skip
+    #   · yaml 없고 키워드 매칭 행도 없으면 → 조용히 pass (category 컬럼 미생성)
+    cat_rules = None
+    do_category = False
+    if ADD_CATEGORY_COLUMN:
+        if CATEGORY_YAML.exists():
+            cat_rules = load_category_rules(CATEGORY_YAML)
+            do_category = True
+            print(f"[category] {CATEGORY_YAML.name} 로드 — {len(cat_rules)} categories "
+                  f"(미분류={CATEGORY_UNKNOWN_LABEL!r})")
+        else:
+            n_kw = sum(1 for r in rows
+                       if detect_category_mode((r.get("panel") or ""),
+                                               (r.get("table") or ""),
+                                               (r.get("reportlet") or "")) is not None)
+            if n_kw:
+                print(f"[category][경고] 분류 yaml 없음: {CATEGORY_YAML}")
+                print(f"            → product 키워드 매칭 행 {n_kw}개가 있는데 category 분류를 건너뜁니다 "
+                      f"(yaml 넣고 재실행하면 분류됨).")
+            else:
+                print("[category] 분류 yaml 없음 + product 키워드 매칭 행도 없음 → category 컬럼 skip")
+
     # v1.1: device / bd{k}_* 컬럼 감지 (v3.5+ 출력) — 있으면 출력에 passthrough
     passthrough_cols = [c for c in first_fields
                         if c == "device" or re.match(r"^bd\d+_", c)]
@@ -307,7 +447,10 @@ def process() -> int:
     base_headers = ["TIER", "SUBS", "COUNTRY", "SITE CODE", "ITEM", "VALUE"]
     if apply_fx:
         base_headers.append("VALUE (원본)")
-    base_headers += ["rsid", "start_date", "end_date", "value_n", "metric", dim_header, "segments"]
+    base_headers += ["rsid", "start_date", "end_date", "value_n", "metric", dim_header]
+    if do_category:   # v1.4: dim 컬럼 다음에 category 컬럼 (yaml 있을 때만)
+        base_headers += ["category", "category_non_acc_unknown_excl"]
+    base_headers.append("segments")
     base_headers += passthrough_cols   # v1.1: device / bd{k}_* 있으면 그대로 출력
     base_headers.append("Panel name")  # v1.2: 입력 'panel' 컬럼 passthrough
     out_headers = base_headers + (["reportlet"] if INCLUDE_REPORTLET else [])
@@ -333,6 +476,10 @@ def process() -> int:
             except Exception:
                 country_cache[site_code] = ""
         return country_cache[site_code]
+
+    # v1.4: (panel, table, reportlet) → mode 캐시 (행마다 재계산 방지)
+    mode_cache: dict[tuple[str, str, str], str | None] = {}
+    n_cat_classified = 0
 
     out_rows: list[dict] = []
     n_zero_dropped = 0
@@ -400,6 +547,21 @@ def process() -> int:
         }
         if apply_fx:
             row_out["VALUE (원본)"] = origin
+
+        # v1.4: product category 분류 — panel/table/reportlet 키워드 매칭 행만
+        if do_category:
+            panel = (r.get("panel") or "").strip()
+            table = (r.get("table") or "").strip()
+            key = (panel, table, reportlet)
+            if key not in mode_cache:
+                mode_cache[key] = detect_category_mode(panel, table, reportlet)
+            mode = mode_cache[key]
+            cat, cat_non_acc = make_category_cells(dim_val, mode, cat_rules)
+            row_out["category"] = cat
+            row_out["category_non_acc_unknown_excl"] = cat_non_acc
+            if mode is not None:
+                n_cat_classified += 1
+
         for c in passthrough_cols:   # v1.1: device / bd{k}_* passthrough
             row_out[c] = (r.get(c) or "").strip()
         if INCLUDE_REPORTLET:
@@ -429,6 +591,8 @@ def process() -> int:
             w.writerow(r)
     print(f"\n[save] {out_path}")
     print(f"  output rows : {len(out_rows)}")
+    if do_category:
+        print(f"  category 분류 행: {n_cat_classified} rows (키워드 매칭 panel/table/reportlet)")
     if _DIM_EXCLUDE_LOWER:
         print(f"  디멘션값 제외: {n_dim_excluded} rows")
     if DROP_ZERO_VALUE:
