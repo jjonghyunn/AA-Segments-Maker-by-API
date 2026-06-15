@@ -1,5 +1,5 @@
 # data_extract/extract_data.md  
-<sub>2026-06-12  Jonghyun Park w/ Claude</sub>  
+<sub>2026-06-15  Jonghyun Park w/ Claude</sub>  
 Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트릭 이름 + 실제 데이터 값을 동시다발적으로 추출.
 ## 파일 목록
 
@@ -25,6 +25,22 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 2. **출력 CSV 2종 개편** — `stack_data_extract_*`(기존 `extract_data_*`, long unpivot 유지·RESHAPE 입력용) + `table_data_extract_*`(기존 `column_mapping_*` 대체, **AA 테이블 모양 가로형**: 1행=item, `value1..N` + `seg_value1..N`).
    - `seg_value{i}` = `"metric;; segments"` — metric 맨앞, `;;` 구분 (segments 내부 구분자가 `; ` 라 세미콜론 2개. `SEG_VALUE_SEP` 상수).
    - 테이블 블록 순서: `(summary)` 총계 행 → dim1 item 행들 → breakdown 행들 (`bd{k}_*` 컬럼).
+
+## 진행률 + ETA 콘솔 출력 (2026-06-15)
+
+`VERBOSE_PROGRESS = True`(기본) 면 site 1개 추출이 끝날 때마다 한 줄로 진행상황 + 남은시간 + 전체 예상시간을 출력. 추출 로직은 그대로 (출력만 추가).
+
+```
+  [ 3/20] site=fr         ✓   12.0s  rows    6,540  | 누적 36s | 평균 12.0s/site | 남은 ~3m 24s | 전체 ~4m 0s (17 left)
+```
+
+- `[i/N]` 완료 site / 전체 site, `✓ 소요s` 그 site 소요시간, `rows` 그 site 추출 행수(dim1 + breakdown)
+- `누적` 시작부터 벽시계 경과(지난시간), `평균` 완료 site 평균 소요
+- **남은 = 평균 site당 소요 × 남은 site 수** (running average — 진행될수록 정확해짐). `SITE_WORKERS>1`(병렬) 이면 `÷ 워커수` 한 근사치라 `~` 표기
+- **전체 = 누적 + 남은** (이 작업 통째로 걸리는 총 예상시간)
+- 시간 표기는 `몇H 몇M 몇S` 형식 (`36s` / `3m 24s` / `1h 5m 30s`)
+- `VERBOSE_PROGRESS = False` 면 끔 (기존 마지막 site별 summary 출력은 항상 유지)
+- 주의: site 마다 크기(breakdown 항목 수)가 달라 남은 site 가 유독 크/작으면 예상이 빗나갈 수 있음. 병렬 모드는 site별 내부 로그가 섞이지만 이 진행률 한 줄은 main 스레드에서만 찍혀 깔끔.
 
 ## v3.6 신규 기능 (2026-06-10)
 
@@ -99,6 +115,7 @@ python extract_data_v3.8.py --breakdown-dims "variables/product,variables/evar92
 | `EXTRA_SEGMENTS` | 추가 segment globalFilter 리스트 (빈 리스트 = v2 동일 동작) | 옵트인 |
 | `EXTRA_SEGMENTS[*].enabled` | 항목별 globalFilter 추가 on/off (키 없으면 True) | 적용했던 세그 끄고 재추출 시 |
 | `OUTPUT_PREFIX` | 출력 CSV 파일명 앞 prefix (`""` = 기존) | 세그 제외본/전체본 구분 저장 시 |
+| `VERBOSE_PROGRESS` | site별 진행률 + ETA 콘솔 한 줄 출력 on/off (`True` = 기본) | 진행상황·남은시간 보고 싶을 때 |
 
 ## sites_input.csv 형식
 

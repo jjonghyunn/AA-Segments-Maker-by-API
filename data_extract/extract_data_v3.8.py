@@ -1,5 +1,8 @@
 # extract_data_v3.8.py
 # 2026-06-12  Jonghyun Park w/ Claude
+# 2026-06-15: 진행률 + ETA 콘솔 출력 추가 (VERBOSE_PROGRESS) — site 1개 끝날 때마다
+#             [i/N]·소요·추출 row수·누적·평균·남은·전체 한 줄. 남은 = 완료 site 평균소요 × 남은 site 수,
+#             전체 = 누적 + 남은 (SITE_WORKERS>1 이면 ÷ 워커수 근사). 추출 로직 불변(출력만 추가).
 # v3.8 (2026-06-12): device 케이스별 반복 추출 (DEVICE_CASES) —
 #                    프로젝트 패널에 device 세그가 전혀 없을 때, 패널마다 (Seg1, Seg2) 세그 stack 을
 #                    globalFilter 로 끼워 케이스별로 각각 추출. 케이스 수는 DEVICE_CASES 상수로
@@ -192,6 +195,11 @@ MAX_RETRIES = 10
 LIMIT_LV1 = 50000
 LIMIT_BD  = 50000
 MAX_PAGES = 100   # 무제한(0) 모드 페이지네이션 상한 (PAGE_SIZE_UNCAPPED × MAX_PAGES / reportlet)
+
+# 진행률 + ETA 콘솔 출력 — site 1개 끝날 때마다 [i/N]·소요·row수·누적·평균·ETA 한 줄.
+#   ETA = (완료 site 평균 소요) × 남은 site 수. SITE_WORKERS>1 이면 ÷ 워커수 (병렬이라 근사 '~').
+#   False = 끄기 (기존 site별 summary 출력은 그대로 유지).
+VERBOSE_PROGRESS = True
 
 # ─── panel 필터 (v1 동일) ──────────────────────────────────────────
 # 처리 대상 panel 을 이름으로 좁히는 필터.
@@ -1673,6 +1681,20 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
     return {"site": site, "tasks": tasks, "n_ok": n_ok, "n_fail": n_fail}
 
 
+def _fmt_dur(seconds: float) -> str:
+    """초 → '1h 5m 30s' / '3m 24s' / '36s' (몇H 몇M 몇S 표기)."""
+    seconds = int(round(max(0.0, seconds)))
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    parts = []
+    if h:
+        parts.append(f"{h}h")
+    if h or m:
+        parts.append(f"{m}m")
+    parts.append(f"{s}s")
+    return " ".join(parts)
+
+
 # ─── main ────────────────────────────────────────────────────────
 def main() -> int:
     try:
@@ -1826,18 +1848,46 @@ def main() -> int:
     def _run_one(item):
         site_code, start_date, end_date = item
         site_info = lookup_site(site_code)
-        return _process_site(headers, gcid, project, panels,
-                             site_info, start_date, end_date,
-                             workers=args.workers, limit=args.limit,
-                             dry_run=args.dry_run, ts=ts,
-                             include_global_for_us=args.include_global_for_us,
-                             resolved_extras=resolved_extras,
-                             app_ox=app_ox)
+        _t0 = datetime.now()
+        res = _process_site(headers, gcid, project, panels,
+                            site_info, start_date, end_date,
+                            workers=args.workers, limit=args.limit,
+                            dry_run=args.dry_run, ts=ts,
+                            include_global_for_us=args.include_global_for_us,
+                            resolved_extras=resolved_extras,
+                            app_ox=app_ox)
+        res["elapsed_sec"] = (datetime.now() - _t0).total_seconds()
+        return res
+
+    # 진행률 + ETA 상태 (site 완료마다 _report 호출). 순차/병렬 모두 main 스레드에서 출력 → 안전.
+    n_sites = len(sites_rows)
+    prog = {"done": 0, "elapsed_sum": 0.0}
+    run_start = datetime.now()
+
+    def _report(res):
+        if not VERBOSE_PROGRESS:
+            return
+        prog["done"] += 1
+        el = res.get("elapsed_sec", 0.0)
+        prog["elapsed_sum"] += el
+        rows = sum(len(t.get("rows") or []) + len(t.get("breakdown_rows") or [])
+                   for t in res["tasks"] if t.get("ok"))
+        left = n_sites - prog["done"]
+        avg = prog["elapsed_sum"] / prog["done"]
+        eta = avg * left / max(1, args.site_workers) if args.site_workers > 1 else avg * left
+        wall = (datetime.now() - run_start).total_seconds()
+        total = wall + eta
+        print(f"  [{prog['done']:2}/{n_sites}] site={res['site'].site_code:<10} "
+              f"✓ {el:6.1f}s  rows {rows:>8,}  | "
+              f"누적 {_fmt_dur(wall)} | 평균 {avg:.1f}s/site | "
+              f"남은 ~{_fmt_dur(eta)} | 전체 ~{_fmt_dur(total)} ({left} left)")
 
     results = []
     if args.site_workers <= 1:
         for item in sites_rows:
-            results.append(_run_one(item))
+            res = _run_one(item)
+            results.append(res)
+            _report(res)
     else:
         print(f"  [site-parallel] {args.site_workers} sites 동시 처리 "
               f"(총 동시 API 요청 ≈ {args.site_workers * args.workers})")
@@ -1846,7 +1896,9 @@ def main() -> int:
             for fut in as_completed(futures):
                 sc = futures[fut]
                 try:
-                    results.append(fut.result())
+                    res = fut.result()
+                    results.append(res)
+                    _report(res)
                 except Exception as e:
                     print(f"  [site {sc}] ERROR: {e}")
 
