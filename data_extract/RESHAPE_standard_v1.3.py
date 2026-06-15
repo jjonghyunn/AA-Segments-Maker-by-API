@@ -117,7 +117,7 @@ CURRENCY_METRIC_KEYWORD = "revenue"   # 부분일치(substring), 대소문자 �
 # 디멘션 값이 아래 목록 중 하나와 (양끝 공백 제거 후 대소문자 무시) 정확히 일치하면 그 행 제외.
 # 디멘션 종류에 따라 추가/제거하는 영역. 빈 리스트면 제외 없음.
 #   '(summary)' 는 괄호 포함. 'Unspecified'/'null' 은 디멘션 미지정/빈값 라벨.
-DIM_EXCLUDE_VALUES: list[str] = ["Unspecified", "null", "(summary)"]
+DIM_EXCLUDE_VALUES: list[str] = ["Unspecified", "null"]
 
 # ─── VALUE==0 행 제외 (옵션) ────────────────────────────────────────
 # True 면 VALUE 가 0 인 행을 출력에서 제외. False(기본) 면 0 행도 전부 유지.
