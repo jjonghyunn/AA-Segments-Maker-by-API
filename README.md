@@ -1,5 +1,5 @@
 # AA_segment_maker  
-<sub>2026-06-11  Jonghyun Park w/ Claude</sub>  
+<sub>2026-06-16  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
@@ -27,7 +27,7 @@ AA_segment_maker/
 │   └── find_user_id.py             (AA 사용자 numeric loginId 검색)
 ├── data_extract/           # Workspace 리포트 데이터 추출 (extract_data_v3.8.py 권장 + _contents 등 캠페인 variant)
 │   ├── extract_data_v3.8.py        (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼 + site 병렬)
-│   ├── RESHAPE_standard_v1.3.py    (추출본 union 정제 — breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션)
+│   ├── RESHAPE_standard_v1.4.py    (추출본 union 정제 — breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션 + product category 분류)
 │   ├── site_registry.py            (site_code ↔ rsid 매핑)
 │   └── _contents/ …                (캠페인별 추출·정제 variant)
 ├── dateranges/             # Date Range 도구 (aa_daterange 단건 + list/update/create/upsert 일괄)
@@ -73,7 +73,7 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 - **v1** (`extract_data.py`) — 단일 project, panel 의 RSID·dateRange 그대로
 - **v2** (`extract_data_v2.py`) — `sites_input.csv` 의 row 별로 RSID + dateRange override → 같은 panel 구조를 여러 site 에 적용. site 별 별도 CSV (`extract_data_<rsid>_<ts>.csv`)
 - **v3 → v3.8 (권장)** (`extract_data_v3.8.py`) — v2 의 `sites_input` 기반 멀티사이트 구조 유지 + `site_registry.py` 로 site_code ↔ RSID 매핑 분리. v3.5: **N단계 dimension breakdown** (행 item 을 하위 차원으로 재귀 분해, `bd{k}_*` 컬럼) + **device 컬럼** (컬럼 세그명에서 Mobile/PC/Android/iOS/App 추출). v3.6: **site 단위 병렬** (`SITE_WORKERS`, 기본 5곳 동시, `--site-workers`). v3.7: **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + 출력 2종 개편 (`stack_data_extract_*` / `table_data_extract_*`). v3.8: **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성 — 패널에 device 세그 없는 프로젝트용) + `app_O_X.csv` 케이스 선택 룰 + site 별 세그 치환 (`DEVICE_CASE_SITE_OVERRIDES`)
-- **정제** (`RESHAPE_standard_v1.3.py`) — 추출본 union 정제. breakdown 행 모드(`include`/`exclude`/`only`) + device/bd passthrough + `_old` SITE CODE 정규화 + v1.2: metric / Panel name 출력 컬럼·`EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션
+- **정제** (`RESHAPE_standard_v1.4.py`) — 추출본 union 정제. breakdown 행 모드(`include`/`exclude`/`only`) + device/bd passthrough + `_old` SITE CODE 정규화 + v1.2: metric / Panel name 출력 컬럼·`EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션 + v1.4: product 키워드 행 `product_category.yaml` category 분류
 
 상세: `data_extract/extract_data.md`
 

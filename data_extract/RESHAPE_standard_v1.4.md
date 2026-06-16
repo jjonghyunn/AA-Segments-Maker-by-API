@@ -1,5 +1,5 @@
 # RESHAPE_standard_v1.4.py  
-<sub>2026-06-15  Jonghyun Park w/ Claude</sub>  
+<sub>2026-06-16  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -117,12 +117,9 @@ rsid, start_date, end_date, value_n, metric, <디멘션>,
 [category, category_non_acc_unknown_excl,] segments
 [, device, bd1_dimension, bd1_itemId, bd1_value, …], Panel name [, reportlet]
 ```
-- `<디멘션>` 자리는 자동 감지된 디멘션 이름(`campaign`, `evar26` …)
-- `category` / `category_non_acc_unknown_excl` 은 `ADD_CATEGORY_COLUMN=True` 이고 yaml 이 있을 때만 추가 (v1.4, `<디멘션>` 다음 위치)
-- `VALUE (원본)` 은 환율이 적용된 경우에만 추가
-- `device` / `bd{k}_*` 는 입력(extract_data_v3.5+)에 있을 때만 passthrough
-- `metric` / `Panel name` 은 입력 `metric` / `panel` 컬럼 passthrough (v1.2)
-- `EXCLUDE_OUTPUT_COLUMNS` 에 지정한 컬럼은 위 목록에서 제외 (v1.2)
+- `<디멘션>` = 자동 감지된 디멘션 이름(`campaign`, `evar26` …)
+- `[ ]` 표기 컬럼은 **조건부**로만 들어감 — `VALUE (원본)`(환율 적용 시), `category` / `category_non_acc_unknown_excl`(`ADD_CATEGORY_COLUMN`+yaml 있을 때), `device` / `bd{k}_*`(입력에 있을 때). 각 컬럼의 동작·이유는 위 해당 기능 섹션 참고.
+- `EXCLUDE_OUTPUT_COLUMNS` 로 위 목록 중 원하는 컬럼을 출력에서 제외 가능.
 
 ## 실행
 

@@ -302,6 +302,10 @@ DEVICE_CASE_SITE_OVERRIDES: dict[str, dict[str, str]] = {
 # [US] panel 은 us site 에서만 추출 (다른 site 일 땐 자동 skip).
 # [Global] panel 은 기본 모든 site 에서 추출. 단 us 에서는 [US] 와 중복되니
 # 기본 skip — 같이 뽑고 싶으면 --include-global-for-us flag.
+#   예) INCLUDE_GLOBAL_FOR_US = False → us_old(미국 구suite) 추출 시 [Global] 패널 skip
+#       (=> [US] 패널만; us_old 의 글로벌 데이터는 us(신suite) 행이 [Global] 로 담당 → 미국 중복 방지)
+#       INCLUDE_GLOBAL_FOR_US = True  → us_old 추출 시 [Global] 패널까지 함께 추출
+#       (=> [US] + [Global] 둘 다; us 행 없이 us_old 한 site 로 글로벌 패널까지 받고 싶을 때)
 US_SITE_CODE         = "us_old"
 US_PANEL_PREFIX      = "US"
 GLOBAL_PANEL_PREFIX  = "Global"
@@ -437,6 +441,8 @@ if str(_SEG_LOOKUP_DIR) not in sys.path:
     sys.path.insert(0, str(_SEG_LOOKUP_DIR))
 from aa_segment_lookup import (   # noqa: E402
     _search_segments,
+    _load_user_map,
+    _enrich_owner_info,
     decompile_definition,
     format_dsl_block,
     _set_daterange_auth,
@@ -810,6 +816,11 @@ def _resolve_extra_segment(spec: dict, headers: dict, gcid: str, ts_str: str, pa
             raise SystemExit("패널 내 다중 매칭으로 중단.")
         print("  [panel-first] 패널 내 매칭 0건 -> 회사 전체 검색으로 fallback")
     matches = _search_segments(headers, gcid, keywords, rsid="", limit=LOOKUP_SEARCH_LIMIT)
+    # owner_name 보강 — _search_segments 는 owner_id 만 채우므로 GET /users 로 이름 backfill
+    #   (표준 CLI aa_segment_lookup.main 과 동일 동작; 미보강 시 lookup CSV 의 owner_name 이 빈칸)
+    _user_map = _load_user_map(headers, gcid)
+    if _user_map:
+        _enrich_owner_info(matches, _user_map)
     n = len(matches)
     print(f"  매칭 결과: {n}건")
 
