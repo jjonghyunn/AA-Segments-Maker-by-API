@@ -1,9 +1,9 @@
 # AA_segment_maker  
-<sub>2026-06-16  Jonghyun Park w/ Claude</sub>  
+<sub>2026-06-17  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
-최종 업데이트: 2026-06-09
+최종 업데이트: 2026-06-17
 
 ---
 
@@ -12,11 +12,11 @@ Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 ```
 AA_segment_maker/
 ├── segment_maker/          # 세그먼트 생성·조회·삭제
-│   ├── aa_create_segment_v2.3.py   (v2.3 — CSV 입력, 생성+업데이트, AA validator patch. **현재 권장**)
+│   ├── aa_create_segment_v*.py     (CSV 입력, 생성+업데이트, AA validator patch. **현재 권장**)
 │   ├── aa_segment_lookup.py        (ID/이름 검색 → CSV + .dsl 역변환)
 │   ├── aa_segment_lookup_from_pjt.py (project 안 panel 의 segment 들 일괄 lookup)
 │   ├── aa_delete_segment.py        (안전 삭제, 3중 안전장치)
-│   ├── input_csv_maker.py          (raw seg_make_ref → v2.3 input CSV 자동 변환)
+│   ├── input_csv_maker.py          (raw seg_make_ref → input CSV 자동 변환)
 │   ├── input_csv_maker_*.py        (us / cc00 / or_ref / scenario / replace / from_ref(_batch / _us_hit) variant)
 │   ├── prewarm_seg_ref_cache.py    (segment-ref inline cache 사전 갱신)
 │   └── example_segment_campaign_main_page.py
@@ -25,9 +25,9 @@ AA_segment_maker/
 │   ├── compare_panel_segments.py   (panel 세그먼트 차집합 비교)
 │   ├── extract_panel_tables_json_v2.0.py (+ .md)  (panel→JSON 추출 + 상세 문서)
 │   └── find_user_id.py             (AA 사용자 numeric loginId 검색)
-├── data_extract/           # Workspace 리포트 데이터 추출 (extract_data_v3.8.py 권장 + _contents 등 캠페인 variant)
-│   ├── extract_data_v3.8.py        (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼 + site 병렬)
-│   ├── RESHAPE_standard_v1.4.py    (추출본 union 정제 — breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션 + product category 분류)
+├── data_extract/           # Workspace 리포트 데이터 추출 (extract_data_v*.py 권장 + _contents 등 캠페인 variant)
+│   ├── extract_data_v*.py          (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼 + site 병렬)
+│   ├── RESHAPE_standard_v*.py      (추출본 union 정제 — breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션 + product category 분류)
 │   ├── site_registry.py            (site_code ↔ rsid 매핑)
 │   └── _contents/ …                (캠페인별 추출·정제 variant)
 ├── dateranges/             # Date Range 도구 (aa_daterange 단건 + list/update/create/upsert 일괄)
@@ -49,9 +49,9 @@ AA_segment_maker/
 
 | 도구 | 설명 |
 |---|---|
-| **v2.3 (CSV) — 권장** | CSV 입력 (structure 칼럼) → 생성(POST) / 업데이트(PUT). dry-run CSV 자동, AA validator patch (event-exists / segment-ref auto-fetch + cache / NOT container) |
-| v2 (구조 텍스트, `old/`) | SQL-like DSL → AA JSON 자동 변환. 다중 일괄 생성, `@segment_id` 참조, THEN/NOT 복합 (레거시 — `segment_maker/old/` 보관) |
-| `input_csv_maker(_*).py` | raw `seg_make_ref_*.csv` → v2.3 input CSV + `.dsl` + `_WARN.csv` 자동 변환. variant 별로 us / cc00 / or_ref / scenario / replace / from_ref 룰 차이 |
+| **`aa_create_segment_v*.py` (CSV) — 권장** | CSV 입력 (structure 칼럼) → 생성(POST) / 업데이트(PUT). dry-run CSV 자동, AA validator patch (event-exists / segment-ref auto-fetch + cache / NOT container) |
+| 구버전 DSL maker (`old/`) | SQL-like DSL → AA JSON 자동 변환. 다중 일괄 생성, `@segment_id` 참조, THEN/NOT 복합 (레거시 — `segment_maker/old/` 보관) |
+| `input_csv_maker(_*).py` | raw `seg_make_ref_*.csv` → input CSV + `.dsl` + `_WARN.csv` 자동 변환. variant 별로 us / cc00 / or_ref / scenario / replace / from_ref 룰 차이 |
 | `aa_segment_lookup.py` | ID 또는 이름 키워드로 검색 → CSV (owner 이름/이메일 + structure 포함) + `.dsl` 역변환. 결과는 `lookup/` 하위. `--search` 는 모든 키워드(첫 키워드 포함)를 이름 **연속 substring** 으로 AND (v1.2), owner 보강은 AA `GET /users` (v1.1). `SEARCH_RESULT_LIMIT` 상수로 상한 조정. `--modified-after/before YYYY-MM-DD` 로 수정일 필터(AA 가 생성일 미제공 → `modified` 기준, both inclusive) |
 | `aa_segment_lookup_from_pjt.py` | project 의 panel 들이 참조하는 segment 목록 일괄 lookup (출력 포맷 동일, `lookup/` 하위) |
 | `aa_delete_segment.py` | result CSV 기반 안전 삭제 (3중 안전장치: CSV 강제 / 이름 prefix / `--yes`) |
@@ -70,12 +70,10 @@ AA_segment_maker/
 
 Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 포함.
 
-- **v1** (`extract_data.py`) — 단일 project, panel 의 RSID·dateRange 그대로
-- **v2** (`extract_data_v2.py`) — `sites_input.csv` 의 row 별로 RSID + dateRange override → 같은 panel 구조를 여러 site 에 적용. site 별 별도 CSV (`extract_data_<rsid>_<ts>.csv`)
-- **v3 → v3.8 (권장)** (`extract_data_v3.8.py`) — v2 의 `sites_input` 기반 멀티사이트 구조 유지 + `site_registry.py` 로 site_code ↔ RSID 매핑 분리. v3.5: **N단계 dimension breakdown** (행 item 을 하위 차원으로 재귀 분해, `bd{k}_*` 컬럼) + **device 컬럼** (컬럼 세그명에서 Mobile/PC/Android/iOS/App 추출). v3.6: **site 단위 병렬** (`SITE_WORKERS`, 기본 5곳 동시, `--site-workers`). v3.7: **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + 출력 2종 개편 (`stack_data_extract_*` / `table_data_extract_*`). v3.8: **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성 — 패널에 device 세그 없는 프로젝트용) + `app_O_X.csv` 케이스 선택 룰 + site 별 세그 치환 (`DEVICE_CASE_SITE_OVERRIDES`)
-- **정제** (`RESHAPE_standard_v1.4.py`) — 추출본 union 정제. breakdown 행 모드(`include`/`exclude`/`only`) + device/bd passthrough + `_old` SITE CODE 정규화 + v1.2: metric / Panel name 출력 컬럼·`EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션 + v1.4: product 키워드 행 `product_category.yaml` category 분류
+- **추출** (`extract_data_v*.py`, 권장) — `sites_input.csv` 의 row 별로 RSID + dateRange override → 같은 panel 구조를 여러 site 에 적용. `site_registry.py` 로 site_code ↔ RSID 매핑 분리. N단계 dimension breakdown (행 item 을 하위 차원으로 재귀 분해, `bd{k}_*` 컬럼) + device 컬럼 + site 단위 병렬 (`SITE_WORKERS`) + 레벨별 limit cap + device 케이스별 반복 추출 (`DEVICE_CASES` / `app_O_X.csv`). site 별 별도 CSV
+- **정제** (`RESHAPE_standard_v*.py`) — 추출본 union 정제. breakdown 행 모드(`include`/`exclude`/`only`) + device/bd passthrough + `_old` SITE CODE 정규화 + metric / Panel name 출력 컬럼·`EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션 + product 키워드 행 `product_category.yaml` category 분류
 
-상세: `data_extract/extract_data.md`
+구버전 lineage·상세 변경이력: `data_extract/extract_data.md`
 
 ### Panel 운영 도구 (운영 사본 모음)
 

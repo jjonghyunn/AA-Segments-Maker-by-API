@@ -1,10 +1,9 @@
-# panel_maker/ — AA Workspace project panel 복제 + segment swap (운영 사본)
+# panel_maker/ — AA Workspace project panel 복제 + segment swap (운영 사본)  
+<sub>2026-06-17  Jonghyun Park w/ Claude</sub>  
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/panel_maker (반영 예정)
 
 운영 사본 — 실제 SOURCE/TARGET PROJECT_ID·키워드·MANUAL_OVERRIDES 박혀있는 작업본. generic 변경(룰/기능)은 repo 사본에 동기화. 단순 운영값(PROJECT_ID/키워드) 변경은 repo 안 올림.
-
-기준 문서 업데이트일: 2026-05-21
 
 ---
 
