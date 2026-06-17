@@ -785,6 +785,22 @@ def compile_to_definition(ast: Any) -> dict:
 # Decompiler (AA JSON → DSL 텍스트)
 # ═══════════════════════════════════════════════════════════════════
 
+def _effective_logical_func(pred: dict, parent_context: str) -> str:
+    """collapse 되는(빈 description + parent 와 동일 context) 컨테이너를 뚫고
+    그 안의 실제 논리 연산자('and'/'or')를 반환. desc 있는 컨테이너나 context 다른
+    컨테이너(= scope 블록으로 이미 괄호 처리됨) / 리프 / sequence 는 '' 반환."""
+    while isinstance(pred, dict):
+        f = pred.get("func", "")
+        if f == "container":
+            ctx = pred.get("context", parent_context)
+            if not pred.get("description", "") and ctx == parent_context:
+                pred = pred.get("pred", {})
+                continue
+            return ""
+        return f if f in ("and", "or") else ""
+    return ""
+
+
 def _decompile_pred(pred: dict, indent: int, parent_context: str) -> list[str]:
     """AA JSON pred → DSL 텍스트 줄 리스트."""
     func = pred.get("func", "")
@@ -809,12 +825,19 @@ def _decompile_pred(pred: dict, indent: int, parent_context: str) -> list[str]:
         preds = pred.get("preds", [])
         lines: list[str] = []
         for i, p in enumerate(preds):
-            child_lines = _decompile_pred(p, indent, parent_context)
             if i > 0:
                 lines.append(f"{pad}{func.upper()}")
-                lines.extend(child_lines)
+            # 자식이 (collapse 되는 빈-desc 컨테이너를 뚫고) 반대 연산자의 and/or 그룹이면
+            # 평평하게 풀면 우선순위가 깨진다(A AND (B OR C) ≠ A AND B OR C) → scope 블록으로 괄호 보존.
+            child_func = _effective_logical_func(p, parent_context)
+            if child_func and child_func != func:
+                scope = CONTEXT_TO_SCOPE.get(parent_context, parent_context)
+                inner_lines = _decompile_pred(p, indent + 1, parent_context)
+                lines.append(f"{pad}{scope}(")
+                lines.extend(inner_lines)
+                lines.append(f"{pad})")
             else:
-                lines.extend(child_lines)
+                lines.extend(_decompile_pred(p, indent, parent_context))
         return lines
 
     # container (중첩)
