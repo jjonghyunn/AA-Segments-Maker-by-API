@@ -89,5 +89,4 @@ PANEL_NAME_PATTERN = r"campaign_name'?s\s*Day"           # 캠페인명 매칭
 같은 폴더 (`AA_segment_maker/`) 안:
 
 - `panel_date_update/update_panel_date.py` — 특정 panel 의 종료일 일괄 치환
-- `panel_maker/clone_project_first_panel.py` — 첫 panel 복제 + segment swap (이 안에 `_collapse_all_subpanels` 동일 헬퍼가 있어 본 도구가 그 패턴을 재사용)
-- `extract_panel_tables_json_v2.0.py` — panel × reportlet → /reports JSON 추출
+- `panel_maker/panel_contents.py` — source project panel 복제 + segment swap (subPanel collapse 패턴 공유)

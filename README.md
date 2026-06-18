@@ -17,13 +17,8 @@ AA_segment_maker/
 │   ├── aa_segment_lookup_from_pjt.py (project 안 panel 의 segment 들 일괄 lookup)
 │   ├── aa_delete_segment.py        (안전 삭제, 3중 안전장치)
 │   ├── input_csv_maker.py          (raw seg_make_ref → input CSV 자동 변환)
-│   ├── input_csv_maker_*.py        (us / cc00 / or_ref / scenario / replace / from_ref(_batch / _us_hit) variant)
-│   ├── prewarm_seg_ref_cache.py    (segment-ref inline cache 사전 갱신)
-│   └── example_segment_campaign_main_page.py
+│   └── input_csv_maker_us.py / _from_ref_batch.py  (us / from_ref 일괄 variant)
 ├── utils/                  # 유틸리티
-│   ├── _probe_segment.py           (세그먼트 구조 GET)
-│   ├── compare_panel_segments.py   (panel 세그먼트 차집합 비교)
-│   ├── extract_panel_tables_json_v2.0.py (+ .md)  (panel→JSON 추출 + 상세 문서)
 │   └── find_user_id.py             (AA 사용자 numeric loginId 검색)
 ├── data_extract/           # Workspace 리포트 데이터 추출 (extract_data_v*.py 권장 + _contents 등 캠페인 variant)
 │   ├── extract_data_v*.py          (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼 + site 병렬)
@@ -51,19 +46,15 @@ AA_segment_maker/
 |---|---|
 | **`aa_create_segment_v*.py` (CSV) — 권장** | CSV 입력 (structure 칼럼) → 생성(POST) / 업데이트(PUT). dry-run CSV 자동, AA validator patch (event-exists / segment-ref auto-fetch + cache / NOT container) |
 | 구버전 DSL maker (`old/`) | SQL-like DSL → AA JSON 자동 변환. 다중 일괄 생성, `@segment_id` 참조, THEN/NOT 복합 (레거시 — `segment_maker/old/` 보관) |
-| `input_csv_maker(_*).py` | raw `seg_make_ref_*.csv` → input CSV + `.dsl` + `_WARN.csv` 자동 변환. variant 별로 us / cc00 / or_ref / scenario / replace / from_ref 룰 차이 |
+| `input_csv_maker(_*).py` | raw `seg_make_ref_*.csv` → input CSV + `.dsl` + `_WARN.csv` 자동 변환. variant: us / from_ref_batch 룰 차이 |
 | `aa_segment_lookup.py` | ID 또는 이름 키워드로 검색 → CSV (owner 이름/이메일 + structure 포함) + `.dsl` 역변환. 결과는 `lookup/` 하위. `--search` 는 모든 키워드(첫 키워드 포함)를 이름 **연속 substring** 으로 AND (v1.2), owner 보강은 AA `GET /users` (v1.1). `SEARCH_RESULT_LIMIT` 상수로 상한 조정. `--modified-after/before YYYY-MM-DD` 로 수정일 필터(AA 가 생성일 미제공 → `modified` 기준, both inclusive) |
 | `aa_segment_lookup_from_pjt.py` | project 의 panel 들이 참조하는 segment 목록 일괄 lookup (출력 포맷 동일, `lookup/` 하위) |
 | `aa_delete_segment.py` | result CSV 기반 안전 삭제 (3중 안전장치: CSV 강제 / 이름 prefix / `--yes`) |
-| `prewarm_seg_ref_cache.py` | `segment_ref_cache.json` 사전 갱신 — dry-run 빠르게 |
 
 ### utils/ — 유틸리티
 
 | 도구 | 설명 |
 |---|---|
-| `_probe_segment.py` | 세그먼트 GET → definition 구조 확인 |
-| `compare_panel_segments.py` | 두 panel의 세그먼트 차집합 비교 |
-| `extract_panel_tables_json_v2.0.py` | panel × reportlet → `/reports` JSON 추출 + 매핑 CSV |
 | `find_user_id.py` | AA 사용자 numeric loginId 검색 |
 
 ### data_extract/ — Workspace 리포트 데이터 추출
@@ -83,7 +74,7 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 |---|---|
 | `panel_collapse/` | panel 안 모든 subPanel `collapsed=True` 강제 (panel 자체 헤더는 유지) |
 | `panel_date_update/` | panel 시작/종료일 일괄 치환 — ISO interval / start*·end* 키 자동 탐지 |
-| `panel_maker/` | source project 의 panel(들) 을 빈 target project 로 복제 + segment ID 자동 swap. clone_project_first_panel (이름 정규화) / panel_contents (CC 패턴) / panel_contents_recomm (recomm fallback) / panel_contents_target_seg variant |
+| `panel_maker/` | source project 의 panel(들) 을 빈 target project 로 복제 + segment ID 자동 swap. panel_contents (CC 패턴) / panel_contents_recomm (recomm fallback) |
 | `segment_share/` | 본인 owner segment 중 키워드 매칭된 것에 SHARE_USER_IDS 일괄 추가 (PUT) |
 
 ---

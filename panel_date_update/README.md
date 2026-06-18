@@ -66,5 +66,5 @@ python update_panel_date.py --apply
 ## 자매 도구
 
 - `../panel_collapse/collapse_panel_tables.py` — panel 안 subPanel 일괄 collapse
-- `../panel_maker/clone_project_first_panel.py` (외) — source panel 복제 + segment swap
+- `../panel_maker/panel_contents.py` — source panel 복제 + segment swap
 - 도구 사용법·동작 원리·안전장치 상세 → repo README 참고

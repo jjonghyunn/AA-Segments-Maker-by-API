@@ -1,7 +1,7 @@
 # RESHAPE_contents_v1.1.py  
 <sub>2026-05-26  Jonghyun Park w/ Claude</sub>  
 
-`extract_data_v3.1_contents.py` 가 떨군 `column_mapping_*.csv` 들을 union 형태로 정제해서 분석용 wide CSV (`_union_contents_<ts>.csv`) 생성.
+`extract_data_v3.2_contents.py` 가 떨군 `column_mapping_*.csv` 들을 union 형태로 정제해서 분석용 wide CSV (`_union_contents_<ts>.csv`) 생성.
 
 ---
 

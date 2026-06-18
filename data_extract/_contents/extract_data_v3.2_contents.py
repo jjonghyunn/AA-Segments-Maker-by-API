@@ -1,5 +1,5 @@
-# extract_data_v3.1_contents.py
-# 2026-05-28  Jonghyun Park w/ Claude
+# extract_data_v3.2_contents.py
+# 2026-06-02  Jonghyun Park w/ Claude
 """
 extract_data_v2_contents.py 베이스 + site 단위 병렬 처리 옵션.
 
@@ -49,6 +49,11 @@ v3.1 (2026-05-28) 추가:
       False (default)      : 기존 동작
       True                 : 모든 panel 에서 기존 세그 무시
       ["키워드1", ...]      : panel.name 키워드 매칭된 panel 만 기존 세그 무시 (OR, case-insensitive)
+
+v3.2 (2026-06-02) 추가:
+  · OUTPUT_PREFIX 상수 — 출력 CSV 파일명 앞 prefix. "" 면 기존 동작.
+      예: "full_" (세그 없는 전체), "excl-seg_" (세그 제외 적용본).
+  (이 contents 계열은 EXTRA_SEGMENTS 미탑재 — v3.2 의 enabled 토글은 plain 계열 전용.)
 """
 from __future__ import annotations
 
@@ -84,6 +89,8 @@ PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME | Contents Click
 # ─── input / 출력 ──────────────────────────────────────────────────
 SITES_INPUT_CSV = Path(__file__).resolve().parent / "sites_input.csv"
 OUTPUT_DIR      = Path(__file__).resolve().parent / "output"
+# 출력 CSV 파일명 prefix. "" = 기존 동작. 예: "excl-seg_"(세그 제외 적용본), "full_"(세그 없는 전체)
+OUTPUT_PREFIX   = ""
 
 # ─── 요청 설정 ─────────────────────────────────────────────────────
 MAX_WORKERS = 6
@@ -872,8 +879,8 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
 
     # CSV 저장 — 파일명 prefix = site_code, 안에 device 컬럼
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    extract_path = OUTPUT_DIR / f"extract_data_{site.site_code}_{ts}.csv"
-    mapping_path = OUTPUT_DIR / f"column_mapping_{site.site_code}_{ts}.csv"
+    extract_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}extract_data_{site.site_code}_{ts}.csv"
+    mapping_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}column_mapping_{site.site_code}_{ts}.csv"
 
     max_metrics = max((len(t["metric_names"]) for t in tasks), default=0)
     with open(extract_path, "w", newline="", encoding="utf-8-sig") as f:
@@ -950,7 +957,7 @@ def main() -> int:
     devices = args.device if args.device else list(DEVICES.keys())
 
     ts = datetime.now().strftime("%y%m%d_%H%M")
-    print(f"[{ts}] extract_data_v3_contents.py")
+    print(f"[{ts}] extract_data_v3.2_contents.py")
     print(f"  project : {PROJECT_ID}")
     print(f"  input   : {SITES_INPUT_CSV.name}")
     print(f"  workers : {args.workers}")
