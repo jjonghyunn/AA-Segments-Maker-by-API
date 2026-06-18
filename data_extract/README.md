@@ -15,15 +15,6 @@ Adobe Workspace project의 모든 panel × reportlet에서 세그먼트/메트�
 
 기준 문서 업데이트일: 2026-05-22
 
-## 기존 도구와의 관계
-
-| 기존 도구 | 역할 | 본 스크립트 |
-|---|---|---|
-| `extract_panel_tables_json_v2.0.py` | 프로젝트 walk → `/reports` payload JSON 생성 | 구조 파악 + payload 빌드 로직 재사용 |
-| `aa_exporter.py` (utils/) | payload JSON → `/reports` API 병렬 호출 → CSV | ThreadPoolExecutor 병렬 패턴 재사용 |
-
-→ 두 도구를 합쳐서 **"프로젝트 URL만 넣으면 구조 파악 + 데이터 추출까지 한번에"** 되는 단일 스크립트.
-
 ## 사용법
 
 ```bash

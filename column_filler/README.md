@@ -1,7 +1,7 @@
 # column_filler/ — tb_column_name_mapping CSV 의 빈 column 자동 채움  
 <sub>2026-06-09  Jonghyun Park w/ Claude</sub>  
 
-캠페인 시즌이 바뀌어서 `extract_panel_tables_json_v2.0.py` 로 새 매핑 CSV 를 뽑았을 때, **이전 시즌의 column 컬럼 정리본** 을 참조해서 새 CSV 의 column 컬럼을 유사도 기반으로 자동 채워주는 유틸.
+캠페인 시즌이 바뀌어서 새 매핑 CSV (`tb_column_name_mapping_{ts}.csv`) 를 뽑았을 때, **이전 시즌의 column 컬럼 정리본** 을 참조해서 새 CSV 의 column 컬럼을 유사도 기반으로 자동 채워주는 유틸.
 
 기준 문서 업데이트일: 2026-05-12
 
@@ -13,7 +13,7 @@
 
 ## 사용 시나리오
 
-1. 새 캠페인 / 새 시즌마다 `extract_panel_tables_json_v2.0.py` 를 다시 돌리면 `tb_column_name_mapping_{ts}.csv` 가 새로 생성됨 (column 컬럼은 빈 값).
+1. 새 캠페인 / 새 시즌마다 `tb_column_name_mapping_{ts}.csv` 가 새로 생성됨 (column 컬럼은 빈 값).
 2. 이전 시즌엔 비슷한 panel 구조에 column 명을 손으로 정리해서 reference 가 있음.
 3. 두 CSV 를 이 도구에 넣으면 신버전 column 컬럼이 유사도 기반으로 자동 채워짐.
 4. 결과 CSV (`*_filled.csv`) 를 검토하고 prior 변형이 없는 일부 행만 수동 보정.
@@ -24,7 +24,7 @@
 - 최소 `tb` / `value_n` / `column` 3열 필요
 - column 은 채워져있어야 함 (참조 reference)
 
-**신버전 (NEW_CSV):** — `extract_panel_tables_json_v2.0.py` 출력 형식
+**신버전 (NEW_CSV):** — 매핑 CSV 출력 형식
 - `tb` / `value_n` / `column` / `segments` / `metric` / `panel` / `panel_slug` / `period`
 - column 은 비어있음 (이 도구가 채움)
 - segments / metric 가 매칭 점수에 활용됨
@@ -108,8 +108,3 @@ NEW: 1729 rows  (tb_column_name_mapping_NEW.csv)
 | prior 행이 base year 값으로 채워짐 | old CSV 에 그 tb 의 `_prior` 변형이 없어서 base 로 fallback. column 결과에 `_prior` marker 가 빠져있을 수 있음 — prior 행만 따로 수동 보정 |
 | `period=campaign` 행이 last year 컬럼으로 채워짐 | strict 필터 동작 정상이라면 발생 X — NEW_CSV 의 period 컬럼이 비어있거나 잘못 채워졌는지 확인 |
 | 모든 행이 `채움 0` | OLD_CSV 와 NEW_CSV 가 다른 회사 / 다른 RSID 구조 → tb 이름이 전혀 안 겹쳐 jaccard 0. NAME_NORMALIZATION 룰 (token 기반) 검토 |
-
-## 자매 도구 (상위 폴더)
-
-- `extract_panel_tables_json_v2.0.py` — Workspace project 의 panel × reportlet → JSON + 매핑 CSV 자동 생성 (segments / metric 컬럼 포함)
-- `compare_panel_segments.py` — 두 Workspace project panel 의 segment 차집합 비교 (참고)

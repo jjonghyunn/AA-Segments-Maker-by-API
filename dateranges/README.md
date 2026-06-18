@@ -181,4 +181,3 @@ Adobe API 는 POST 시 `owner.id` 를 명시해도 **token holder 로 강제 덮
 ## 자매 도구
 
 - 상위 폴더 `aa_daterange.py` — 단일 record CRUD (CREATE 또는 UPDATE, DATERANGE_ID 토글)
-- 상위 폴더 `compare_panel_segments.py` — 두 Workspace panel 의 segment 차집합 비교 (참고용)
