@@ -252,6 +252,7 @@ DEVICE_SEGMENT_RULES: list[tuple[str, str]] = [
     (r"\[Device\]\s*PC",          "PC"),
     (r"\[Device\]\s*Android",     "Android"),
     (r"\[Device\]\s*iOS",         "iOS"),
+    (r"\[Device\]\s*Others",      "Others"),
     (r"\bAndroid\b",              "Android"),
     (r"\biOS\b",                  "iOS"),
     (r"\b(?:PC|Desktop)\b",       "PC"),
