@@ -1,8 +1,10 @@
-# extract_data_v3.8.py
+# extract_data_v3.9.py
 # 2026-06-12  Jonghyun Park w/ Claude
 # 2026-06-15: 진행률 + ETA 콘솔 출력 추가 (VERBOSE_PROGRESS) — site 1개 끝날 때마다
 #             [i/N]·소요·추출 row수·누적·평균·남은·전체 한 줄. 남은 = 완료 site 평균소요 × 남은 site 수,
 #             전체 = 누적 + 남은 (SITE_WORKERS>1 이면 ÷ 워커수 근사). 추출 로직 불변(출력만 추가).
+# v3.9 (2026-06-18): stack CSV metric -> metric_origin + normalized metric col
+#                    (alias AppBounce->Bounces, strip event paren / keep unit paren).
 # v3.8 (2026-06-12): device 케이스별 반복 추출 (DEVICE_CASES) —
 #                    프로젝트 패널에 device 세그가 전혀 없을 때, 패널마다 (Seg1, Seg2) 세그 stack 을
 #                    globalFilter 로 끼워 케이스별로 각각 추출. 케이스 수는 DEVICE_CASES 상수로
@@ -404,6 +406,33 @@ SETTINGS_FALLBACK = {
 # ════════════════════════════════════════════════════════════════════
 # 무제한(limit=0) 모드일 때 API 1 page 크기 (cap 모드에선 settings.limit = cap 으로 1~수 page)
 PAGE_SIZE_UNCAPPED = 5000
+# ─── metric 정규화 (v3.9) ─ metric_origin → 정제 metric ──────
+# 1) METRIC_ALIASES: 특이 변형 → 표준명 (공백제거+소문자 키 매칭). 예: AppBounce → Bounces
+# 2) 끝 괄호 (…) 제거 ─ 단 METRIC_KEEP_PAREN_UNITS(단위) 면 유지.
+METRIC_ALIASES = {
+    "appbounce": "Bounces",
+}
+METRIC_KEEP_PAREN_UNITS = {
+    "seconds", "second", "sec", "minutes", "minute", "min",
+    "hours", "hour", "days", "day", "%",
+}
+_METRIC_PAREN_RE = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
+
+
+def _normalize_metric(name):
+    """metric_origin -> normalized metric (alias first + trailing paren cleanup)."""
+    if not name or not isinstance(name, str):
+        return name
+    s = name.strip()
+    alias = METRIC_ALIASES.get(s.lower().replace(" ", ""))
+    if alias:
+        return alias
+    m = _METRIC_PAREN_RE.match(s)
+    if m and m.group(2).strip().lower() not in METRIC_KEEP_PAREN_UNITS:
+        return m.group(1).strip()
+    return s
+
+
 SEG_ID_RE = re.compile(r"^s\d+_[0-9a-f]+$")
 _DATE_RANGE_CACHE: dict[str, str] = {}
 _SEG_NAME_CACHE: dict[str, str] = {}    # segment_id → fresh name (via /segments/{id} GET)
@@ -1577,7 +1606,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
         header = ["site_code", "rsid", "start_date", "end_date",
                   "panel", "table", "reportlet", "dimension", "dimension_name",
                   "itemId", dim_short,
-                  "value_n", "metric", "segments", "device",
+                  "value_n", "metric_origin", "metric", "segments", "device",
                   "value1"]
         for k in range(1, max_bd_depth + 1):
             header += [f"bd{k}_dimension", f"bd{k}_itemId", f"bd{k}_value"]
@@ -1600,7 +1629,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                     seg_list = seg_names_per_metric[i-1] if i-1 < len(seg_names_per_metric) else []
                     seg_str = "; ".join(s for s in seg_list if s)
                     device = t.get("device_case") or _parse_device(seg_list)   # v3.8: 케이스 라벨 우선
-                    w.writerow(base_cols + ["", "(summary)", f"value{i}", m_name, seg_str, device,
+                    w.writerow(base_cols + ["", "(summary)", f"value{i}", m_name, _normalize_metric(m_name), seg_str, device,
                                             v if v is not None else ""] + bd_blank)
             else:
                 # outer loop = metric (value_n), inner loop = dimension rows
@@ -1618,7 +1647,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                         dim_val = r.get("value", "")
                         data = r.get("data") or []
                         v = data[i] if i < len(data) else ""
-                        w.writerow(base_cols + [item_id, dim_val, vn, m_name, seg_str, device,
+                        w.writerow(base_cols + [item_id, dim_val, vn, m_name, _normalize_metric(m_name), seg_str, device,
                                                 v if v is not None else ""] + bd_blank)
             # v3.5: breakdown rows — itemId/dim_short = path[0](dim1 부모), bd{k}_* = path[k]
             bd_rows = t.get("breakdown_rows") or []
@@ -1643,7 +1672,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                                 bd_cells += [bdid, bditem, bdval]
                             else:
                                 bd_cells += ["", "", ""]
-                        w.writerow(base_cols + [p0[2], p0[3], vn, m_name, seg_str, device,
+                        w.writerow(base_cols + [p0[2], p0[3], vn, m_name, _normalize_metric(m_name), seg_str, device,
                                                 v if v is not None else ""] + bd_cells)
     print(f"  stack CSV: {stack_path.name}  ({dim_short} long unpivot, bd depth={max_bd_depth})")
 

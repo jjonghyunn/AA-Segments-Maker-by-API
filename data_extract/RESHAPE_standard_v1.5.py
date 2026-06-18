@@ -1,5 +1,9 @@
-# RESHAPE_standard_v1.4.py
-# 2026-06-15  Jonghyun Park w/ Claude
+# RESHAPE_standard_v1.5.py
+# 2026-06-18  Jonghyun Park w/ Claude
+# v1.5 (2026-06-18): stack metric_origin + normalized metric (add metric_origin col),
+#                    VALUE (원본)->value_origin rename, wide union (_union_standard_wide_*)
+#                    with normalized metric as columns. RESHAPE also normalizes from
+#                    metric_origin (_normalize_metric) so mixed v3.8 stacks stay consistent.
 # v1.4 (2026-06-15): panel/table/reportlet 이름에 키워드(Multi Purchase·Multi Order·
 #                    Best Selling Product, 대소문자/언더바 무시) 가 있으면 product_category.yaml
 #                    (include/exclude regex) 로 제품코드를 분류해 'category' 컬럼 추가.
@@ -37,7 +41,8 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
         product_category.yaml 로 분류한 카테고리 컬럼 추가 (ADD_CATEGORY_COLUMN)
   · DIM_EXCLUDE_VALUES 일치하는 디멘션값 행 제외 (Unspecified/null/(summary) 등, 대소문자 무시)
   · COUNTRY = site_registry 로 site_code → 국가명
-  · 출력 : <폴더>/output/_union_standard_{ts}.csv
+  · 출력 : <폴더>/output/_union_standard_{ts}.csv (long)
+           + _union_standard_wide_{ts}.csv (normalized metric as columns)
 
 환율(currency) 처리:
   · revenue metric 행이 하나도 없으면 currency.csv 불필요 → 그냥 진행 (Entries/Visits 등)
@@ -353,6 +358,32 @@ def find_latest_per_site(input_dir: Path) -> tuple[list[Path], dict[str, str]]:
 
 
 # ────────────────────────────────────────────────────────────────
+# ─── metric 정규화 (v1.5) ─ metric_origin → 정제 metric ──────
+# extract_data v3.9 와 동일 규칙. stack 의 metric 을 신뢰하지 않고 metric_origin 에서 직접 정제.
+METRIC_ALIASES = {
+    "appbounce": "Bounces",
+}
+METRIC_KEEP_PAREN_UNITS = {
+    "seconds", "second", "sec", "minutes", "minute", "min",
+    "hours", "hour", "days", "day", "%",
+}
+_METRIC_PAREN_RE = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
+
+
+def _normalize_metric(name):
+    """metric_origin -> normalized metric (alias first + trailing paren cleanup)."""
+    if not name or not isinstance(name, str):
+        return name
+    s = name.strip()
+    alias = METRIC_ALIASES.get(s.lower().replace(" ", ""))
+    if alias:
+        return alias
+    m = _METRIC_PAREN_RE.match(s)
+    if m and m.group(2).strip().lower() not in METRIC_KEEP_PAREN_UNITS:
+        return m.group(1).strip()
+    return s
+
+
 def process() -> int:
     # 1) site 별 최신 extract_data_*.csv 1개씩 pick
     files, site_to_ts = find_latest_per_site(INPUT_DIR)
@@ -446,8 +477,8 @@ def process() -> int:
     # 출력 컬럼 순서 (dim_header 확정 후 구성). 환율 적용 batch 면 'VALUE (원본)' 추가.
     base_headers = ["TIER", "SUBS", "COUNTRY", "SITE CODE", "ITEM", "VALUE"]
     if apply_fx:
-        base_headers.append("VALUE (원본)")
-    base_headers += ["rsid", "start_date", "end_date", "value_n", "metric", dim_header]
+        base_headers.append("value_origin")
+    base_headers += ["rsid", "start_date", "end_date", "value_n", "metric_origin", "metric", dim_header]
     if do_category:   # v1.4: dim 컬럼 다음에 category 컬럼 (yaml 있을 때만)
         base_headers += ["category", "category_non_acc_unknown_excl"]
     base_headers.append("segments")
@@ -492,7 +523,8 @@ def process() -> int:
         end_date   = (r.get("end_date")   or "").strip()
         rsid       = (r.get("rsid")       or "").strip()
         value_n    = (r.get("value_n")    or "").strip()
-        metric     = (r.get("metric")     or "").strip()
+        metric_origin = (r.get("metric_origin") or r.get("metric") or "").strip()
+        metric     = _normalize_metric(metric_origin)
         dim_val    = (r.get(dim_col)      or "").strip()
         reportlet  = (r.get("reportlet")  or "").strip()
         raw_val    = (r.get("value1")     or "").strip()   # extract_data 의 값 컬럼은 항상 'value1'
@@ -540,13 +572,14 @@ def process() -> int:
             "start_date": start_date,
             "end_date": end_date,
             "value_n": value_n,
+            "metric_origin": metric_origin,
             "metric": metric,
             dim_header: dim_val,
             "segments": segments,
             "Panel name": (r.get("panel") or "").strip(),
         }
         if apply_fx:
-            row_out["VALUE (원본)"] = origin
+            row_out["value_origin"] = origin
 
         # v1.4: product category 분류 — panel/table/reportlet 키워드 매칭 행만
         if do_category:
@@ -579,15 +612,16 @@ def process() -> int:
         return int(fv) if fv == int(fv) else round(fv, 2)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUT_DIR / f"{OUTPUT_BASENAME}_{_ts_now()}.csv"
+    ts = _ts_now()
+    out_path = OUTPUT_DIR / f"{OUTPUT_BASENAME}_{ts}.csv"
     with open(out_path, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=out_headers, quoting=csv.QUOTE_MINIMAL,
                            extrasaction="ignore")  # 제외 컬럼 키 무시
         w.writeheader()
         for r in out_rows:
             r["VALUE"] = _fmt_num(r.get("VALUE", ""))
-            if "VALUE (원본)" in r:
-                r["VALUE (원본)"] = _fmt_num(r.get("VALUE (원본)", ""))
+            if "value_origin" in r:
+                r["value_origin"] = _fmt_num(r.get("value_origin", ""))
             w.writerow(r)
     print(f"\n[save] {out_path}")
     print(f"  output rows : {len(out_rows)}")
@@ -597,7 +631,63 @@ def process() -> int:
         print(f"  디멘션값 제외: {n_dim_excluded} rows")
     if DROP_ZERO_VALUE:
         print(f"  VALUE==0 제외: {n_zero_dropped} rows")
+
+    # v1.5: wide union (normalized metric as columns)
+    _write_wide(out_rows, out_headers, OUTPUT_DIR, ts)
     return 0
+
+
+def _write_wide(out_rows, out_headers, out_dir, ts):
+    """정제 metric 을 열 헤더로 올린 wide union (셀 = fx VALUE).
+    index = out_headers 에서 metric_origin/metric/value_n/VALUE/value_origin 제외 전부."""
+    metric_value_cols = {"metric_origin", "metric", "value_n", "VALUE", "value_origin"}
+    index_cols = [c for c in out_headers if c not in metric_value_cols]
+    groups = {}
+    metric_order = []
+    collisions = 0
+    for r in out_rows:
+        m = (r.get("metric") or "").strip()
+        if not m:
+            continue
+        key = tuple(r.get(c, "") for c in index_cols)
+        g = groups.get(key)
+        if g is None:
+            g = {c: r.get(c, "") for c in index_cols}
+            groups[key] = g
+        if m not in metric_order:
+            metric_order.append(m)
+        if m in g:
+            try:
+                g[m] = float(g[m]) + float(r.get("VALUE") or 0)
+            except (TypeError, ValueError):
+                pass
+            collisions += 1
+        else:
+            g[m] = r.get("VALUE", "")
+
+    def _fmt(v):
+        if v == "" or v is None:
+            return ""
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            return v
+        return int(fv) if fv == int(fv) else round(fv, 2)
+
+    wide_headers = index_cols + metric_order
+    out_path = out_dir / f"{OUTPUT_BASENAME}_wide_{ts}.csv"
+    with open(out_path, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=wide_headers, quoting=csv.QUOTE_MINIMAL, extrasaction="ignore")
+        w.writeheader()
+        for g in groups.values():
+            row = {c: g.get(c, "") for c in index_cols}
+            for m in metric_order:
+                row[m] = _fmt(g.get(m, ""))
+            w.writerow(row)
+    print(f"[save] {out_path}")
+    print(f"  wide rows : {len(groups)} / metric cols {len(metric_order)}")
+    if collisions:
+        print(f"  warn: index+metric collisions {collisions} summed")
 
 
 if __name__ == "__main__":

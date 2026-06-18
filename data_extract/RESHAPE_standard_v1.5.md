@@ -1,5 +1,5 @@
-# RESHAPE_standard_v1.4.py  
-<sub>2026-06-16  Jonghyun Park w/ Claude</sub>  
+# RESHAPE_standard_v1.5.py  
+<sub>2026-06-18  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -15,7 +15,7 @@
 
 1. **site 별 최신 파일 1개씩만** 골라서 세로로 union
 2. 분석에 바로 쓰기 좋은 컬럼들로 재배치 + 아래 가공 추가
-3. `output/_union_standard_{날짜시간}.csv` 한 파일로 저장
+3. `output/_union_standard_{날짜시간}.csv` (long) + `_union_standard_wide_*.csv` (wide) 저장
 
 ### 입력 → 출력 (한 행 예시)
 
@@ -35,6 +35,15 @@
 - **COUNTRY** = `site_registry` 로 site_code 를 국가명으로
 - **SITE CODE** = `SITE_CODE_RENAME` 표기 치환 + **`_old` 접미사 일괄 제거** (v1.1, `uk_old`→`uk` 등 — `SITE_CODE_STRIP_OLD`)
 - 디멘션 컬럼명(`campaign`)은 **추출한 디멘션 그대로** 따라온다 (evar26 이면 `evar26` 으로)
+
+### metric_origin / 정제 metric · value_origin · wide union (v1.5)
+
+- **metric_origin / metric** — 입력 `metric_origin`(원본 metric 명) 그대로 + `metric` 은 **정제본**. RESHAPE 가 `metric_origin` 에서 직접 정제(`_normalize_metric`)하므로 미정제 stack 이 섞여도 일관:
+  - 끝 괄호 제거(이벤트/맥락): `Order (purchase event)` → `Order`, `Visits (for External Order)` → `Visits`
+  - 단위 괄호 유지: `Time Spent per Visit (seconds)` → 그대로
+  - 별칭: `AppBounce` → `Bounces` (`METRIC_ALIASES`, extract_data 와 동기화)
+- **value_origin** — 환율 적용 시 원본값 컬럼 (이전 `VALUE (원본)` 에서 이름 통일).
+- **wide union** — `_union_standard_wide_{날짜시간}.csv` 추가 출력. **정제 metric 값들을 열 헤더로 승격**(가로 나열, fx `VALUE` 채움). 행 식별(index) = metric/value 계열 제외 전부(디멘션값·segments·device·panel 등 포함). long(`_union_standard`)과 함께 2종 출력.
 
 ### product category 분류 (v1.4)
 
@@ -79,7 +88,7 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
 - **환율 적용 (revenue 한정)** — `metric` 에 `revenue` 글자가 **포함되면**(부분일치, 대소문자 무시) `currency.csv` 환율을 곱한다.
   - `Revenue`, `Revenue (KRW)`, `Total Revenue` 등 전부 해당. `Entries`/`Visits` 같은 비-금액 metric 은 그대로.
   - revenue 행이 **있는데** `currency.csv` 가 **없으면** → 정제를 **멈추고** 파일을 넣어달라고 물어본다(조용히 미환산 진행 방지).
-  - 환율이 적용된 경우 `VALUE` = 환산값 + `VALUE (원본)` 컬럼이 추가된다.
+  - 환율이 적용된 경우 `VALUE` = 환산값 + `value_origin` 컬럼이 추가된다.
 - **0 값 제외 (옵션)** — `DROP_ZERO_VALUE = True` 면 VALUE 가 0 인 행 제거.
 
 ---
@@ -112,24 +121,24 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
 ## 출력 컬럼
 
 ```
-TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [VALUE (원본)],
-rsid, start_date, end_date, value_n, metric, <디멘션>,
+TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [value_origin],
+rsid, start_date, end_date, value_n, metric_origin, metric, <디멘션>,
 [category, category_non_acc_unknown_excl,] segments
 [, device, bd1_dimension, bd1_itemId, bd1_value, …], Panel name [, reportlet]
 ```
 - `<디멘션>` = 자동 감지된 디멘션 이름(`campaign`, `evar26` …)
-- `[ ]` 표기 컬럼은 **조건부**로만 들어감 — `VALUE (원본)`(환율 적용 시), `category` / `category_non_acc_unknown_excl`(`ADD_CATEGORY_COLUMN`+yaml 있을 때), `device` / `bd{k}_*`(입력에 있을 때). 각 컬럼의 동작·이유는 위 해당 기능 섹션 참고.
+- `[ ]` 표기 컬럼은 **조건부**로만 들어감 — `value_origin`(환율 적용 시), `category` / `category_non_acc_unknown_excl`(`ADD_CATEGORY_COLUMN`+yaml 있을 때), `device` / `bd{k}_*`(입력에 있을 때). 각 컬럼의 동작·이유는 위 해당 기능 섹션 참고.
 - `EXCLUDE_OUTPUT_COLUMNS` 로 위 목록 중 원하는 컬럼을 출력에서 제외 가능.
 
 ## 실행
 
 ```bash
-python RESHAPE_standard_v1.4.py
+python RESHAPE_standard_v1.5.py
 ```
 - 같은 폴더에 `site_registry.py` 필요 (site_code → 국가/rsid)
 - `ADD_CATEGORY_COLUMN=True` 면 같은 폴더에 `product_category.yaml` 필요 (없고 키워드 매칭 행 있으면 경고 후 분류 skip)
 - 입력: 같은 폴더 `output/stack_data_extract_*.csv` (+구버전 `extract_data_*.csv`)
-- 결과: `output/_union_standard_{날짜시간}.csv`
+- 결과: `output/_union_standard_{날짜시간}.csv` (long) + `_union_standard_wide_{날짜시간}.csv` (wide)
 - revenue 행이 있으면 `currency.csv` (1열 site_code + 헤더에 `YYYY-MM-DD` 컬럼들) 도 같은 폴더에 필요
 
 ## 의존성
