@@ -1,5 +1,5 @@
 # extract_data.py / extract_data_v2.py / extract_data_v3.py  
-> ⚠ 본 문서가 다루는 v1~v3.1 파일들은 `old/` 로 이동 (2026-06-10). **최신은 `extract_data_v3.9.py` — `extract_data.md` 참조.** 본 문서는 구버전 참고용.  
+> ⚠ 본 문서가 다루는 v1~v3.1 파일들은 삭제됨 (2026-06-17). **최신은 `extract_data_v3.9.py` — `extract_data.md` 참조.** 본 문서는 구버전 참고용.  
 <sub>2026-06-09  Jonghyun Park w/ Claude</sub>  
 
 Adobe Workspace project의 모든 panel × reportlet에서 세그먼트/메트릭 이름 + 실제 데이터 값을 **동시다발적으로** 추출.
@@ -12,8 +12,6 @@ Adobe Workspace project의 모든 panel × reportlet에서 세그먼트/메트�
 | `extract_data_v3_contents*.py` (v3 contents 시리즈) | v2 베이스 + **site 단위 병렬 처리 옵션** (`SITE_WORKERS` 상수) |
 
 > 주의: `extract_data_v3.py` 와 `extract_data_v3_contents*.py` 는 **이름은 비슷하지만 다른 시리즈**. 전자는 segment 추가, 후자는 site 병렬화.
-
-기준 문서 업데이트일: 2026-05-22
 
 ## 사용법
 
@@ -305,7 +303,7 @@ data_extract/
 
 - **CSV columns**: `segment_id, name, owner_id, owner_name, rsid, description, tags, structure, error`
   - `structure` = decompile 된 DSL 을 한 줄(`|` 구분)로 펼친 것
-- **DSL**: 모든 매치를 한 파일에 `===` 구분선으로 이어붙임. 들여쓰기 보존 → 그대로 `aa_create_segment_v2.py --input` 으로 재사용 가능
+- **DSL**: 모든 매치를 한 파일에 `===` 구분선으로 이어붙임. 들여쓰기 보존 → 그대로 `aa_create_segment_v2.3.py --input` 으로 재사용 가능
 
 `<query_slug>` = name_keywords 의 alphanumeric 만 남기고 `__` 로 join (예: `visitor_id__d_mid__null__Exclude`).
 

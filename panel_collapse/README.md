@@ -1,10 +1,9 @@
-# panel_collapse/ — AA Workspace panel 내 subPanel 일괄 collapse (운영 사본)
+# panel_collapse/ — AA Workspace panel 내 subPanel 일괄 collapse (운영 사본)  
+<sub>2026-05-21  Jonghyun Park w/ Claude</sub>  
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/panel_collapse (예정)
 
 운영 사본 — 실제 PROJECT_ID / AUTH 경로 박혀있는 작업본. generic 변경 (룰/기능) 은 repo 사본에도 동기화. 단순 운영값 (PROJECT_ID) 변경은 repo 안 올림.
-
-기준 문서 업데이트일: 2026-05-21
 
 ---
 
