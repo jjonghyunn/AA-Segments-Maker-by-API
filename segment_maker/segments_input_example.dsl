@@ -1,5 +1,5 @@
 --- segment
-name: [CAMPAIGN NAME] CC_00. Contents Click Total (Visit)
+name: [CAMPAIGN NAME] CC_00. Content Total (Visit)
 rsid: sscompany_name4mstglobal
 
 visit(
@@ -7,7 +7,7 @@ visit(
     @s200000000_YOUR_SEGMENT_ID
     AND
     (
-      '[CAMPAIGN NAME] CC_00. Contents Click Total (Visit)'!hit(
+      '[CAMPAIGN NAME] CC_00. Content Total (Visit)'!hit(
         hit(
           'evar OR group'!hit(
             'v25'!hit(
@@ -30,7 +30,7 @@ visit(
           )
           AND
           not 'site'!hit(
-            evar80 equals 'ViewWidget'
+            evar80 equals 'WidgetView'
           )
         )
       )
@@ -41,11 +41,11 @@ visit(
 ===
 
 --- segment
-name: [CAMPAIGN NAME] CC_00. Contents Click Total
+name: [CAMPAIGN NAME] CC_00. Content Total
 rsid: sscompany_name4mstglobal
 
 hit(
-  '[CAMPAIGN NAME] CC_00. Contents Click Total'!hit(
+  '[CAMPAIGN NAME] CC_00. Content Total'!hit(
     hit(
       'evar OR group'!hit(
         'v25'!hit(
@@ -68,7 +68,7 @@ hit(
       )
       AND
       not 'site'!hit(
-        evar80 equals 'ViewWidget'
+        evar80 equals 'WidgetView'
       )
     )
   )
@@ -77,12 +77,12 @@ hit(
 ===
 
 --- segment
-name: [CAMPAIGN NAME] CC_00. Contents Click Total (Delayed Purchase)
+name: [CAMPAIGN NAME] CC_00. Content Total (Delayed Purchase)
 rsid: sscompany_name4mstglobal
 
 hit(
   visit(
-    '[CAMPAIGN NAME] CC_00. Contents Click Total'!hit(
+    '[CAMPAIGN NAME] CC_00. Content Total'!hit(
       @s200000000_YOUR_SEGMENT_ID
       AND
       'evar OR group'!hit(
@@ -106,7 +106,7 @@ hit(
       )
       AND
       not 'site'!hit(
-        evar80 equals 'ViewWidget'
+        evar80 equals 'WidgetView'
       )
     )
     THEN

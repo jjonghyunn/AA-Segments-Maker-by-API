@@ -1,9 +1,9 @@
-﻿RequestedAt,SourceSegId,SourceSegName,MatchKey,NormalizedName,TargetSegId,TargetSegName,MatchStatus
-2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_00. Contents Click Total,CC_00,cc_00. contents click total,s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_00. Contents Click Total,OK (cc_key)
-2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_00. Contents Click Total (Visit),CC_00 (visit),cc_00. contents click total (visit),s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_00. Contents Click Total (Visit),OK (cc_key)
-2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_00. Contents Click Total (Delayed Purchase),CC_00 (delayed),cc_00. contents click total (delayed purchase),s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_00. Contents Click Total (Delayed Purchase),OK (cc_key)
-2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_01. Rewards Benefit,CC_01,cc_01. rewards benefit,s200000000_YOUR_SEGMENT_ID,No Data,OK (no_data)
-2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_01. Rewards Benefit (Visit),CC_01 (visit),cc_01. rewards benefit (visit),s200000000_YOUR_SEGMENT_ID,No Data,OK (no_data)
-2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_01. Rewards Benefit (Delayed Purchase),CC_01 (delayed),cc_01. rewards benefit (delayed purchase),s200000000_YOUR_SEGMENT_ID,No Data,OK (no_data)
-2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_02. Main KV,CC_02,cc_02. main kv,s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_02. Main KV,OK (cc_key)
-2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_02. Main KV (Visit),CC_02 (visit),cc_02. main kv (visit),s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_02. Main KV (Visit),OK (cc_key)
+RequestedAt,SourceSegId,SourceSegName,MatchKey,NormalizedName,TargetSegId,TargetSegName,MatchStatus
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_00. Content Total,CC_00,cc_00. Content Total,s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_00. Content Total,OK (cc_key)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_00. Content Total (Visit),CC_00 (visit),cc_00. Content Total (visit),s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_00. Content Total (Visit),OK (cc_key)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_00. Content Total (Delayed Purchase),CC_00 (delayed),cc_00. Content Total (delayed purchase),s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_00. Content Total (Delayed Purchase),OK (cc_key)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_01. Content B,CC_01,cc_01. Content B,s200000000_YOUR_SEGMENT_ID,No Data,OK (no_data)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_01. Content B (Visit),CC_01 (visit),cc_01. Content B (visit),s200000000_YOUR_SEGMENT_ID,No Data,OK (no_data)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_01. Content B (Delayed Purchase),CC_01 (delayed),cc_01. Content B (delayed purchase),s200000000_YOUR_SEGMENT_ID,No Data,OK (no_data)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_02. Content A,CC_02,cc_02. Content A,s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_02. Content A,OK (cc_key)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_02. Content A (Visit),CC_02 (visit),cc_02. Content A (visit),s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_02. Content A (Visit),OK (cc_key)
