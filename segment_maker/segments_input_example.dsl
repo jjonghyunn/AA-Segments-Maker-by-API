@@ -111,7 +111,7 @@ hit(
     )
     THEN
     '[Global] Add to Cart Visit'!hit(
-      @YOUR_ID
+      @YOUR_SEGMENT2_ID
     )
     AND
     hit(
