@@ -1,0 +1,4 @@
+RequestedAt,Name,SegmentId,RSID,Action,Status,Url,Error
+2026-05-26 16:53:01,[CAMPAIGN NAME] CC_02. Main KV (Visit),YOUR_SEGMENT_ID,sscompany_name4mstglobal,POST,OK,https://analytics.adobe.io/components/segments/YOUR_SEGMENT_ID,
+2026-05-26 16:53:02,[CAMPAIGN NAME] CC_02. Main KV,YOUR_SEGMENT_ID,sscompany_name4mstglobal,POST,OK,https://analytics.adobe.io/components/segments/YOUR_SEGMENT_ID,
+2026-05-26 16:53:03,[CAMPAIGN NAME] CC_03. Best Selling (Visit),YOUR_SEGMENT_ID,sscompany_name4mstglobal,PUT,OK,https://analytics.adobe.io/components/segments/YOUR_SEGMENT_ID,

@@ -1,0 +1,4 @@
+RequestedAt,SourceSegId,SourceSegName,MatchKey,NormalizedName,TargetSegId,TargetSegName,MatchStatus
+2026-05-04 11:20:33,YOUR_SOURCE_SEG_ID,[PRIOR CAMPAIGN NAME] CC_02. Main KV,cc_02 main kv,cc_02 main kv,YOUR_TARGET_SEG_ID,[CAMPAIGN NAME] CC_02. Main KV,MATCHED
+2026-05-04 11:20:33,YOUR_SOURCE_SEG_ID,[PRIOR CAMPAIGN NAME] CC_03. Best Selling,cc_03 best selling,cc_03 best selling,YOUR_TARGET_SEG_ID,[CAMPAIGN NAME] CC_03. Best Selling,MATCHED
+2026-05-04 11:20:33,YOUR_SOURCE_SEG_ID,[PRIOR CAMPAIGN NAME] CC_99. Legacy Banner,cc_99 legacy banner,cc_99 legacy banner,,,NO_MATCH

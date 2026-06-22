@@ -1,9 +1,9 @@
 # AA_segment_maker  
-<sub>2026-06-17  Jonghyun Park w/ Claude</sub>  
+<sub>2026-06-22  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
-최종 업데이트: 2026-06-17
+최종 업데이트: 2026-06-22
 
 ---
 
@@ -37,6 +37,33 @@ AA_segment_maker/
 > 구버전은 정리 완료 (2026-06-17). 활성 경로엔 항상 최신 1개만.
 
 ---
+
+## 빠른 시작 (end-to-end 예시)
+
+세그먼트 생성 → 조회 → 데이터 추출까지의 기본 흐름. 각 단계 입력/출력 형식은 각 폴더의 `*_example.*` 파일 참고.
+
+```bash
+# 1) raw 명세(seg_make_ref CSV) → v2.3 입력 CSV/DSL 자동 변환
+cd segment_maker
+python input_csv_maker.py                  # → segments_input_<ts>.csv  (형식: segments_input_example.csv)
+
+# 2) dry-run 으로 파싱 검증 → 문제 없으면 실제 생성
+python aa_create_segment_v2.3.py --input segments_input_<ts>.csv                     # dry-run
+python aa_create_segment_v2.3.py --input segments_input_<ts>.csv --update-or-create --apply
+#   → segment_v2.3_result_<ts>.csv  (형식: segments_result_example.csv)
+
+# 3) 만든 세그먼트 이름으로 재조회 (id/structure 확인)
+python aa_segment_lookup.py --search "[CAMPAIGN NAME]"     # → lookup/segment_lookup_<ts>.csv
+
+# 4) Workspace 프로젝트 패널 데이터 추출
+cd ../data_extract
+python extract_data_v3.9.py                # sites_input.csv 의 site 별로 추출
+#   → stack_data_extract_<site>_<ts>.csv  (형식: stack_data_extract_example.csv)
+#   → table_data_extract_<site>_<ts>.csv  (형식: table_data_extract_example.csv)
+python RESHAPE_standard_v1.5.py            # union 정제
+```
+
+> 입력 CSV·structure DSL·결과 CSV 의 구체 형식은 `segment_maker/segments_input_example.csv` · `.dsl` · `segments_result_example.csv`, `data_extract/table_data_extract_example.csv` · `stack_data_extract_example.csv`, `panel_maker/panel_contents_mapping_example.csv` 참고. (모두 placeholder 값)
 
 ## 핵심 도구 요약
 

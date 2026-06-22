@@ -1,7 +1,7 @@
-# panel_maker/ — AA Workspace project panel 복제 + segment swap (운영 사본)  
-<sub>2026-06-18  Jonghyun Park w/ Claude</sub>  
+# panel_maker/ — AA Workspace project panel 복제 + segment swap  
+<sub>2026-06-22  Jonghyun Park w/ Claude</sub>  
 
-운영 사본 — 실제 SOURCE/TARGET PROJECT_ID·키워드·MANUAL_OVERRIDES 박혀있는 작업본. generic 변경(룰/기능)은 repo 사본에 동기화. 단순 운영값(PROJECT_ID/키워드) 변경은 repo 안 올림.
+source project 의 panel 구조를 그대로 빈 target project 로 복제하면서 그 안의 segment ID 를 새 캠페인 segment 로 자동 swap. `SOURCE_PROJECT_ID` / `TARGET_PROJECT_ID` / `OLD_KEYWORDS` / `NEW_KEYWORDS` 등 환경 값은 스크립트 상단 상수로 본인 환경에 맞게 교체.
 
 ---
 
@@ -19,6 +19,7 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 |---|---|---|
 | `panel_contents.py` | `CC_##.` / `US_CC_##.` + sub_num + suffix 패턴 매칭 | 전체 panel (`SOURCE_PANEL_INDICES="all"`) |
 | `panel_contents_recomm_v1.2.py` | panel_contents 변형 — Recommendation 계열 fallback type 추가, US_CC_[US] 잔재 제외 룰 | recomm 패널 전체 |
+| `panel_contents_mapping_example.csv` | 실행 결과 매핑 CSV 형식 예시 (Source/Target SegId·SegName·MatchStatus, placeholder 값) | - |
 | `panel_contents_mapping_*.csv` | panel_contents 계열 실행 결과 매핑 누적 | - |
 
 ## 사용자 설정 (스크립트별 상단 상수)

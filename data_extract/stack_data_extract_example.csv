@@ -1,0 +1,6 @@
+itemId,dim1_value,metric,value,segments,device,bd1_dimension,bd1_itemId,bd1_value
+29381047562,01. Main KV,Visits,34560,[CAMPAIGN NAME] CC_02. Main KV,Mobile,,,
+29381047562,01. Main KV,Orders,2103,[CAMPAIGN NAME] CC_02. Main KV,Mobile,,,
+29381047562,01. Main KV,Visits,12880,[CAMPAIGN NAME] CC_02. Main KV,Mobile,Product Category,1001,Mobile Phone
+29381047563,02. Best Selling,Visits,21044,[CAMPAIGN NAME] CC_03. Best Selling,Mobile,,,
+29381047563,02. Best Selling,Orders,1876,[CAMPAIGN NAME] CC_03. Best Selling,Mobile,,,

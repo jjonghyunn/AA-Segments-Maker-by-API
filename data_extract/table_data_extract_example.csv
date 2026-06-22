@@ -1,0 +1,5 @@
+dimension,itemId,value1,value2,seg_value1,seg_value2
+(summary),,124530,8910,Visits;; [part_name] All Page Track - PF Only,Orders;; [part_name] All Page Track - PF Only
+01. Main KV,29381047562,34560,2103,Visits;; [Device] Mobile,Orders;; [Device] Mobile
+02. Best Selling,29381047563,21044,1876,Visits;; [Device] Mobile,Orders;; [Device] Mobile
+03. Recommended for You,29381047564,18992,1540,Visits;; [Device] Mobile,Orders;; [Device] Mobile
