@@ -1,4 +1,9 @@
-RequestedAt,SourceSegId,SourceSegName,MatchKey,NormalizedName,TargetSegId,TargetSegName,MatchStatus
-2026-05-04 11:20:33,YOUR_SOURCE_SEG_ID,[PRIOR CAMPAIGN NAME] CC_02. Main KV,cc_02 main kv,cc_02 main kv,YOUR_TARGET_SEG_ID,[CAMPAIGN NAME] CC_02. Main KV,MATCHED
-2026-05-04 11:20:33,YOUR_SOURCE_SEG_ID,[PRIOR CAMPAIGN NAME] CC_03. Best Selling,cc_03 best selling,cc_03 best selling,YOUR_TARGET_SEG_ID,[CAMPAIGN NAME] CC_03. Best Selling,MATCHED
-2026-05-04 11:20:33,YOUR_SOURCE_SEG_ID,[PRIOR CAMPAIGN NAME] CC_99. Legacy Banner,cc_99 legacy banner,cc_99 legacy banner,,,NO_MATCH
+﻿RequestedAt,SourceSegId,SourceSegName,MatchKey,NormalizedName,TargetSegId,TargetSegName,MatchStatus
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_00. Contents Click Total,CC_00,cc_00. contents click total,s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_00. Contents Click Total,OK (cc_key)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_00. Contents Click Total (Visit),CC_00 (visit),cc_00. contents click total (visit),s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_00. Contents Click Total (Visit),OK (cc_key)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_00. Contents Click Total (Delayed Purchase),CC_00 (delayed),cc_00. contents click total (delayed purchase),s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_00. Contents Click Total (Delayed Purchase),OK (cc_key)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_01. Rewards Benefit,CC_01,cc_01. rewards benefit,s200000000_YOUR_SEGMENT_ID,No Data,OK (no_data)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_01. Rewards Benefit (Visit),CC_01 (visit),cc_01. rewards benefit (visit),s200000000_YOUR_SEGMENT_ID,No Data,OK (no_data)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_01. Rewards Benefit (Delayed Purchase),CC_01 (delayed),cc_01. rewards benefit (delayed purchase),s200000000_YOUR_SEGMENT_ID,No Data,OK (no_data)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_02. Main KV,CC_02,cc_02. main kv,s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_02. Main KV,OK (cc_key)
+2026-05-19 16:32:04,s200000000_YOUR_SEGMENT_ID,[PRIOR CAMPAIGN NAME] CC_02. Main KV (Visit),CC_02 (visit),cc_02. main kv (visit),s200000000_YOUR_SEGMENT_ID,[CAMPAIGN NAME] CC_02. Main KV (Visit),OK (cc_key)

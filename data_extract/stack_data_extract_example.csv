@@ -1,6 +1,13 @@
-itemId,dim1_value,metric,value,segments,device,bd1_dimension,bd1_itemId,bd1_value
-29381047562,01. Main KV,Visits,34560,[CAMPAIGN NAME] CC_02. Main KV,Mobile,,,
-29381047562,01. Main KV,Orders,2103,[CAMPAIGN NAME] CC_02. Main KV,Mobile,,,
-29381047562,01. Main KV,Visits,12880,[CAMPAIGN NAME] CC_02. Main KV,Mobile,Product Category,1001,Mobile Phone
-29381047563,02. Best Selling,Visits,21044,[CAMPAIGN NAME] CC_03. Best Selling,Mobile,,,
-29381047563,02. Best Selling,Orders,1876,[CAMPAIGN NAME] CC_03. Best Selling,Mobile,,,
+﻿site_code,rsid,start_date,end_date,panel,table,reportlet,dimension,dimension_name,itemId,dim_value,value_n,metric_origin,metric,segments,device,value1
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value1,Visits,Visits,[Device] Mobile; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),Mobile,5266539.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value2,Unique Visitors,Unique Visitors,[Device] Mobile; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),Mobile,4426510.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value3,Non bounced visit,Non bounced visit,[Device] Mobile; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),Mobile,1408148.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value4,Page Views,Page Views,[Device] Mobile; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),Mobile,7096099.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value5,Visits,Visits,[Device] PC; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),PC,875363.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value6,Unique Visitors,Unique Visitors,[Device] PC; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),PC,713131.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value7,Non bounced visit,Non bounced visit,[Device] PC; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),PC,433900.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value8,Page Views,Page Views,[Device] PC; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),PC,1556927.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value9,Visits,Visits,[Device] Android; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),Android,327293.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value10,Unique Visitors,Unique Visitors,[Device] Android; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),Android,187850.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value11,Non bounced visit,Non bounced visit,[Device] Android; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),Android,326963.0
+us,sscompany_name4newus,2026-05-19,2026-06-07,S.com Traffic By Division,scom_mx_visit,S.com MX Visit,,,,(summary),value12,Page Views,Page Views,[Device] Android; [Global] MX Visit; [part_name] All Page Track(PD&PF&PCD&Offer),Android,1024971.0

@@ -1,4 +1,6 @@
-RequestedAt,Name,SegmentId,RSID,Action,Status,Url,Error
-2026-05-26 16:53:01,[CAMPAIGN NAME] CC_02. Main KV (Visit),YOUR_SEGMENT_ID,sscompany_name4mstglobal,POST,OK,https://analytics.adobe.io/components/segments/YOUR_SEGMENT_ID,
-2026-05-26 16:53:02,[CAMPAIGN NAME] CC_02. Main KV,YOUR_SEGMENT_ID,sscompany_name4mstglobal,POST,OK,https://analytics.adobe.io/components/segments/YOUR_SEGMENT_ID,
-2026-05-26 16:53:03,[CAMPAIGN NAME] CC_03. Best Selling (Visit),YOUR_SEGMENT_ID,sscompany_name4mstglobal,PUT,OK,https://analytics.adobe.io/components/segments/YOUR_SEGMENT_ID,
+﻿RequestedAt,Name,SegmentId,RSID,Action,Status,Url,Error
+2026-05-19 20:57:26,[CAMPAIGN NAME] CC_Product Recommendation - 01. Top Selling (Visit),s200000000_YOUR_SEGMENT_ID,,create,200 OK,https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/components/segments/edit/s200000000_YOUR_SEGMENT_ID,
+2026-05-19 20:57:26,[CAMPAIGN NAME] CC_Product Recommendation - 01. Top Selling (Delayed Purchase),s200000000_YOUR_SEGMENT_ID,,create,200 OK,https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/components/segments/edit/s200000000_YOUR_SEGMENT_ID,
+2026-05-19 20:57:26,[CAMPAIGN NAME] CC_Product Recommendation - 02. Interested Category (Visit),s200000000_YOUR_SEGMENT_ID,,create,200 OK,https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/components/segments/edit/s200000000_YOUR_SEGMENT_ID,
+2026-05-19 20:57:26,[CAMPAIGN NAME] CC_Product Recommendation - 02. Interested Category (Delayed Purchase),s200000000_YOUR_SEGMENT_ID,,create,200 OK,https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/components/segments/edit/s200000000_YOUR_SEGMENT_ID,
+2026-05-19 20:57:26,[CAMPAIGN NAME] CC_Product Recommendation - 03. Interested Product (Visit),s200000000_YOUR_SEGMENT_ID,,create,200 OK,https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/components/segments/edit/s200000000_YOUR_SEGMENT_ID,

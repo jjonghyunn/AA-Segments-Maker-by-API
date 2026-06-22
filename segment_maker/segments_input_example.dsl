@@ -1,19 +1,37 @@
 --- segment
-name: [CAMPAIGN NAME] CC_02. Main KV (Visit)
+name: [CAMPAIGN NAME] CC_00. Contents Click Total (Visit)
 rsid: sscompany_name4mstglobal
 
 visit(
-  'page+content'!hit(
-    '[Global] Campaign Main Page_Evar'!hit(
-      @YOUR_ID
-    )
+  hit(
+    @s200000000_YOUR_SEGMENT_ID
     AND
     (
-      '[CAMPAIGN NAME] CC_02. Main KV'!hit(
+      '[CAMPAIGN NAME] CC_00. Contents Click Total (Visit)'!hit(
         hit(
-          'cc04 component'!hit( customlink starts-with 'cc04_offers kv' )
+          'evar OR group'!hit(
+            'v25'!hit(
+              evar25 exists
+              AND
+              event25 event-exists
+            )
+            OR
+            'v26'!hit(
+              evar26 exists
+              AND
+              event26 event-exists
+            )
+            OR
+            'v35'!hit(
+              evar35 exists
+              AND
+              event35 event-exists
+            )
+          )
           AND
-          'v26'!hit( event26 event-exists AND evar26 contains 'kv' )
+          not 'site'!hit(
+            evar80 equals 'ViewWidget'
+          )
         )
       )
     )
@@ -23,15 +41,85 @@ visit(
 ===
 
 --- segment
-name: [CAMPAIGN NAME] CC_02. Main KV
+name: [CAMPAIGN NAME] CC_00. Contents Click Total
 rsid: sscompany_name4mstglobal
 
 hit(
-  '[CAMPAIGN NAME] CC_02. Main KV'!hit(
+  '[CAMPAIGN NAME] CC_00. Contents Click Total'!hit(
     hit(
-      'cc04 component'!hit( customlink starts-with 'cc04_offers kv' )
+      'evar OR group'!hit(
+        'v25'!hit(
+          evar25 exists
+          AND
+          event25 event-exists
+        )
+        OR
+        'v26'!hit(
+          evar26 exists
+          AND
+          event26 event-exists
+        )
+        OR
+        'v35'!hit(
+          evar35 exists
+          AND
+          event35 event-exists
+        )
+      )
       AND
-      'v26'!hit( event26 event-exists AND evar26 contains 'kv' )
+      not 'site'!hit(
+        evar80 equals 'ViewWidget'
+      )
     )
+  )
+)
+
+===
+
+--- segment
+name: [CAMPAIGN NAME] CC_00. Contents Click Total (Delayed Purchase)
+rsid: sscompany_name4mstglobal
+
+hit(
+  visit(
+    '[CAMPAIGN NAME] CC_00. Contents Click Total'!hit(
+      @s200000000_YOUR_SEGMENT_ID
+      AND
+      'evar OR group'!hit(
+        'v25'!hit(
+          evar25 exists
+          AND
+          event25 event-exists
+        )
+        OR
+        'v26'!hit(
+          evar26 exists
+          AND
+          event26 event-exists
+        )
+        OR
+        'v35'!hit(
+          evar35 exists
+          AND
+          event35 event-exists
+        )
+      )
+      AND
+      not 'site'!hit(
+        evar80 equals 'ViewWidget'
+      )
+    )
+    THEN
+    '[Global] Add to Cart Visit'!hit(
+      @YOUR_ID
+    )
+    AND
+    hit(
+      NOT orders event-exists
+    )
+  )
+  THEN
+  visit(
+    orders event-exists
   )
 )
