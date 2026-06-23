@@ -1,5 +1,9 @@
-# RESHAPE_standard_v1.5.py
-# 2026-06-18  Jonghyun Park w/ Claude
+# RESHAPE_standard_v1.6.py
+# 2026-06-23  Jonghyun Park w/ Claude
+# v1.6 (2026-06-23): · wide output splits revenue-class metric into <metric>_org (original)
+#                      + <metric> (fx) two columns (old wide had fx only, original missing).
+#                    · add 'variable' column (long+wide) — from extract 'dimension'
+#                      (e.g. variables/evar26): strip 'variables/' prefix, keep tail token.
 # v1.5 (2026-06-18): stack metric_origin + normalized metric (add metric_origin col),
 #                    VALUE (원본)->value_origin rename, wide union (_union_standard_wide_*)
 #                    with normalized metric as columns. RESHAPE also normalizes from
@@ -43,6 +47,9 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
   · COUNTRY = site_registry 로 site_code → 국가명
   · 출력 : <폴더>/output/_union_standard_{ts}.csv (long)
            + _union_standard_wide_{ts}.csv (normalized metric as columns)
+           (v1.6) wide: revenue-class metric split into <metric>_org (original) + <metric> (fx).
+  · (v1.6) variable : from extract 'dimension' (e.g. variables/evar26) strip 'variables/'
+           prefix, keep tail token (evar26·product·marketingchannel) — both long & wide.
 
 환율(currency) 처리:
   · revenue metric 행이 하나도 없으면 currency.csv 불필요 → 그냥 진행 (Entries/Visits 등)
@@ -119,6 +126,15 @@ DIM_COLUMN = ""
 # 출력 CSV 에 쓸 디멘션 컬럼 헤더명. "" 면 위에서 감지/지정한 소스 컬럼명 그대로 사용.
 #   예) "CID" 로 바꾸고 싶으면 여기 지정.
 DIM_OUTPUT_HEADER = ""
+
+# ─── variable 컬럼 (v1.6) ──────────────────────────────────────────
+# extract 의 'dimension'(예: 'variables/evar26') 에서 'variables/' 앞부분을 떼고
+# 뒤 토큰(evar26·product·marketingchannel 등)만 'variable' 컬럼으로 출력 (long·wide 둘 다).
+# extract 에 'dimension' 컬럼이 없으면(구버전) 자동 skip.
+INCLUDE_VARIABLE_COLUMN = True
+# dimension 소스 컬럼명 / 출력 컬럼명 (보통 그대로).
+VARIABLE_SOURCE_COLUMN = "dimension"
+VARIABLE_OUTPUT_HEADER = "variable"
 
 # ─── site_code 치환 (출력 SITE CODE 마지막 정리) ───────────────────
 # 출력 SITE CODE 값에서 아래 매핑대로 치환.
@@ -474,11 +490,17 @@ def process() -> int:
     elif APPLY_CURRENCY:
         print("[currency] revenue metric 없음 → 환율 적용 skip")
 
+    # v1.6: variable 컬럼 — extract 에 'dimension' 컬럼이 있을 때만 (구버전이면 skip)
+    has_variable = INCLUDE_VARIABLE_COLUMN and VARIABLE_SOURCE_COLUMN in first_fields
+
     # 출력 컬럼 순서 (dim_header 확정 후 구성). 환율 적용 batch 면 'VALUE (원본)' 추가.
     base_headers = ["TIER", "SUBS", "COUNTRY", "SITE CODE", "ITEM", "VALUE"]
     if apply_fx:
         base_headers.append("value_origin")
-    base_headers += ["rsid", "start_date", "end_date", "value_n", "metric_origin", "metric", dim_header]
+    base_headers += ["rsid", "start_date", "end_date", "value_n", "metric_origin", "metric"]
+    if has_variable:   # v1.6: 'variables/' 떼고 뒤 토큰만 (dim 값 컬럼 왼쪽)
+        base_headers.append(VARIABLE_OUTPUT_HEADER)
+    base_headers.append(dim_header)
     if do_category:   # v1.4: dim 컬럼 다음에 category 컬럼 (yaml 있을 때만)
         base_headers += ["category", "category_non_acc_unknown_excl"]
     base_headers.append("segments")
@@ -580,6 +602,8 @@ def process() -> int:
         }
         if apply_fx:
             row_out["value_origin"] = origin
+        if has_variable:   # v1.6: dimension 'variables/evar26' → 'evar26'
+            row_out[VARIABLE_OUTPUT_HEADER] = (r.get(VARIABLE_SOURCE_COLUMN) or "").split("/")[-1].strip()
 
         # v1.4: product category 분류 — panel/table/reportlet 키워드 매칭 행만
         if do_category:
@@ -638,12 +662,20 @@ def process() -> int:
 
 
 def _write_wide(out_rows, out_headers, out_dir, ts):
-    """정제 metric 을 열 헤더로 올린 wide union (셀 = fx VALUE).
-    index = out_headers 에서 metric_origin/metric/value_n/VALUE/value_origin 제외 전부."""
+    """Wide union with normalized metric as column headers.
+    index = all out_headers except metric_origin/metric/value_n/VALUE/value_origin
+    (keeps dim value, segments, device, panel, variable -> per-dimension rows). Same index+metric summed.
+
+    v1.6: revenue-class metric (name contains CURRENCY_METRIC_KEYWORD, when value_origin exists)
+          is split into '<metric>_org' (original = value_origin) + '<metric>' (fx = VALUE).
+          e.g. Revenue -> 'Revenue_org' (original) + 'Revenue' (fx). Other metrics stay single (VALUE)."""
     metric_value_cols = {"metric_origin", "metric", "value_n", "VALUE", "value_origin"}
     index_cols = [c for c in out_headers if c not in metric_value_cols]
+    has_origin = "value_origin" in out_headers   # was apply_fx in v1.5
+    ORG_SUFFIX = "_org"
     groups = {}
     metric_order = []
+    org_metrics = set()   # revenue-class metrics needing an _org pair
     collisions = 0
     for r in out_rows:
         m = (r.get("metric") or "").strip()
@@ -656,14 +688,25 @@ def _write_wide(out_rows, out_headers, out_dir, ts):
             groups[key] = g
         if m not in metric_order:
             metric_order.append(m)
-        if m in g:
+        is_rev = has_origin and CURRENCY_METRIC_KEYWORD in m.lower()
+        org_col = m + ORG_SUFFIX
+        if is_rev:
+            org_metrics.add(m)
+        if m in g:   # collision -> sum
             try:
                 g[m] = float(g[m]) + float(r.get("VALUE") or 0)
             except (TypeError, ValueError):
                 pass
             collisions += 1
+            if is_rev:
+                try:
+                    g[org_col] = float(g.get(org_col) or 0) + float(r.get("value_origin") or 0)
+                except (TypeError, ValueError):
+                    pass
         else:
             g[m] = r.get("VALUE", "")
+            if is_rev:
+                g[org_col] = r.get("value_origin", "")
 
     def _fmt(v):
         if v == "" or v is None:
@@ -674,7 +717,12 @@ def _write_wide(out_rows, out_headers, out_dir, ts):
             return v
         return int(fv) if fv == int(fv) else round(fv, 2)
 
-    wide_headers = index_cols + metric_order
+    # header: revenue-class emits <metric>_org (original) first, then <metric> (fx)
+    wide_headers = list(index_cols)
+    for m in metric_order:
+        if m in org_metrics:
+            wide_headers.append(m + ORG_SUFFIX)
+        wide_headers.append(m)
     out_path = out_dir / f"{OUTPUT_BASENAME}_wide_{ts}.csv"
     with open(out_path, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=wide_headers, quoting=csv.QUOTE_MINIMAL, extrasaction="ignore")
@@ -682,10 +730,13 @@ def _write_wide(out_rows, out_headers, out_dir, ts):
         for g in groups.values():
             row = {c: g.get(c, "") for c in index_cols}
             for m in metric_order:
+                if m in org_metrics:
+                    row[m + ORG_SUFFIX] = _fmt(g.get(m + ORG_SUFFIX, ""))
                 row[m] = _fmt(g.get(m, ""))
             w.writerow(row)
     print(f"[save] {out_path}")
-    print(f"  wide rows : {len(groups)} / metric cols {len(metric_order)}")
+    print(f"  wide rows : {len(groups)} / metric cols {len(metric_order)}"
+          + (f" (revenue-class {len(org_metrics)} split into _org)" if org_metrics else ""))
     if collisions:
         print(f"  warn: index+metric collisions {collisions} summed")
 

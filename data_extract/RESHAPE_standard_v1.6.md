@@ -1,5 +1,5 @@
-# RESHAPE_standard_v1.5.py  
-<sub>2026-06-18  Jonghyun Park w/ Claude</sub>  
+# RESHAPE_standard_v1.6.py  
+<sub>2026-06-23  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -43,7 +43,12 @@
   - 단위 괄호 유지: `Time Spent per Visit (seconds)` → 그대로
   - 별칭: `AppBounce` → `Bounces` (`METRIC_ALIASES`, extract_data 와 동기화)
 - **value_origin** — 환율 적용 시 원본값 컬럼 (이전 `VALUE (원본)` 에서 이름 통일).
-- **wide union** — `_union_standard_wide_{날짜시간}.csv` 추가 출력. **정제 metric 값들을 열 헤더로 승격**(가로 나열, fx `VALUE` 채움). 행 식별(index) = metric/value 계열 제외 전부(디멘션값·segments·device·panel 등 포함). long(`_union_standard`)과 함께 2종 출력.
+- **wide union** — `_union_standard_wide_{날짜시간}.csv` 추가 출력. **정제 metric 값들을 열 헤더로 승격**(가로 나열, fx `VALUE` 채움). 행 식별(index) = metric/value 계열 제외 전부(디멘션값·segments·device·panel·variable 등 포함). long(`_union_standard`)과 함께 2종 출력.
+  - **(v1.6) revenue 분리** — revenue 계열 metric(이름에 `revenue` 포함, value_origin 있을 때)은 wide 에서 **`<metric>_org`(원본) + `<metric>`(fx)** 두 열로 분리(`Revenue` → `Revenue_org` + `Revenue`). 비-revenue metric 은 단일 열 유지.
+
+### variable 컬럼 (v1.6)
+
+extract 의 `dimension`(예: `variables/evar26`)에서 `variables/` 앞부분을 떼고 **뒤 토큰**(`evar26`·`product`·`marketingchannel` 등)만 `variable` 컬럼으로 출력한다(**long·wide 둘 다**). 어떤 변수(evar/prop/marketingchannel)에서 나온 dim 값인지 식별용. `INCLUDE_VARIABLE_COLUMN`(기본 True)로 on/off, extract 에 `dimension` 컬럼이 없으면(구버전) 자동 skip.
 
 ### product category 분류 (v1.4)
 
@@ -110,6 +115,7 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
 | `DROP_ZERO_VALUE` | VALUE==0 행 제외 | 0 행이 많아 빼고 싶을 때 |
 | `INCLUDE_REPORTLET` | 검수용 reportlet 컬럼 추가 | 출처 확인 필요할 때 |
 | `EXCLUDE_OUTPUT_COLUMNS` | 출력에서 뺄 컬럼명 리스트 (대소문자 무시, 빈 리스트=전부 유지) | 안 쓰는 컬럼 빼고 가볍게 뽑을 때 |
+| `INCLUDE_VARIABLE_COLUMN` · `VARIABLE_SOURCE_COLUMN` · `VARIABLE_OUTPUT_HEADER` | dimension(`variables/evar26`)에서 뒤 토큰만 `variable` 컬럼 추가 (v1.6) | 어떤 변수(evar/prop)에서 온 dim 값인지 표기할 때 |
 | `ADD_CATEGORY_COLUMN` | product 키워드 행에 category 컬럼 추가 (v1.4) | 제품코드 카테고리 분류가 필요할 때 |
 | `CATEGORY_YAML` | 분류 룰 yaml 경로 (기본 같은 폴더 `product_category.yaml`) | yaml 위치/룰 바꿀 때 |
 | `CATEGORY_UNKNOWN_LABEL` | 미분류 제품 라벨 (기본 `Unknown`) | 미분류 표기 바꿀 때 |
@@ -122,18 +128,18 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
 
 ```
 TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [value_origin],
-rsid, start_date, end_date, value_n, metric_origin, metric, <디멘션>,
+rsid, start_date, end_date, value_n, metric_origin, metric, [variable], <디멘션>,
 [category, category_non_acc_unknown_excl,] segments
 [, device, bd1_dimension, bd1_itemId, bd1_value, …], Panel name [, reportlet]
 ```
 - `<디멘션>` = 자동 감지된 디멘션 이름(`campaign`, `evar26` …)
-- `[ ]` 표기 컬럼은 **조건부**로만 들어감 — `value_origin`(환율 적용 시), `category` / `category_non_acc_unknown_excl`(`ADD_CATEGORY_COLUMN`+yaml 있을 때), `device` / `bd{k}_*`(입력에 있을 때). 각 컬럼의 동작·이유는 위 해당 기능 섹션 참고.
+- `[ ]` 표기 컬럼은 **조건부**로만 들어감 — `value_origin`(환율 적용 시), `variable`(extract 에 `dimension` 컬럼 있을 때, v1.6), `category` / `category_non_acc_unknown_excl`(`ADD_CATEGORY_COLUMN`+yaml 있을 때), `device` / `bd{k}_*`(입력에 있을 때). 각 컬럼의 동작·이유는 위 해당 기능 섹션 참고.
 - `EXCLUDE_OUTPUT_COLUMNS` 로 위 목록 중 원하는 컬럼을 출력에서 제외 가능.
 
 ## 실행
 
 ```bash
-python RESHAPE_standard_v1.5.py
+python RESHAPE_standard_v1.6.py
 ```
 - 같은 폴더에 `site_registry.py` 필요 (site_code → 국가/rsid)
 - `ADD_CATEGORY_COLUMN=True` 면 같은 폴더에 `product_category.yaml` 필요 (없고 키워드 매칭 행 있으면 경고 후 분류 skip)
