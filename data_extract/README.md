@@ -340,7 +340,7 @@ v2 contents 시리즈 베이스 + main 의 site loop 를 `ThreadPoolExecutor` �
 
 | 파일 | 폴더 |
 |---|---|
-| `extract_data_v3_contents.py` | `_contents/` |
+| `extract_data_v3.2_contents.py` | `_contents/` |
 
 ## v2 contents 대비 차이
 
@@ -358,8 +358,8 @@ SITE_WORKERS = 5    # 1=순차, 2-3=site 적을 때, 5-8=site 많을 때
 ```
 
 ```bash
-python extract_data_v3_contents.py             # SITE_WORKERS 값 그대로 사용
-python extract_data_v3_contents.py --site us   # 특정 site 만 (병렬 의미 없음)
+python extract_data_v3.2_contents.py             # SITE_WORKERS 값 그대로 사용
+python extract_data_v3.2_contents.py --site us   # 특정 site 만 (병렬 의미 없음)
 ```
 
 ## SITE_WORKERS 권장값

@@ -74,7 +74,7 @@ rsid, start_date, end_date, value_n
 ## SITE CODE 정규화 (v1.1)
 
 2026-05-19 부로 US 의 RSID 가 `sscompany_namenewus` → `sscompany_name4newus` 로 갈리면서
-`extract_data_v3_contents.py` 가 두 site_code 로 분리 추출:
+`extract_data_v3.2_contents.py` 가 두 site_code 로 분리 추출:
 - `us_old` (rsid `sscompany_namenewus`, 기간 ~5-18, `[US]` panel)
 - `us` (rsid `sscompany_name4newus`, 기간 5-19~, `[Global]` panel)
 
