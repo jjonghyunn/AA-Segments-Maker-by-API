@@ -1,13 +1,13 @@
 # RESHAPE_standard_v1.6.py
 # 2026-06-23  Jonghyun Park w/ Claude
-# v1.6 (2026-06-23): · wide output splits revenue-class metric into <metric>_org (original)
-#                      + <metric> (fx) two columns (old wide had fx only, original missing).
-#                    · add 'variable' column (long+wide) — from extract 'dimension'
-#                      (e.g. variables/evar26): strip 'variables/' prefix, keep tail token.
-# v1.5 (2026-06-18): stack metric_origin + normalized metric (add metric_origin col),
-#                    VALUE (원본)->value_origin rename, wide union (_union_standard_wide_*)
-#                    with normalized metric as columns. RESHAPE also normalizes from
-#                    metric_origin (_normalize_metric) so mixed v3.8 stacks stay consistent.
+# v1.6 (2026-06-23): · wide 출력에서 revenue 계열 metric 을 revenue_org(원본)+revenue(fx)
+#                      두 열로 분리 (기존 wide 는 fx 값만, 원본 누락이었음).
+#                    · 'variable' 컬럼 추가(long+wide) — extract 의 dimension(variables/evar26 등)
+#                      에서 'variables/' 앞부분 떼고 뒤 토큰(evar26·product·marketingchannel)만.
+# v1.5 (2026-06-18): stack 의 metric_origin + 정제 metric 반영(출력에 metric_origin 추가),
+#                    VALUE (원본)→value_origin 리네임, 정제 metric 을 열로 올린 wide union
+#                    (_union_standard_wide_*) 추가 출력. RESHAPE 도 metric_origin 에서 직접
+#                    정제(_normalize_metric) — v3.8 미정제 stack 섞여도 일관.
 # v1.4 (2026-06-15): panel/table/reportlet 이름에 키워드(Multi Purchase·Multi Order·
 #                    Best Selling Product, 대소문자/언더바 무시) 가 있으면 product_category.yaml
 #                    (include/exclude regex) 로 제품코드를 분류해 'category' 컬럼 추가.
@@ -46,10 +46,10 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
   · DIM_EXCLUDE_VALUES 일치하는 디멘션값 행 제외 (Unspecified/null/(summary) 등, 대소문자 무시)
   · COUNTRY = site_registry 로 site_code → 국가명
   · 출력 : <폴더>/output/_union_standard_{ts}.csv (long)
-           + _union_standard_wide_{ts}.csv (normalized metric as columns)
-           (v1.6) wide: revenue-class metric split into <metric>_org (original) + <metric> (fx).
-  · (v1.6) variable : from extract 'dimension' (e.g. variables/evar26) strip 'variables/'
-           prefix, keep tail token (evar26·product·marketingchannel) — both long & wide.
+           + _union_standard_wide_{ts}.csv (정제 metric 을 열로 올린 wide)
+           (v1.6) wide 의 revenue 계열 metric 은 revenue_org(원본)+revenue(fx) 두 열로 분리.
+  · (v1.6) variable : extract 의 dimension(variables/evar26 등)에서 'variables/' 앞부분을
+           떼고 뒤 토큰(evar26·product·marketingchannel 등)만 — long·wide 둘 다 추가
 
 환율(currency) 처리:
   · revenue metric 행이 하나도 없으면 currency.csv 불필요 → 그냥 진행 (Entries/Visits 등)
