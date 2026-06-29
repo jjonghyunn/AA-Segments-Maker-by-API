@@ -1,10 +1,16 @@
-# extract_data_v3.9.py
+# extract_data_v4.0.py
 # 2026-06-12  Jonghyun Park w/ Claude
+# v4.0 (2026-06-29): 출력 CSV 쓰기 직후 자가 무결성 검증(_verify_csv_written) 추가 —
+#                    stack/table CSV 를 다시 읽어 모든 행의 필드수가 헤더와 일치하는지 확인,
+#                    정상이면 ✓(데이터 행수×칼럼수), 불일치 시 ⚠ 경고 + 재추출 권장 (OneDrive 동기화/복사 등 외부 손상 즉시 감지).
+#                    + breakdown 단계별 행 cap 분리 — LIMIT_BD/BD2/BD3/BD4 (bd1~4 = level2~5, bd5+ 는 BD4), CLI --limit-bd2~bd4.
+#                    + --estimate 사전 추정 모드 — breakdown 단계별 1경로 샘플 측정 → 총 /reports 호출수·ETA 출력 후 추출 생략.
+#                    그 외 추출 로직은 v3.9 와 동일.
 # 2026-06-15: 진행률 + ETA 콘솔 출력 추가 (VERBOSE_PROGRESS) — site 1개 끝날 때마다
 #             [i/N]·소요·추출 row수·누적·평균·남은·전체 한 줄. 남은 = 완료 site 평균소요 × 남은 site 수,
 #             전체 = 누적 + 남은 (SITE_WORKERS>1 이면 ÷ 워커수 근사). 추출 로직 불변(출력만 추가).
-# v3.9 (2026-06-18): stack CSV metric -> metric_origin + normalized metric col
-#                    (alias AppBounce->Bounces, strip event paren / keep unit paren).
+# v3.9 (2026-06-18): stack CSV 의 metric → metric_origin + 정제 metric 컬럼 추가
+#                    (별칭 AppBounce→Bounces, 이벤트 괄호 제거·단위 괄호 유지).
 # v3.8 (2026-06-12): device 케이스별 반복 추출 (DEVICE_CASES) —
 #                    프로젝트 패널에 device 세그가 전혀 없을 때, 패널마다 (Seg1, Seg2) 세그 stack 을
 #                    globalFilter 로 끼워 케이스별로 각각 추출. 케이스 수는 DEVICE_CASES 상수로
@@ -34,113 +40,38 @@
 #                    BREAKDOWN_ENABLED=False 면 v3.4 와 100% 동일 동작.
 # v3.4 (2026-06-04): EXTRA_SEGMENTS name_keywords 패널-우선 해석 추가 (패널 내 1건->자동적용, 2건+->중단)
 """
-v2 (extract_data_v2.py) 차이:
-  · EXTRA_SEGMENTS 옵션 추가 — 세그먼트 이름 키워드 검색 → globalFilter 로 추가 적용
-  · 매칭 정책:
-      - 1개 매칭 → 진행
-      - 2~5개 매칭 → 콘솔에 ID/이름 나열 + 중단 (lookup CSV/DSL 도 저장)
-      - 6개 이상 → 콘솔에 'lookup CSV 확인' + 중단 (lookup CSV/DSL 저장)
-      - 0개 → 에러 + 중단
-  · 검색 결과는 항상 lookup/segment_lookup_<query>_YYMMDD_HHMM.csv + .dsl 두 파일 저장
-      - CSV columns: segment_id, name, owner_id, owner_name, rsid, description, tags, structure (DSL oneline)
-      - DSL: 모든 매치를 한 파일에 '===' 구분선으로 이어붙임 (들여쓰기 보존)
-  · panel_scope 로 적용 대상 panel 지정:
-      - "all" : 모든 panel 에 적용
-      - ["키워드1", "키워드2"] : panel.name 에 키워드 포함 시 적용 (OR 매칭, case-insensitive)
+extract_data — AA Workspace 프로젝트의 panel·reportlet 구조를 여러 site(RSID)로 추출.
+한 프로젝트를 site별 RSID + 기간(dateRange) override 로 반복 호출해 long/wide CSV 2종으로 떨군다.
 
-EXTRA_SEGMENTS = [] 이면 v2 와 100% 동일 동작 (옵트인).
+전체 흐름:
+  1) 설정 로드 — AUTH(OAuth S2S), PROJECT_ID, sites_input.csv(site_code·기간), 옵션 상수들.
+  2) 인증 → 프로젝트 GET → panel 목록 확보. dateRange·segment name 미리 조회(캐시).
+  3) site 별 반복 (SITE_WORKERS 병렬):
+       a. task 생성 = panel × reportlet/table × device case
+            (모두 옵션 — panel·table 은 REQUIRED_PANEL_KEYWORDS / REQUIRED_TABLE_KEYWORDS 이름 필터,
+             device case 는 DEVICE_CASES. 비우면 전체 대상 1회).
+       b. 각 task 의 globalFilter 구성:
+            · 패널 기존 세그(panel.segmentGroups) 적용 — (옵션) SKIP_PANEL_SEGMENTS 로 패널 세그 전체 무시,
+              SKIP_PANEL_SEGMENT_KEYWORDS 로 이름 키워드 매칭 세그만 골라 제외
+            · (옵션) EXTRA_SEGMENTS 추가 — 이름→id 최초 1회 확정(+lookup 파일 저장) 후 매 task 적용, enabled 토글로 on/off
+            · site 기간(start/end) dateRange override
+       c. /reports 호출 (MAX_WORKERS 병렬) — 페이지네이션 + 레벨별 행수 cap(LIMIT_LV1 / LIMIT_BD~LIMIT_BD4).
+       d. (옵션) N단계 breakdown(BREAKDOWN_ENABLED) — dim1 의 각 item 을 하위 차원으로 재귀 분해 (metricFilter 체인 AND).
+       e. 결과를 CSV 2종으로 기록 후 무결성 자가검증(v4.0):
+            · stack_data_extract_<site>_<ts>.csv — long unpivot (1행 = item × value_n). RESHAPE 입력용.
+            · table_data_extract_<site>_<ts>.csv  — AA 테이블 가로형 (1행 = item, value1..N + seg_value1..N).
+  4) site 마다 진행률·ETA 한 줄 출력, 마지막에 전체 요약.
 
-흐름 (v2 동일 + 1단계 추가):
-  0) EXTRA_SEGMENTS 가 있으면 _resolve_extra_segment() 로 ID 확정 + lookup 파일 저장
-  1~) v2 와 동일
-
-v3.1 (2026-05-28) 추가:
-  · SKIP_PANEL_SEGMENTS 옵션 — panel.segmentGroups (Workspace 패널 상단 박힌 기존 세그) globalFilter 포함 여부
-      False (default)      : 기존 동작
-      True                 : 모든 panel 에서 기존 세그 무시
-      ["키워드1", ...]      : panel.name 키워드 매칭된 panel 만 기존 세그 무시 (OR, case-insensitive)
-
-v3.2 (2026-06-02) 추가:
-  · EXTRA_SEGMENTS 항목별 "enabled" 토글 — False 면 그 세그를 globalFilter 에서 제외(스킵).
-      줄을 지우지 않고 끄기 가능. 키 없으면 True (기존 동작 유지).
-      용도: 이미 적용했던 exclude 세그를 빼고 "세그 없는 전체(full population)" 재추출.
-  · OUTPUT_PREFIX 상수 — 출력 CSV 파일명 앞 prefix. "" 면 기존 동작.
-      예: "full_" (세그 없는 전체), "excl-seg_" (세그 제외 적용본).
-
-v3.3 (2026-06-02) 추가:
-  · REQUIRED_TABLE_KEYWORDS 상수 — 처리할 reportlet(테이블)을 이름 키워드로 제한.
-      [] 면 panel 안 모든 테이블 처리(기존 동작). [kw,...] 면 해당 이름 테이블만.
-      REQUIRED_PANEL_KEYWORDS(panel 단위) 다음 단계로 테이블 단위 필터 한 겹 추가.
-
-v3.5 (2026-06-10) 추가:
-  · N단계 dimension breakdown — dim1(행 = dimensionSettings[0]) 의 각 item 을
-    하위 차원으로 재귀 분해. AA Workspace 의 "행을 다른 차원으로 break down" 과 동일.
-      - 차원 체인: freeformTable.breakdowns[].breakdowns[] 의 nested dimension 을 깊이순으로 자동감지.
-        또는 BREAKDOWN_DIMENSIONS 로 dim1 다음 차원들을 명시 override.
-      - 각 하위 레벨 호출 = /reports with dimension=하위차원,
-        metricFilters 에 조상마다 {"type":"breakdown","dimension":<조상차원>,"itemId":<조상item>} 추가하고
-        각 metric.filters 에 그 fid 들을 모두 append (기존 컬럼 segment filter 와 AND).
-      - CSV: 도달한 최대 깊이만큼 bd1_/bd2_/… (dimension,itemId,value) 컬럼 셋이 레벨당 3개씩 추가.
-        dim1 총계 행은 모든 bd* 가 공백 → v3.4 출력 상위호환.
-      - BREAKDOWN_TOP_N>0 이면 레벨별 상위 N item 만 분해(곱연산 폭증 방지).
-  · BREAKDOWN_ENABLED=False (default 와 별개로 비활성) 또는 차원 체인 0개면 v3.4 와 100% 동일 동작.
-
-v3.6 (2026-06-10) 추가:
-  · site 단위 병렬 처리 — _contents 시리즈의 SITE_WORKERS 포팅.
-      SITE_WORKERS = 1  → v3.5 와 동일 (site 순차)
-      SITE_WORKERS > 1  → 그 수만큼 site 동시 처리 (ThreadPoolExecutor)
-      CLI --site-workers <N> 으로 override.
-  · 주의: 동시 API 요청 ≈ SITE_WORKERS × workers (+ breakdown 단계 동시 호출).
-      429(throttling) 자주 보이면 SITE_WORKERS 5 → 3 → 2 로 줄일 것.
-  · site 병렬 시 콘솔 로그는 site 간 섞여 출력됨 (결과 CSV 는 site 별 파일이라 영향 없음).
-
-v3.7 (2026-06-12) 추가:
-  · 레벨별 limit 분리 — LIMIT 1개 → LIMIT_LV1 / LIMIT_BD 2개.
-      LIMIT_LV1 : dim1(1st level) reportlet 당 최대 행 수.
-      LIMIT_BD  : breakdown(2nd level~) 부모 item 1개당 레벨별 최대 하위 행 수.
-      각각 CLI --limit / --limit-bd 로 override. 0 = 무제한(v3.6 동작).
-  · 행수 cap 실제 적용 — v3.6 까지는 settings.limit 이 "API 1 page 크기"로만 쓰여서
-      _fetch_all_pages 가 MAX_PAGES(100) 까지 페이지네이션을 계속 돌아 limit 이 무력했음
-      (LIMIT=200 이어도 200행 × 100 page = 사실상 전체 행 수집).
-      v3.7 은 _fetch_all_pages(max_rows=N) 로 누적 행이 N 도달 시 중단 + 초과분 truncate.
-  · breakdown 호출도 v3.6 까지 module LIMIT 만 참조(--limit 무시) → LIMIT_BD + --limit-bd 로 정리.
-  · 출력 CSV 2종 파일명·구조 개편 (OUTPUT_BASENAME_STACK / OUTPUT_BASENAME_TABLE 상수):
-      stack_data_extract_<site>_<ts>.csv  (기존 extract_data_*)
-        — long unpivot 세로 스택 유지. 1행 = item × value_n.
-          컬럼: itemId/dim값/value_n/metric/segments/device/value1/bd{k}_* (v3.6 과 동일 구조).
-          RESHAPE_standard_* 등 후처리 입력용.
-      table_data_extract_<site>_<ts>.csv  (기존 column_mapping_* 대체)
-        — AA Workspace 테이블 모양 가로형. 1행 = dimension item.
-          value1..N = 컬럼 stack 별 값 (N = site 내 테이블들의 최대 컬럼 수).
-          seg_value{i} = "metric;; segments" — metric 을 맨앞에 두고 SEG_VALUE_SEP(';;')로 결합
-          (segments 내부 구분자가 '; ' 라 세미콜론 2개 사용. 예:
-           "Visits;; [part_name] All Page Track - PF Only; [Device] Mobile").
-          테이블 블록 순서: "(summary)" 총계 행 → dim1 item 행들 → breakdown 행들(bd{k}_* 컬럼).
-          기존 column_mapping 의 value_n/metric/segments/data_value 세로 행은 이 가로형으로 대체.
-
-v3.8 (2026-06-12) 추가:
-  · DEVICE_CASES — 패널마다 (Seg1, Seg2) device 세그 stack 을 globalFilter 로 끼워
-    케이스별로 반복 추출. 대상 프로젝트 패널에 device 세그가 전혀 없는 경우용.
-      - 케이스 1개 = {"device": 라벨, "segment_ids": [세그ID 2개+], ("requires_app": True)}
-        — 리스트에 dict 추가/삭제로 케이스 수 자유 증감 (코드 어디에도 케이스 수 하드코딩 없음).
-      - task 수 = 패널 × 테이블 × 적용 케이스 수 — API 호출이 그만큼 늘어남 (429 시 --site-workers 축소).
-      - stack CSV 의 device 컬럼 = 케이스 라벨, segments 컬럼에 케이스 세그 name 도 append.
-        table CSV 에는 device 컬럼이 새로 추가됨 (같은 테이블이 케이스 수만큼 반복되므로 행 구분용).
-  · app_O_X.csv — site_code 별 App 론치 O/X. X site 는 requires_app=True 케이스를 제외하고
-    추출 (기본 케이스 셋에선 PC/Mobile 만). lookup 룰:
-      ① site_code 그대로 → ② `_old` 접미사 제거 후 재시도 (us_old 처럼 직접 있으면 ① 에서 매칭)
-      → ③ 둘 다 없으면 경고 출력 후 X 간주. 파일이 없으면 전 site O 간주.
-  · DEVICE_CASE_SITE_OVERRIDES — site 별 세그 치환 ({site: {원본id: 대체id}}).
-    구/별도 suite 라서 [Global] 세그가 0행을 만드는 site 용. 검증: us_old 는
-    [Global] Excluded APP / [Global] App Only 가 0행 (PC User/Mobile User 는 정상)
-    → Excluded APP 을 [US] Excluded APP 으로 치환하면 정상 추출.
-  · DEVICE_CASES = [] 면 v3.7 과 100% 동일 동작 (옵트인).
+옵션·동작 토글(EXTRA_SEGMENTS / SKIP_PANEL_SEGMENTS / DEVICE_CASES / BREAKDOWN_* / LIMIT_* 등)은
+파일 상단 "사용자가 바꿔야 하는 부분" 설정 섹션의 각 상수 주석 참고.
+버전별 변경 이력은 위 # 헤더 참고 (여기엔 중복 기재하지 않음).
 """
 from __future__ import annotations
 
 import argparse
 import copy
 import csv
+import io
 import json
 import re
 import sys
@@ -165,9 +96,11 @@ COMPANY_ID = "your_aa_company_id"
 
 # ─── 대상 프로젝트 ──────────────────────────────────────────────────
 # v1 과 동일 — 같은 project 의 panel/reportlet 구조를 여러 site (rsid) 로 추출
-PROJECT_ID = "YOUR_PROJECT_ID"
-# PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME Campaign Revisit & Repurchase Analysis _(AU)
-# https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
+
+
+PROJECT_ID = "YOUR_PROJECT_ID" # 재방문 API 추출 테스트
+# https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/workspace/edit/YOUR_ID
+
 
 # ─── input / 출력 ──────────────────────────────────────────────────
 SITES_INPUT_CSV = Path(__file__).resolve().parent / "sites_input.csv"
@@ -191,11 +124,19 @@ SITE_WORKERS = 5
 REQUEST_TIMEOUT = 600
 MAX_RETRIES = 10
 # 레벨별 행 수 상한 (v3.7) — 0 = 무제한 (MAX_PAGES 페이지네이션까지 전체 수집, v3.6 동작)
-#   LIMIT_LV1 : dim1(1st level) reportlet 당 최대 행 수. CLI --limit 로 override.
-#   LIMIT_BD  : breakdown(2nd level~) 부모 item 1개당 레벨별 최대 하위 행 수. CLI --limit-bd.
+#   ※ 용어: dim1(테이블 행 차원) 자체가 level1. 첫 breakdown 이 level2 → breakdown N단계 = level(N+1).
+#   LIMIT_LV1 : dim1 = level1. reportlet 당 최대 행 수. CLI --limit.
+#   LIMIT_BD  : breakdown 1단계 (bd1, = level2) 부모 item 1개당 최대 하위 행 수. CLI --limit-bd.
+#   LIMIT_BD2 : breakdown 2단계 (bd2, = level3) 〃. CLI --limit-bd2.
+#   LIMIT_BD3 : breakdown 3단계 (bd3, = level4) 〃. CLI --limit-bd3.
+#   LIMIT_BD4 : breakdown 4단계+ (bd4~, = level5~) 〃. CLI --limit-bd4.
+#               (dim1 포함 총 레벨 = breakdown 단계 + 1 → bd4 까지면 최대 5레벨. 테이블 실제 깊이까지만 적용)
 #   ※ BREAKDOWN_TOP_N > 0 이면 breakdown 은 TOP_N 이 우선 (레벨별 상위 N 만 분해).
 LIMIT_LV1 = 50000
 LIMIT_BD  = 50000
+LIMIT_BD2 = 15
+LIMIT_BD3 = 15
+LIMIT_BD4 = 15
 MAX_PAGES = 100   # 무제한(0) 모드 페이지네이션 상한 (PAGE_SIZE_UNCAPPED × MAX_PAGES / reportlet)
 
 # 진행률 + ETA 콘솔 출력 — site 1개 끝날 때마다 [i/N]·소요·row수·누적·평균·ETA 한 줄.
@@ -234,6 +175,8 @@ REQUIRED_TABLE_KEYWORDS: list[str] = []
 BREAKDOWN_ENABLED: bool = True
 BREAKDOWN_DIMENSIONS: list[str] = []
 BREAKDOWN_TOP_N: int = 0
+# v4.0: --estimate 시 True — breakdown 단계별 1경로 샘플만 떠서 총 /reports 호출수·ETA 추정 후 추출 생략 (CLI 전용 런타임 플래그)
+ESTIMATE_ONLY: bool = False
 
 # ─── device 컬럼 (컬럼 stack 세그먼트명에서 device 추출) ─────────────
 # 각 컬럼(value_n)은 세그먼트가 stack 돼있고, 그 중 device 세그(`[Device] Mobile`,
@@ -271,7 +214,7 @@ DEVICE_SEGMENT_RULES: list[tuple[str, str]] = [
 # [] 면 v3.7 과 100% 동일 동작 (케이스 반복 없이 1회 추출).
 # ※ task 수 = 패널 × 테이블 × 케이스 수 — API 호출 그만큼 증가. 429 빈발 시 --site-workers 축소.
 # ※ 대상 프로젝트 패널에 device 세그가 이미 있으면 이 옵션 불필요 — 기본 전부 주석(비활성).
-#    패널에 device 세그가 없을 때만 아래 케이스들 주석 해제 + 본인 환경 세그 ID 로 교체해 사용.
+#    패널에 device 세그가 없을 때만 아래 케이스들 주석 해제해서 사용.
 DEVICE_CASES: list[dict] = [
     # {"device": "PC",      "segment_ids": ["세그먼트_아이디_넘버",    # Excluded APP segment
     #                                       "세그먼트_아이디_넘버"]},  # PC User (Visit) segment
@@ -294,8 +237,9 @@ DEVICE_CASES: list[dict] = [
 APP_OX_CSV = Path(__file__).resolve().parent / "app_O_X.csv"
 
 # site 별 device 세그 치환 — {site_code: {원본_seg_id: 대체_seg_id}}.
-# 구/별도 suite 라서 공용 세그가 0행을 만드는 site 용. DEVICE_CASES 사용 시에만 의미 있음.
-# 예) us_old 구 suite 에서 글로벌 Excluded APP 이 0행 → US 전용 Excluded APP 으로 치환.
+# 구/별도 suite 라서 [Global] 세그가 0행을 만드는 site 용. DEVICE_CASES 사용 시에만 의미 있음.
+# 검증(2026-06-12): us_old(구 US suite)는 [Global] Excluded APP / App Only 가 0행
+#   (PC User/Mobile User 는 정상) → Excluded APP 을 [US] 버전으로 치환하면 정상.
 DEVICE_CASE_SITE_OVERRIDES: dict[str, dict[str, str]] = {
     # "us_old": {"세그먼트_아이디_넘버": "세그먼트_아이디_넘버"},
 }
@@ -406,9 +350,10 @@ SETTINGS_FALLBACK = {
 # ════════════════════════════════════════════════════════════════════
 # 무제한(limit=0) 모드일 때 API 1 page 크기 (cap 모드에선 settings.limit = cap 으로 1~수 page)
 PAGE_SIZE_UNCAPPED = 5000
-# ─── metric 정규화 (v3.9) ─ metric_origin → 정제 metric ──────
+# ─── metric 정규화 (v3.9) — metric_origin → 정제 metric ──────────────
 # 1) METRIC_ALIASES: 특이 변형 → 표준명 (공백제거+소문자 키 매칭). 예: AppBounce → Bounces
-# 2) 끝 괄호 (…) 제거 ─ 단 METRIC_KEEP_PAREN_UNITS(단위) 면 유지.
+# 2) 끝 괄호 (…) 제거 — 단 METRIC_KEEP_PAREN_UNITS(단위) 면 유지.
+#    "Order (purchase event)"→"Order", "Time Spent per Visit (seconds)"→그대로
 METRIC_ALIASES = {
     "appbounce": "Bounces",
 }
@@ -420,7 +365,7 @@ _METRIC_PAREN_RE = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
 
 
 def _normalize_metric(name):
-    """metric_origin -> normalized metric (alias first + trailing paren cleanup)."""
+    """metric_origin → 정제 metric (별칭 우선 + 끝 괄호 정리)."""
     if not name or not isinstance(name, str):
         return name
     s = name.strip()
@@ -1203,9 +1148,6 @@ def _run_breakdowns(task: dict, headers: dict, gcid: str, *, workers: int) -> in
     base = task["payload"]
     dim1_id = task.get("dimension_id", "")
     dim1_name = task.get("dimension_name", "")
-    # v3.7: breakdown 레벨당(부모 item 당) 행 cap — TOP_N 우선, 아니면 LIMIT_BD (0 = 무제한)
-    per_level_limit = BREAKDOWN_TOP_N if BREAKDOWN_TOP_N > 0 else LIMIT_BD
-
     # frontier 항목: {"pairs":[(dim,item),...], "path":[(dim,name,item,value),...]}
     frontier: list[dict] = []
     for r in task["rows"]:
@@ -1217,16 +1159,21 @@ def _run_breakdowns(task: dict, headers: dict, gcid: str, *, workers: int) -> in
 
     all_bd_rows: list[dict] = []
     calls = 0
+    _bd_t0 = datetime.now()
     for level, (bd_dim_id, bd_dim_name) in enumerate(chain, start=1):
         if not frontier:
             break
         if BREAKDOWN_TOP_N > 0:
             frontier = frontier[:BREAKDOWN_TOP_N] if level == 1 else frontier
+        # v4.0: breakdown 단계별 행 cap — TOP_N 우선, 아니면 bd1~4 = LIMIT_BD / BD2 / BD3 / BD4 (bd5+ 는 BD4), 0=무제한.
+        #   여기 level 변수 = breakdown 단계 (level==1 = 첫 분해 bd1 = 절대 level2). 테이블 실제 깊이까지만 적용.
+        _bd_caps = [LIMIT_BD, LIMIT_BD2, LIMIT_BD3, LIMIT_BD4]
+        lvl_limit = BREAKDOWN_TOP_N if BREAKDOWN_TOP_N > 0 else _bd_caps[min(level, 4) - 1]
         sub_tasks: list[dict] = []
         for fr in frontier:
-            bp = _build_breakdown_payload(base, fr["pairs"], bd_dim_id, limit=per_level_limit)
+            bp = _build_breakdown_payload(base, fr["pairs"], bd_dim_id, limit=lvl_limit)
             sub_tasks.append({"payload": bp, "tb_name": f"{task['tb_name']}/L{level}",
-                              "max_rows": per_level_limit,   # v3.7: 페이지네이션 행 cap
+                              "max_rows": lvl_limit,   # v4.0: 레벨별 페이지네이션 행 cap
                               "rows": [], "summary_data": [], "ok": False, "error": "", "_fr": fr})
         next_frontier: list[dict] = []
         with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -1248,8 +1195,141 @@ def _run_breakdowns(task: dict, headers: dict, gcid: str, *, workers: int) -> in
                     next_frontier.append({"pairs": st["_fr"]["pairs"] + [(bd_dim_id, iid)],
                                           "path": new_path})
         frontier = next_frontier
+        # v4.0: breakdown 단계별 진행 출력 (라이브) + 남은 예상시간 — 멈춘 것처럼 보이지 않게
+        _dim_short = bd_dim_id.split("/")[-1]
+        _elapsed = (datetime.now() - _bd_t0).total_seconds()
+        _thr = calls / _elapsed if _elapsed > 0 else 0.0
+        if level < len(chain) and next_frontier:
+            # 남은 콜 = 다음 단계("다음 N행", 정확) + 그 이후 단계(캡으로 외삽)
+            _rem, _fc, _unb = 0, len(next_frontier), False
+            for _s in range(level + 1, len(chain) + 1):
+                _rem += _fc
+                if _s < len(chain):
+                    _c = _bd_caps[min(_s, 4) - 1]
+                    if _c and _c > 0:
+                        _fc *= _c
+                    else:
+                        _unb = True
+                        break
+            _tail = (f" · 남은 ~{_rem:,}콜, 남은 예상시간 ~{_fmt_dur(_rem / _thr)}"
+                     if (_thr > 0 and not _unb) else " · 남은 예상시간 ?")
+        else:
+            _tail = " · 마지막 단계, 완료"
+        print(f"      bd{level}({_dim_short}, =level{level + 1}): {len(sub_tasks)}콜 완료 → 다음 {len(next_frontier)}행 "
+              f"(누적 {calls}콜 / 누적 {_fmt_dur(_elapsed)}{_tail})", flush=True)
     task["breakdown_rows"] = all_bd_rows
     return calls
+
+
+def _estimate_runtime(bd_tasks: list[dict], headers: dict, gcid: str, *, workers: int,
+                      probe_parents: int = 5) -> None:
+    """실제 breakdown 전, breakdown 단계별 fanout 을 1 경로 샘플로 실측해 총 /reports 호출 수·ETA 추정 출력.
+    호출 수 ≈ N1·(1 + f1 + f1·f2 + …) (bd1~bd(D-1) 단계 fanout 누적곱). bd1(LIMIT_BD)이 가장 큰 곱셈 인자.
+    worst = 캡 그대로 가정 / 추정 = 실측 fanout (실제 항목수가 캡보다 작을 때 더 정확).
+    ※ 용어: bdK = breakdown K단계 = 절대 level(K+1). dim1 = level1 = N1."""
+    caps = [LIMIT_BD, LIMIT_BD2, LIMIT_BD3, LIMIT_BD4]
+
+    def _cap(stage: int) -> int:            # stage = breakdown 단계 (1-based)
+        return caps[min(stage, 4) - 1]
+
+    def _probe_cap(stage: int) -> int:      # 무제한(0) 캡이면 probe 만 200 으로 제한 (느린 probe 방지)
+        c = _cap(stage)
+        return c if c and c > 0 else 200
+
+    def _calls(N1: int, D: int, fans: list):
+        """총 breakdown 호출. fans[j-1] = bdj 단계 fanout (j=1..D-1 만 곱셈 인자). 0 있으면 None(무제한)."""
+        total = 0.0
+        prod = 1.0
+        for k in range(1, D + 1):
+            total += N1 * prod
+            if k <= D - 1:
+                cj = fans[k - 1] if k - 1 < len(fans) else 0
+                if not cj or cj <= 0:
+                    return None
+                prod *= cj
+        return int(round(total))
+
+    print("\n  ── [estimate] 사전 추정 (breakdown 단계별 1경로 샘플 측정 → 외삽, 실제 추출 안 함) ──", flush=True)
+    probe_calls = 0
+    probe_t0 = datetime.now()
+    rows_out = []
+    for t in bd_tasks:
+        chain = t.get("breakdown_chain") or []
+        D = len(chain)
+        N1 = len(t.get("rows") or [])
+        if D == 0 or N1 == 0:
+            continue
+        base = t["payload"]
+        dim1_id = t.get("dimension_id", "")
+        fans: list = []        # 실측 fanout per breakdown stage (1-based)
+        # ── bd1: dim1 부모 표본(최대 probe_parents) 병렬 호출 → 평균 fanout + deeper 경로 확보 ──
+        sample = [r for r in t["rows"][:probe_parents] if r.get("itemId") is not None]
+        sub = [{"payload": _build_breakdown_payload(base, [(dim1_id, r["itemId"])], chain[0][0],
+                                                    limit=_probe_cap(1)),
+                "tb_name": f"{t['tb_name']}/probe-bd1", "max_rows": _probe_cap(1),
+                "rows": [], "summary_data": [], "ok": False, "error": "",
+                "_pair": (dim1_id, r["itemId"])} for r in sample]
+        counts = []
+        path_pairs = None
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = {ex.submit(_extract_one, st, headers, gcid): st for st in sub}
+            for fut in as_completed(futs):
+                st = fut.result()
+                probe_calls += 1
+                if st["ok"]:
+                    counts.append(len(st["rows"]))
+                    if st["rows"] and path_pairs is None:
+                        path_pairs = [st["_pair"], (chain[0][0], st["rows"][0].get("itemId"))]
+        fans.append((sum(counts) / len(counts)) if counts else float(_cap(1) or 0))
+        # ── bd2 ~ bd(D-1): 단일 경로로 1콜씩 측정 (deeper fanout) ──
+        for stage in range(2, D):
+            if not path_pairs or path_pairs[-1][1] is None:
+                fans.append(float(_cap(stage) or 0))   # 경로 못 이으면 캡 가정
+                continue
+            bd_dim_id = chain[stage - 1][0]
+            st = _extract_one({"payload": _build_breakdown_payload(base, path_pairs, bd_dim_id,
+                                                                  limit=_probe_cap(stage)),
+                               "tb_name": f"{t['tb_name']}/probe-bd{stage}", "max_rows": _probe_cap(stage),
+                               "rows": [], "summary_data": [], "ok": False, "error": ""},
+                              headers, gcid)
+            probe_calls += 1
+            if st["ok"] and st["rows"]:
+                fans.append(float(len(st["rows"])))
+                path_pairs = path_pairs + [(bd_dim_id, st["rows"][0].get("itemId"))]
+            else:
+                fans.append(float(_cap(stage) or 0))
+                path_pairs = None
+        worst_fans = [float(_cap(s) or 0) for s in range(1, D)]   # bd1~bd(D-1) 캡
+        rows_out.append((t["tb_name"], N1, D, fans, worst_fans))
+
+    probe_wall = (datetime.now() - probe_t0).total_seconds()
+    thr = (probe_calls / probe_wall) if probe_wall > 0 else 0.0
+    print(f"  · 측정: probe {probe_calls}콜 / {probe_wall:.1f}s → ~{thr:.1f} calls/s (workers={workers})", flush=True)
+
+    gw = gr = 0
+    gw_unb = False
+    for name, N1, D, fans, worst in rows_out:
+        worst_c = _calls(N1, D, worst)
+        ref_c = _calls(N1, D, [max(1.0, round(f)) if f else 0 for f in fans])
+        fan_str = " / ".join(f"{f:.0f}" for f in fans) if fans else "-"
+        ws = "무제한캡" if worst_c is None else f"{worst_c:,}"
+        rs = "무제한캡" if ref_c is None else f"{ref_c:,}"
+        if worst_c is None:
+            gw_unb = True
+        else:
+            gw += worst_c
+        gr += ref_c or 0
+        print(f"  · {name}: dim1(N1)={N1}, breakdown {D}단계 (=level{D + 1}까지), "
+              f"단계별 실측 fanout=[{fan_str}]", flush=True)
+        print(f"      → 호출 worst≈{ws} / 추정≈{rs}", flush=True)
+
+    def _eta(c):
+        return _fmt_dur(c / thr) if (thr > 0 and c) else "?"
+    gwd = "무제한캡 포함" if gw_unb else f"{gw:,}"
+    print(f"  · 합계 호출 worst≈{gwd} / 추정≈{gr:,}  →  예상 소요시간 worst≈{_eta(0 if gw_unb else gw)} / 추정≈{_eta(gr)}", flush=True)
+    print("    (예상 소요시간 = 호출수 ÷ 측정 처리율. bd1 캡 LIMIT_BD 가 곱셈 핵심 — 줄이면 비례해 빨라짐. 마지막 단계 캡은 호출수 무관)", flush=True)
+    print("    ※ 대량 구간은 429 throttling 으로 더 느려질 수 있음 → worst 예상 소요시간 을 상한으로 보세요", flush=True)
+    print("  ──────────────────────────────────────────────────────────\n", flush=True)
 
 
 # ─── /reports API + 페이징 (v1 동일) ───────────────────────────────
@@ -1264,6 +1344,8 @@ def _post_reports(session: requests.Session, headers: dict, gcid: str, payload: 
             sleep_sec = float(ra) if ra else min(2 ** attempt, 30)
             if attempt == MAX_RETRIES:
                 r.raise_for_status()
+            tag = "throttle(429)" if r.status_code == 429 else f"일시오류({r.status_code})"
+            print(f"      ⚠ {tag} — {sleep_sec:.0f}s 후 재시도 [{attempt + 1}/{MAX_RETRIES}]", flush=True)
             time.sleep(sleep_sec)
             continue
         r.raise_for_status()
@@ -1559,6 +1641,12 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
 
     # ─── N단계 breakdown (v3.5) — dim1 rows 를 하위 차원으로 재귀 분해 ───
     bd_tasks = [t for t in tasks if t.get("ok") and t.get("breakdown_chain")]
+    if ESTIMATE_ONLY:
+        if bd_tasks:
+            _estimate_runtime(bd_tasks, headers, gcid, workers=workers)
+        else:
+            print("  [estimate] breakdown 대상 테이블 없음 — 추정 불가 (dim1 만)")
+        return {"site": site, "tasks": tasks, "n_ok": n_ok, "n_fail": n_fail, "estimate": True}
     if bd_tasks:
         topn_str = "전체" if BREAKDOWN_TOP_N == 0 else f"레벨별 상위 {BREAKDOWN_TOP_N}"
         print(f"  breakdown 단계 시작 ({len(bd_tasks)}개 테이블, TOP_N={topn_str}) ...")
@@ -1675,6 +1763,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                         w.writerow(base_cols + [p0[2], p0[3], vn, m_name, _normalize_metric(m_name), seg_str, device,
                                                 v if v is not None else ""] + bd_cells)
     print(f"  stack CSV: {stack_path.name}  ({dim_short} long unpivot, bd depth={max_bd_depth})")
+    _verify_csv_written(stack_path, "stack")
 
     # ─── table_data_extract (v3.7, 기존 column_mapping 대체) — AA 테이블 모양 가로형 ───
     #   1행 = dimension item (또는 breakdown 행, 또는 "(summary)" 총계 행).
@@ -1741,6 +1830,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                 w.writerow(base_cols + [p0[2], p0[3]]
                            + _vals_row(br.get("data") or []) + seg_vals + bd_cells)
     print(f"  table CSV: {table_path.name}  (가로형 1행/item, value1..{site_max_vals}, bd depth={max_bd_depth})")
+    _verify_csv_written(table_path, "table")
     print(f"  결과: 성공 {n_ok} / 실패 {n_fail}")
     return {"site": site, "tasks": tasks, "n_ok": n_ok, "n_fail": n_fail}
 
@@ -1759,6 +1849,42 @@ def _fmt_dur(seconds: float) -> str:
     return " ".join(parts)
 
 
+# ─── 출력 CSV 자가 무결성 검증 (v4.0) ──────────────────────────────
+# 쓰기 직후 다시 읽어 모든 행의 필드수가 헤더 칼럼수와 같은지 확인. OneDrive 동기화/복사 등
+# 외부 요인으로 큰 CSV 가 행 경계에서 깨지는 사례를 즉시 감지(손상 자체를 막진 못해도 모르고 쓰는 걸 차단).
+def _csv_integrity_check(path: Path) -> tuple[int, int, list[int]]:
+    """(nrows, ncol, bad_rows) 반환 — nrows=헤더포함 행수, ncol=헤더 칼럼수,
+    bad_rows=헤더와 필드수 다른 행 번호. 못 읽으면 (-1, -1, [-1]).
+    bare CR(\\r 단독)은 sentinel 로 치환해 파서 중단을 막고 손상 행으로 검출."""
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except Exception:
+        return (-1, -1, [-1])
+    text = re.sub(r"\r(?!\n)", "␍", text)
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        return (0, 0, [])
+    ncol = len(rows[0])
+    bad = [i for i, r in enumerate(rows) if len(r) != ncol]
+    return (len(rows), ncol, bad)
+
+
+def _verify_csv_written(path: Path, label: str) -> bool:
+    """쓴 CSV 를 다시 읽어 전 행 필드수 검증. 정상이면 ✓, 손상이면 ⚠/❌ 출력."""
+    nrows, ncol, bad = _csv_integrity_check(path)
+    if bad == [-1]:
+        print(f"  ❌ {label} CSV 검증 불가(재읽기 실패) — 재추출 권장: {path.name}")
+        return False
+    if bad:
+        sample = ", ".join(str(b) for b in bad[:10])
+        more = " ..." if len(bad) > 10 else ""
+        print(f"  ⚠ {label} CSV 무결성 경고: {len(bad)}개 행 필드수 불일치 (행 {sample}{more})")
+        print(f"     → 쓰여진 뒤 외부 요인(OneDrive 동기화/복사 등)으로 손상됐을 수 있음. 재추출 권장: {path.name}")
+        return False
+    print(f"  ✓ {label} 무결성 OK (데이터 {max(0, nrows - 1):,}행 × {ncol}칼럼)")
+    return True
+
+
 # ─── main ────────────────────────────────────────────────────────
 def main() -> int:
     try:
@@ -1768,12 +1894,20 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="사이트별 RSID + dateRange override 데이터 추출 (v3: EXTRA_SEGMENTS 옵션)")
     parser.add_argument("--dry-run", action="store_true", help="payload 생성까지만")
+    parser.add_argument("--estimate", action="store_true",
+                        help="breakdown 단계별 1경로 샘플로 총 /reports 호출수·예상 소요시간 추정 후 종료 (실제 추출·파일생성 안 함)")
     parser.add_argument("--workers", type=int, default=MAX_WORKERS, help=f"병렬 워커 수 (default {MAX_WORKERS})")
     parser.add_argument("--limit", type=int, default=LIMIT_LV1,
                         help=f"1st level(dim1) reportlet 당 최대 행 수 (default {LIMIT_LV1}, 0=무제한)")
     parser.add_argument("--limit-bd", type=int, default=LIMIT_BD, metavar="N",
-                        help=f"breakdown(2nd level~) 부모 item 당 레벨별 최대 행 수 "
+                        help=f"breakdown 1단계 (bd1, =level2) 부모 item 당 최대 행 수 "
                              f"(default {LIMIT_BD}, 0=무제한. BREAKDOWN_TOP_N>0 이면 TOP_N 우선)")
+    parser.add_argument("--limit-bd2", type=int, default=LIMIT_BD2, metavar="N",
+                        help=f"breakdown 2단계 (bd2, =level3) 부모 item 당 최대 행 수 (default {LIMIT_BD2}, 0=무제한)")
+    parser.add_argument("--limit-bd3", type=int, default=LIMIT_BD3, metavar="N",
+                        help=f"breakdown 3단계 (bd3, =level4) 부모 item 당 최대 행 수 (default {LIMIT_BD3}, 0=무제한)")
+    parser.add_argument("--limit-bd4", type=int, default=LIMIT_BD4, metavar="N",
+                        help=f"breakdown 4단계+ (bd4~, =level5~) 부모 item 당 최대 행 수 (default {LIMIT_BD4}, 0=무제한)")
     parser.add_argument("--site", action="append", default=[], metavar="SITE_CODE",
                         help="특정 site 만 처리 (여러 개 가능). 없으면 sites_input.csv 전체")
     parser.add_argument("--include-global-for-us", action="store_true",
@@ -1798,15 +1932,22 @@ def main() -> int:
         globals()["BREAKDOWN_DIMENSIONS"] = [d.strip() for d in args.breakdown_dims.split(",") if d.strip()]
     # v3.7: breakdown limit 은 _run_breakdowns 가 module 전역을 참조 → CLI 값으로 갱신
     globals()["LIMIT_BD"] = args.limit_bd
+    globals()["LIMIT_BD2"] = args.limit_bd2
+    globals()["LIMIT_BD3"] = args.limit_bd3
+    globals()["LIMIT_BD4"] = args.limit_bd4
+    if args.estimate:
+        globals()["ESTIMATE_ONLY"] = True
 
     ts = datetime.now().strftime("%y%m%d_%H%M")
-    print(f"[{ts}] extract_data_v3.8.py")
+    print(f"[{ts}] {Path(__file__).name}")
     print(f"  project       : {PROJECT_ID}")
     print(f"  input         : {SITES_INPUT_CSV.name}")
     print(f"  workers       : {args.workers}")
     print(f"  site workers  : {args.site_workers}  (1=순차)")
     print(f"  limit (lv1)   : {args.limit if args.limit > 0 else '무제한'}  (dim1 행 cap)")
-    print(f"  limit (bd)    : {args.limit_bd if args.limit_bd > 0 else '무제한'}  (breakdown 부모 item 당 행 cap)")
+    _bd_caps_disp = " / ".join('무제한' if v == 0 else str(v)
+                               for v in (args.limit_bd, args.limit_bd2, args.limit_bd3, args.limit_bd4))
+    print(f"  limit (bd1~4) : {_bd_caps_disp}  (breakdown 1~4단계 = level2~5, 부모 item 당 행 cap)")
     print(f"  EXTRA_SEGMENTS: {len(EXTRA_SEGMENTS)}건")
     # v3.8: device 케이스 + app_O_X
     app_ox = _load_app_ox(APP_OX_CSV)
@@ -1923,7 +2064,6 @@ def main() -> int:
         res["elapsed_sec"] = (datetime.now() - _t0).total_seconds()
         return res
 
-    # 진행률 + ETA 상태 (site 완료마다 _report 호출). 순차/병렬 모두 main 스레드에서 출력 → 안전.
     n_sites = len(sites_rows)
     prog = {"done": 0, "elapsed_sum": 0.0}
     run_start = datetime.now()
