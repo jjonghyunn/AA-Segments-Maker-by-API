@@ -15,7 +15,7 @@ repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/panel_dat
 |---|---|
 | `AUTH_JSON_PATH` | `C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\aanalyticsact_auth.json` |
 | `COMPANY_ID` | `your_aa_company_id` |
-| `PROJECT_ID` | `YOUR_ID` (user_id Product Recommendation) |
+| `PROJECT_ID` | `YOUR_ID` (user_id Content C) |
 | `PANEL_NAME_PATTERN` | (실행 시 캠페인에 맞게 설정 — 예: `r"\[AU\]\s*campaign_name'?s\s*Day\s*Campaign"`) |
 | `NEW_START_DATE` | `2026-05-11` |
 | `NEW_END_DATE` | `2026-05-17` |

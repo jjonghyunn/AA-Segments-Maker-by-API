@@ -30,3 +30,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Archived old versions - never commit (may contain unsanitized values)
+old/

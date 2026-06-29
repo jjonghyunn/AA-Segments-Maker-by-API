@@ -51,8 +51,8 @@ COMPANY_ID = "your_aa_company_id"
 # 대상 Workspace project ID (URL 의 /workspace/edit/<여기> 부분)
 # 여러 프로젝트를 한 번에 처리하려면 엔터 단위로 나열. 주석(#)으로 프로젝트명 메모 가능.
 PROJECT_IDS = """
-YOUR_ID  # team 공유 Product Recommendation
-YOUR_ID  # user_id Product Recommendation
+YOUR_ID  # team 공유 Content C
+YOUR_ID  # user_id Content C
 
 YOUR_ID # [part_name] 2026 CAMPAIGN NAME | Contents cc_03 | API_260527 (user_id)
 

@@ -1,6 +1,6 @@
 # panel_contents_recomm_v1.2.py
 # 2026-05-20  Jonghyun Park w/ Claude
-# v1.2 변경: Product Recommendation (PR/US_PR) fallback type 추가, SKIP_KEYWORDS 비우기,
+# v1.2 변경: Content C (PR/US_PR) fallback type 추가, SKIP_KEYWORDS 비우기,
 #          PREFERRED_SEGMENT_CSV 옵션 (현재 비활성), US_CC_[US] 잔재 제외 룰 추가
 #
 # panel_contents.py 사본 — recomm (Recommendation) 계열 패널용.
@@ -49,12 +49,12 @@ clone_project_first_panel.py 의 변형 버전.
               > normalize. 각 단계 AMBIGUOUS 시 owner_pref tie-breaker.
 
 매칭 예시:
-  · "[CAMPAIGN NAME] CC_01. Rewards Benefit"     ─ ("CC","01","")    ↔ "[CAMPAIGN NAME] CC_01. Rewards Benefit"
+  · "[CAMPAIGN NAME] CC_01. Content B"     ─ ("CC","01","")    ↔ "[CAMPAIGN NAME] CC_01. Content B"
   · "[CAMPAIGN NAME] CC_01. ... (Visit)"          ─ ("CC","01","visit") ↔ SW 같은 (Visit) 변형
   · "[CAMPAIGN NAME] CC_03. ... - 01. Trip Recall"  ─ sub_num="01"
        ↔ "[CAMPAIGN NAME] CC_XX. ... - 01. ..."  (CC 번호 달라도 sub_num 같으면 매칭)
-  · "[CAMPAIGN NAME] CC_08. Product Recommendation"  → sub_num 없음, recomm 포함 → 정상 매칭 시도
-  · "[CAMPAIGN NAME] CC_08. Product Recommendation - 01. Foo"  → sub_num 있고 recomm 포함 → No Data
+  · "[CAMPAIGN NAME] CC_08. Content C"  → sub_num 없음, recomm 포함 → 정상 매칭 시도
+  · "[CAMPAIGN NAME] CC_08. Content C - 01. Foo"  → sub_num 있고 recomm 포함 → No Data
 
 실행:
   python panel_contents.py                # dry-run (default)
@@ -89,7 +89,7 @@ COMPANY_ID = "your_aa_company_id"
 SOURCE_PROJECT_ID = "YOUR_PROJECT_ID"   # 참고 원본 프로젝트
 # target = 미리 UI 에서 빈 프로젝트로 생성해둔 곳 (user1 owner)
 # TARGET_PROJECT_ID = "YOUR_PROJECT_ID" # team공유용.
-TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis (Product Recommendation) | API (user_id)
+TARGET_PROJECT_ID = "YOUR_PROJECT_ID"   # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis (Content C) | API (user_id)
 # https://experience.adobe.com/@company_name/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
 # source 의 어느 panel(들) 을 가져올지.
 #   · "all"            → 모든 panel (기본)
@@ -142,7 +142,7 @@ SUB_NUM_PATTERN = re.compile(r"\s-\s(\d+)\.", re.IGNORECASE)
 # 없으면 system / 공용 segment 로 간주하고 target 에서도 같은 ID 그대로 둠
 # (예: "No Data", "PC User (Visit)", "[part_name] Excluded EPP", "[Global] Excluded APP").
 # TODO: OLD_KEYWORDS 와 동일하게 캠페인 prefix 에 맞게 변경.
-SWAP_REQUIRED_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME", "Product Recommendation"]
+SWAP_REQUIRED_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME", "Content C"]
 
 # ─── Ambiguous tie-breaker (소유자 우선순위) ──────────────────────
 # 같은 키 ((type, num/sub_num, suffix) 등) 에 SW segment 가 2개 이상 매칭될 때,
@@ -153,10 +153,10 @@ PREFERRED_OWNER_ID = "YOUR_LOGIN_ID"  # user2
 # ─── 자동 매칭 제외 키워드 (sub_num 있는 segment 한정) ─────────────
 # 이 단어가 이름에 포함되고 sub_num (' - ##.') 도 있는 segment 는 자동 매칭에서
 # 제외하고 No Data fallback 으로 메꿈. 하위 breakdown 케이스가 많아 따로 매핑할
-# segment 들 (예: "recomm" → Product Recommendation - 01. Foo 같은 sub 변형).
-# sub_num 없는 컨테이너 segment (예: "CC_08. Product Recommendation") 는 영향 없이
+# segment 들 (예: "recomm" → Content C - 01. Foo 같은 sub 변형).
+# sub_num 없는 컨테이너 segment (예: "CC_08. Content C") 는 영향 없이
 # 정상 매칭. 추후 MANUAL_OVERRIDES 또는 별도 도구로 처리.
-SKIP_KEYWORDS: list[str] = []  # 새 [CAMPAIGN NAME] CC_Product Recommendation 추가됨 → recomm 도 자동 매칭 OK
+SKIP_KEYWORDS: list[str] = []  # 새 [CAMPAIGN NAME] CC_Content C 추가됨 → recomm 도 자동 매칭 OK
 
 # ─── candidate 제한 (특정 result csv 의 SegmentId 만 swap 후보) ──────
 # 빈 string 이면 NEW_KEYWORDS 매칭 segment 전체 사용.
@@ -394,10 +394,10 @@ def _extract_cc_key(name: str) -> tuple[str, str, str] | None:
     type/number 매칭 안 되면 None.
     number_raw 는 zero-pad 그대로 ("01" vs "1" 구분) — source/target 표기 통일 가정.
 
-    fallback: CC 패턴 없어도 'Product Recommendation - NN.' 형식이면
+    fallback: CC 패턴 없어도 'Content C - NN.' 형식이면
     type='PR' + num=sub_num 으로 매칭 키 생성 (source 와 target 둘 다 동일하게 추출됨).
-    이는 source 의 [CAMPAIGN NAME] 없는 'Product Recommendation - 01. ...' 와
-    target 의 '[CAMPAIGN NAME] CC_Product Recommendation - 01. ...' 를 같은 키로 묶기 위함."""
+    이는 source 의 [CAMPAIGN NAME] 없는 'Content C - 01. ...' 와
+    target 의 '[CAMPAIGN NAME] CC_Content C - 01. ...' 를 같은 키로 묶기 위함."""
     n = name or ""
     # 잔재 segment 제외: 'US_CC_[US]' (dedupe 안 된 옛 이름) → 매칭 후보 제외
     if re.search(r"US_CC_\[US\]", n, re.IGNORECASE):
@@ -406,10 +406,10 @@ def _extract_cc_key(name: str) -> tuple[str, str, str] | None:
         m = pat.search(n)
         if m:
             return (type_label, m.group(1), _extract_suffix(n))
-    # fallback — Product Recommendation 패턴 (Global vs US 분리)
-    # US 우선순위: US_CC_Product Recommendation 또는 [US] Product Recommendation
-    has_us = bool(re.search(r"\[US\]\s*Product Recommendation|US_CC_Product Recommendation|US_Product Recommendation", n, re.IGNORECASE))
-    has_pr = bool(re.search(r"Product Recommendation", n, re.IGNORECASE))
+    # fallback — Content C 패턴 (Global vs US 분리)
+    # US 우선순위: US_CC_Content C 또는 [US] Content C
+    has_us = bool(re.search(r"\[US\]\s*Content C|US_CC_Content C|US_Content C", n, re.IGNORECASE))
+    has_pr = bool(re.search(r"Content C", n, re.IGNORECASE))
     if has_pr:
         sub_num = _extract_sub_num(n)
         if sub_num:

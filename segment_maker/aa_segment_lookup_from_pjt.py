@@ -48,7 +48,7 @@ from aa_segment_lookup import (
 
 # 빈 값이면 --project 인자 필수. 박혀 있으면 default project_id.
 # PROJECT_ID = "YOUR_PROJECT_ID"
-PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis (Product Recommendation) | API (user_id)
+PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME | Contents Click Analysis (Content C) | API (user_id)
 # 기존 MD visit, delayed_purchase수정위함.
 # https://experience.adobe.com/#/@company_name/so:your_aa_company_id/analytics/spa/#/workspace/edit/YOUR_PROJECT_ID
 

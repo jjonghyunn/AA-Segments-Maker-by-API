@@ -47,7 +47,7 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 매칭 예시:
 
 ```
-"[CAMPAIGN NAME] CC_01. Rewards Benefit"       ─ ("CC","01","")      ↔ "[NEW CAMPAIGN NAME] CC_01. Rewards Benefit"
+"[CAMPAIGN NAME] CC_01. Content B"       ─ ("CC","01","")      ↔ "[NEW CAMPAIGN NAME] CC_01. Content B"
 "[CAMPAIGN NAME] CC_01. ... (Visit)"           ─ ("CC","01","visit") ↔ 같은 (Visit) 변형
 "[CAMPAIGN NAME] CC_03. ... - 01. Trip Recall" ─ sub_num="01"
        ↔ "[NEW CAMPAIGN NAME] CC_XX. ... - 01. ..."  (CC 번호 달라도 sub_num 같으면 매칭)

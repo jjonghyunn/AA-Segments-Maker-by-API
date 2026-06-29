@@ -42,12 +42,12 @@ clone_project_first_panel.py 의 변형 버전.
               > normalize. 각 단계 AMBIGUOUS 시 owner_pref tie-breaker.
 
 매칭 예시:
-  · "[CAMPAIGN NAME] CC_01. Rewards Benefit"     ─ ("CC","01","")    ↔ "[CAMPAIGN NAME] CC_01. Rewards Benefit"
+  · "[CAMPAIGN NAME] CC_01. Content B"     ─ ("CC","01","")    ↔ "[CAMPAIGN NAME] CC_01. Content B"
   · "[CAMPAIGN NAME] CC_01. ... (Visit)"          ─ ("CC","01","visit") ↔ SW 같은 (Visit) 변형
   · "[CAMPAIGN NAME] CC_03. ... - 01. Trip Recall"  ─ sub_num="01"
        ↔ "[CAMPAIGN NAME] CC_XX. ... - 01. ..."  (CC 번호 달라도 sub_num 같으면 매칭)
-  · "[CAMPAIGN NAME] CC_08. Product Recommendation"  → sub_num 없음, recomm 포함 → 정상 매칭 시도
-  · "[CAMPAIGN NAME] CC_08. Product Recommendation - 01. Foo"  → sub_num 있고 recomm 포함 → No Data
+  · "[CAMPAIGN NAME] CC_08. Content C"  → sub_num 없음, recomm 포함 → 정상 매칭 시도
+  · "[CAMPAIGN NAME] CC_08. Content C - 01. Foo"  → sub_num 있고 recomm 포함 → No Data
 
 실행:
   python panel_contents.py                # dry-run (default)
@@ -152,8 +152,8 @@ PREFERRED_OWNER_ID = "YOUR_LOGIN_ID"  # user2
 # ─── 자동 매칭 제외 키워드 (sub_num 있는 segment 한정) ─────────────
 # 이 단어가 이름에 포함되고 sub_num (' - ##.') 도 있는 segment 는 자동 매칭에서
 # 제외하고 No Data fallback 으로 메꿈. 하위 breakdown 케이스가 많아 따로 매핑할
-# segment 들 (예: "recomm" → Product Recommendation - 01. Foo 같은 sub 변형).
-# sub_num 없는 컨테이너 segment (예: "CC_08. Product Recommendation") 는 영향 없이
+# segment 들 (예: "recomm" → Content C - 01. Foo 같은 sub 변형).
+# sub_num 없는 컨테이너 segment (예: "CC_08. Content C") 는 영향 없이
 # 정상 매칭. 추후 MANUAL_OVERRIDES 또는 별도 도구로 처리.
 SKIP_KEYWORDS = ["recomm"]
 

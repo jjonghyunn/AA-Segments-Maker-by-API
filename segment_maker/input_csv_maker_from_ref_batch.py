@@ -66,7 +66,7 @@ INPUT_CSV = "us_recomm_15_input.csv"
 OUTPUT_MODE = "create"
 
 # update 모드에서 SEG_REF 매핑용 source csv (segment_id + name 컬럼 필요).
-# input csv 의 name 의 "Product Recommendation - XX. *" key 와 source 의 name key 매칭으로 SEG_REF 결정.
+# input csv 의 name 의 "Content C - XX. *" key 와 source 의 name key 매칭으로 SEG_REF 결정.
 # 빈 값이면 self-ref (input 의 segment_id 그대로).
 SEG_REF_SOURCE_CSV = "segment_v2.2_result_260520_1108.csv"
 
@@ -207,7 +207,7 @@ def _dedupe_us_in_name(name: str) -> str:
     """우선순위: US_CC_ > US_ > [US]. 상위 패턴이 있으면 [US] 제거.
     상위 모두 없고 [US] 만 있으면 그대로 유지.
 
-    예) '[CAMPAIGN NAME] US_CC_[US] Product Recommendation - 01.' → '[CAMPAIGN NAME] US_CC_Product Recommendation - 01.'
+    예) '[CAMPAIGN NAME] US_CC_[US] Content C - 01.' → '[CAMPAIGN NAME] US_CC_Content C - 01.'
     예) '[CAMPAIGN NAME] US_[US] Foo'                            → '[CAMPAIGN NAME] US_Foo'
     예) '[CAMPAIGN NAME] [US] Foo'                               → '[CAMPAIGN NAME] [US] Foo'  (변경 없음)
     """
@@ -221,8 +221,8 @@ def _dedupe_us_in_name(name: str) -> str:
 
 def _extract_name_key(name: str) -> str:
     """name 에서 prefix/scope suffix 다 떼서 핵심 key 추출 — 두 csv 매핑용.
-    예: '[CAMPAIGN NAME] US_CC_Product Recommendation - 01. Top Selling (Visit)' → 'Product Recommendation - 01. Top Selling'
-        '[part_name] US_Product Recommendation - 01. Top Selling'             → 'Product Recommendation - 01. Top Selling'
+    예: '[CAMPAIGN NAME] US_CC_Content C - 01. Sub A (Visit)' → 'Content C - 01. Sub A'
+        '[part_name] US_Content C - 01. Sub A'             → 'Content C - 01. Sub A'
     """
     s = re.sub(r"^\[[^\]]*\]\s*", "", name)         # 대괄호 prefix 제거
     s = re.sub(r"^(US_CC_|US_|CC_)", "", s)          # 추가 prefix 제거
