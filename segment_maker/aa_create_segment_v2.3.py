@@ -297,7 +297,7 @@ class LogicalNode:
 
 @dataclass
 class SegmentRefNode:
-    segment_id: str         # "s200001591_abc123"
+    segment_id: str         # "sXXXXXXXXX_abc123"
     negated: bool = False
     line: int = 0
 

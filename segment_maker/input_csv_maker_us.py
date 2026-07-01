@@ -38,11 +38,11 @@ seg_make_ref_us_CSV = "seg_make_ref_us_260526_1308.csv"   # 빈 값이면 폴더
 
 # US 버전 — visit/visitor 모드에서 AND 로 묶을 US 캠페인 segment-ref ID.
 # 두 가지 방법 (둘 다 동작, 둘 다 박혀 있으면 COMMON_SEGMENT_REF 가 우선):
-#   1) 직접 박기: COMMON_SEGMENT_REF = "s200001591_<id>" (가장 단순, ID 알면)
+#   1) 직접 박기: COMMON_SEGMENT_REF = "sXXXXXXXXX_<id>" (가장 단순, ID 알면)
 #   2) cache lookup: REF_SEGMENT_NAME + CACHE_NAME 박으면 segment_ref_cache_<CACHE_NAME>.json 에서
 #      name partial 매칭으로 자동 ID 결정 (prewarm_seg_ref_cache.py 로 미리 cache 만들어 둘 것)
 # 둘 다 빈 값이면 visit/visitor 모드에서도 AND 묶음 없이 단순 visit(hit(...)) 만 (hit 모드는 어차피 영향 없음).
-COMMON_SEGMENT_REF      = ""   # 예: "s200001591_<US_캠페인_Main_Page_segment_id>"
+COMMON_SEGMENT_REF      = ""   # 예: "sXXXXXXXXX_<US_캠페인_Main_Page_segment_id>"
 COMMON_SEGMENT_REF_NAME = ""   # 예: "[CAMPAIGN NAME] US_Campaign Main Page_Evar" — 박혀 있으면 dsl 에 named container wrap (`'<name>'!hit(@<id>)`)
 REF_SEGMENT_NAME   = "US_Campaign Main Page_Evar"   # cache 에서 name partial 매칭 → id + name 자동 결정
 CACHE_NAME         = "26sw_evar_us,add_to_cart_us"   # 콤마 분리 — 두 cache 다 lookup (Campaign Main + ATC)
@@ -70,7 +70,7 @@ SCOPE_MODE = "visit,hit,delayed_purchase"
 # 예: SCOPE_MODE = "hit"   (단일)
 
 # delayed_purchase 옵션의 ATC (Add to Cart Visit) segment-ref — visit/hit 의 COMMON_SEGMENT_REF 와 별개
-ATC_VISIT_SEGMENT_REF      = ""   # 예: "s200001591_<US_ATC_Visit_id>"  (직접 박기)
+ATC_VISIT_SEGMENT_REF      = ""   # 예: "sXXXXXXXXX_<US_ATC_Visit_id>"  (직접 박기)
 ATC_VISIT_SEGMENT_NAME     = ""   # 예: "[US] Add to Cart Visit"        (named container wrap 박힘)
 ATC_REF_SEGMENT_NAME       = "[US] Add to Cart Visit"   # cache 에서 partial 매칭 → id+name 자동 (CACHE_NAME 활용). 글로벌과 안 섞이게 [US] prefix 박을 것
 

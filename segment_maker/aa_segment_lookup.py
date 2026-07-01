@@ -17,7 +17,7 @@
 
 사용법:
   # ID 직접 지정 (여러 개 공백 구분)
-  python segment_lookup.py s200001591_abc123 s200001591_def456
+  python segment_lookup.py sXXXXXXXXX_abc123 sXXXXXXXXX_def456
 
   # ID list 파일에서 읽기 (한 줄에 하나)
   python segment_lookup.py --from-file segment_ids.txt
@@ -721,7 +721,7 @@ def main() -> int:
 
     if not seg_ids and not search_mode:
         print("ERROR: 세그먼트 ID 또는 --search 키워드가 필요합니다.")
-        print("  python segment_lookup.py s200001591_abc123")
+        print("  python segment_lookup.py sXXXXXXXXX_abc123")
         print("  python segment_lookup.py --from-file ids.txt")
         print("  python segment_lookup.py --search \"campaign\" --rsid sscompany_name4mstglobal")
         return 1

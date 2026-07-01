@@ -1,7 +1,7 @@
 # panel_collapse/ — AA Workspace panel 내 subPanel 일괄 collapse (운영 사본)  
 <sub>2026-05-21  Jonghyun Park w/ Claude</sub>  
 
-repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/panel_collapse (예정)
+repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/panel_collapse
 
 운영 사본 — 실제 PROJECT_ID / AUTH 경로 박혀있는 작업본. generic 변경 (룰/기능) 은 repo 사본에도 동기화. 단순 운영값 (PROJECT_ID) 변경은 repo 안 올림.
 
@@ -85,7 +85,7 @@ PANEL_NAME_PATTERN = r"campaign_name'?s\s*Day"           # 캠페인명 매칭
 
 ## 자매 도구
 
-같은 폴더 (`AA_segment_maker/`) 안:
+repo 내 다른 폴더:
 
 - `panel_date_update/update_panel_date.py` — 특정 panel 의 종료일 일괄 치환
 - `panel_maker/panel_contents.py` — source project panel 복제 + segment swap (subPanel collapse 패턴 공유)

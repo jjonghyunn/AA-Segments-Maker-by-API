@@ -178,7 +178,7 @@ NAME_NORMALIZATION_PATTERNS = [
 # 연결하고 싶을 때 직접 박아둠. 자동 매칭보다 우선.
 # dry-run 결과 NO_MATCH / AMBIGUOUS 잡힌 것 보고 추가.
 MANUAL_OVERRIDES: dict[str, str] = {
-    # "s200001591_xxxxxxxxxxxxxxxxxxxxxxxx": "s200001591_yyyyyyyyyyyyyyyyyyyyyyyy",
+    # "sXXXXXXXXX_xxxxxxxxxxxxxxxxxxxxxxxx": "sXXXXXXXXX_yyyyyyyyyyyyyyyyyyyyyyyy",
 }
 
 # ─── No Data fallback ───────────────────────────────────────────────

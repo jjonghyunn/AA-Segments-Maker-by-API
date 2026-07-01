@@ -59,7 +59,7 @@ CAMPAIGN_TAG  = "SW"     # 캠페인 코드 (짧은 약어)
 # POST_TRANSFER_TO_OWNER_ID:
 #   0          : 본인(token holder) owner 그대로 유지
 #   numeric ID : POST 직후 자동 PUT 으로 owner 이전 (admin 권한 필요)
-POST_TRANSFER_TO_OWNER_ID = YOUR_LOGIN_ID   # user2lee
+POST_TRANSFER_TO_OWNER_ID = YOUR_LOGIN_ID   # user2
 
 # 새 daterange 의 description, tags (모든 사이트 공통)
 NEW_DESCRIPTION = ""

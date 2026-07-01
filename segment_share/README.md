@@ -1,7 +1,7 @@
 # segment_share/ — segment 키워드 매칭 → 일괄 share 추가 (운영 사본)  
 <sub>2026-05-21  Jonghyun Park w/ Claude</sub>  
 
-repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_share (예정)
+repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_share
 
 운영 사본 — 실제 KEYWORDS / SHARE_USER_IDS / AUTH 경로 박혀있는 작업본. generic 변경은 repo 사본에 동기화.
 
@@ -77,12 +77,12 @@ KEYWORDS=['visit'] 매칭 segment: M개
 --- 매칭된 segment 목록 (첫 5개) ---
   #  segment id                    rsid                name
 ----------------------------------------------------------------------------------------
-  1  s200001591_xxxxxxxx...        sscompany_name4mstglobal [part_name] Campaign Visit
+  1  sXXXXXXXXX_xxxxxxxx...        sscompany_name4mstglobal [part_name] Campaign Visit
   ...
 
 --- 변경 미리보기 (segment 별 추가될 user id) ---
-  + s200001591_xxxxxxxx...  [part_name] Campaign Visit               추가: [YOUR_LOGIN_ID, YOUR_LOGIN_ID, ...]
-  · s200001591_zzzzzzzz...  [part_name] Already Shared               이미 모두 share 됨 (skip)
+  + sXXXXXXXXX_xxxxxxxx...  [part_name] Campaign Visit               추가: [YOUR_LOGIN_ID, YOUR_LOGIN_ID, ...]
+  · sXXXXXXXXX_zzzzzzzz...  [part_name] Already Shared               이미 모두 share 됨 (skip)
   ...
 
 --- 합계 ---

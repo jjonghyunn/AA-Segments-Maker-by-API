@@ -171,7 +171,7 @@ NAME_NORMALIZATION_PATTERNS = [
 # 연결하고 싶을 때 직접 박아둠. 자동 매칭보다 우선.
 # dry-run 결과 NO_MATCH / AMBIGUOUS 잡힌 것 보고 추가.
 MANUAL_OVERRIDES: dict[str, str] = {
-    # "s200001591_xxxxxxxxxxxxxxxxxxxxxxxx": "s200001591_yyyyyyyyyyyyyyyyyyyyyyyy",
+    # "sXXXXXXXXX_xxxxxxxxxxxxxxxxxxxxxxxx": "sXXXXXXXXX_yyyyyyyyyyyyyyyyyyyyyyyy",
 }
 
 # ─── No Data fallback ───────────────────────────────────────────────
@@ -318,7 +318,7 @@ SEG_ID_PATTERN = re.compile(r"s\d+_[0-9a-f]+")   # search 용 (anchor 없음)
 def _swap_segment_ids(node, mapping: dict[str, str]):
     """JSON 트리 안의 segment ID 들을 mapping 대로 in-place 치환.
     잡는 위치:
-      · dict key (예: {"s200001591_xxx": {...}}) — key 자체 치환
+      · dict key (예: {"sXXXXXXXXX_xxx": {...}}) — key 자체 치환
       · dict value 의 string (segment ID 단독 또는 substring 포함)
       · list element 의 string
       · 더 깊은 nested 위치도 재귀 처리

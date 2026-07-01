@@ -174,7 +174,7 @@ Adobe API 는 POST 시 `owner.id` 를 명시해도 **token holder 로 강제 덮
 | `0` (기본) | POST 만 — owner = 본인 (token holder) |
 | `<numeric loginId>` | POST 직후 자동 PUT 으로 owner 이전 (admin 권한 필요) |
 
-예) user2lee 명의로 일괄 생성하려면: `POST_TRANSFER_TO_OWNER_ID = YOUR_LOGIN_ID` 설정 후 `--apply`. 결과 CSV 의 `TransferStatus` 컬럼이 `TRANSFERRED` 로 떨어짐.
+예) user2 명의로 일괄 생성하려면: `POST_TRANSFER_TO_OWNER_ID = YOUR_LOGIN_ID` 설정 후 `--apply`. 결과 CSV 의 `TransferStatus` 컬럼이 `TRANSFERRED` 로 떨어짐.
 
 ## 자매 도구
 

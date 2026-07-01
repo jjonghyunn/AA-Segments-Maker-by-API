@@ -22,8 +22,8 @@ python extract_data.py --workers 8        # 병렬 워커 수 조정 (기본 6)
 python extract_data.py --limit 100        # dimension row 수 제한 (기본 400)
 python extract_data.py --year 2025        # 기준년도 오버라이드
 python extract_data.py --show-filters     # 패널별 전체필터 세그먼트 목록 확인
-python extract_data.py --remove-filter s200001591_xxx  # 특정 세그먼트 빼고 추출
-python extract_data.py --add-filter s200001591_xxx     # 세그먼트 추가해서 추출
+python extract_data.py --remove-filter sXXXXXXXXX_xxx  # 특정 세그먼트 빼고 추출
+python extract_data.py --add-filter sXXXXXXXXX_xxx     # 세그먼트 추가해서 추출
 ```
 
 ## 동작 흐름
@@ -75,11 +75,11 @@ python extract_data.py --add-filter s200001591_xxx     # 세그먼트 추가해�
 python extract_data.py --show-filters
 # 출력 예:
 # [panel 0] [DE] ...
-#   ON   s200001591_xxx  [Global] Excluded EPP
-#   ON   s200001591_yyy  [part_name] Excluded EPP
+#   ON   sXXXXXXXXX_xxx  [Global] Excluded EPP
+#   ON   sXXXXXXXXX_yyy  [part_name] Excluded EPP
 
-python extract_data.py --remove-filter s200001591_yyy   # 하나 빼고 추출
-python extract_data.py --add-filter s200001591_zzz      # 하나 추가해서 추출
+python extract_data.py --remove-filter sXXXXXXXXX_yyy   # 하나 빼고 추출
+python extract_data.py --add-filter sXXXXXXXXX_zzz      # 하나 추가해서 추출
 ```
 
 ## Fallback (개별 metric 추출)
@@ -325,7 +325,7 @@ data_extract/
    → 매칭 결과 콘솔 + `lookup/` 폴더 CSV/DSL 확인
 2. 원하는 segment ID 골라 직접 지정 모드로 전환:
    ```python
-   EXTRA_SEGMENTS = [{"segment_id": "s200001591_xxx", "panel_scope": "all"}]
+   EXTRA_SEGMENTS = [{"segment_id": "sXXXXXXXXX_xxx", "panel_scope": "all"}]
    ```
 3. `--dry-run --site us` 로 한 site payload 확인
 4. 전체 실행 — `python extract_data_v3.py`
