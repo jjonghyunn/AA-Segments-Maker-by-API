@@ -1,0 +1,20 @@
+# sites_input.csv — extract_data_v4.0.py 입력 템플릿
+# 형식: site_code,start_date,end_date  (ISO YYYY-MM-DD)
+# 빈 줄 / '#' 로 시작하는 라인은 자동 skip. 실제 캠페인 site·기간으로 행만 교체.
+#
+# ── US RSID 분할 (회사 룰) ──
+#   US 는 캠페인 중 report suite 가 교체되어 2행으로 분할 추출 후 합산한다:
+#     us_old = 구 suite (~교체일),  us = 신 suite (교체일 다음날~)
+#   단일 us 행으로 전체 기간을 뽑으면 교체일 이전 데이터가 신 suite 에 없어 누락됨.
+#
+# ── 언어변형 site ──
+#   be_fr / hk_en 는 부모 site(be / hk)에 이미 포함 → 따로 추출하지 않음.
+#   ae_ar / sa_en / ca_fr 등은 별도 RSID → 부모와 별개로 각각 행 추가해 추출.
+site_code,start_date,end_date
+ae,2026-05-11,2026-05-17
+ae_ar,2026-05-11,2026-05-17
+au,2026-05-14,2026-05-17
+br,2026-05-11,2026-05-17
+de,2026-05-12,2026-05-17
+us_old,2026-05-11,2026-05-18
+us,2026-05-19,2026-05-31

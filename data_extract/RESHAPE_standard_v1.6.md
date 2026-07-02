@@ -23,13 +23,13 @@
 
 | site_code | … | campaign | value_n | metric | segments | value1 |
 |---|---|---|---|---|---|---|
-| us | … | `dis-mktg-...-803487` | value1 | Entries | `Landing Page; Email` | 1234 |
+| us | … | `tracking-code-example` | value1 | Entries | `Landing Page; Email` | 1234 |
 
 출력 `_union_standard_*.csv` 의 한 행:
 
 | TIER | SUBS | COUNTRY | SITE CODE | ITEM | VALUE | … | campaign | segments |
 |---|---|---|---|---|---|---|---|---|
-| | | United States | us | **Email** | 1234 | … | `dis-mktg-...-803487` | `Landing Page; Email` |
+| | | United States | us | **Email** | 1234 | … | `tracking-code-example` | `Landing Page; Email` |
 
 - **ITEM** = `segments` 의 `;` 로 나눈 **맨 오른쪽 값**(양끝 공백 제거) → `Landing Page; Email` 에서 `Email`
 - **COUNTRY** = `site_registry` 로 site_code 를 국가명으로
@@ -54,7 +54,7 @@ extract 의 `dimension`(예: `variables/evar26`)에서 `variables/` 앞부분을
 
 panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi Order` / `Best Selling Product`, 대소문자·언더바 무시)가 있으면, 그 행의 **제품코드(자동 감지된 디멘션 값)** 를 `product_category.yaml`(divisions → categories → include/exclude regex)로 분류해 `category` 컬럼을 추가한다.
 
-- **multi 모드** (`Multi Purchase` / `Multi Order`): 디멘션 값이 콤마로 묶인 다제품 (예: `SM-S928B,EP-T2510`) →
+- **multi 모드** (`Multi Purchase` / `Multi Order`): 디멘션 값이 콤마로 묶인 다제품 (예: `AAA-000,BBB-000`) →
   - `category` = 각 제품 카테고리를 **알파벳 오름차순**으로 콤마 조인 (ACC·Unknown 포함, 중복 유지)
   - `category_non_acc_unknown_excl` = 같은 리스트에서 **ACC·Unknown 제외**
 - **single 모드** (`Best Selling Product`): 단일 제품 → `category` 만 (`category_non_acc_unknown_excl` 은 빈칸)

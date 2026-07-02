@@ -25,7 +25,7 @@ SITE, THIS_START, THIS_END, LAST_START, LAST_END, BEFORE_BASE
 | `SITE` | 사이트 코드 (예: US, MX, DE) |
 | `THIS_START` / `THIS_END` | 올해 캠페인 시작·종료 (ISO YYYY-MM-DD) |
 | `LAST_START` / `LAST_END` | 작년 같은 캠페인 시작·종료 |
-| `BEFORE_BASE` | '이전 전체' daterange 의 baseline 시작점. 캠페인·시점마다 다름 (예: MD=2024-04-01, SW=2024-05-01) |
+| `BEFORE_BASE` | '이전 전체' daterange 의 baseline 시작점. 캠페인·시점마다 다름 (예: CT1=2024-04-01, CT2=2024-05-01) |
 
 입력 소스 우선순위:
 1. 같은 폴더의 CSV (Excel 편집)
