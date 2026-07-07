@@ -143,7 +143,7 @@ row 의 site_code (예: "au")
     ↓
 lookup_site("au")  ──  _SITE_MASTER 에서 찾기
     ↓
-SiteInfo(subsidiary="SEAU", country="Australia", site_code="au", rsid="sscompany_name4au")
+SiteInfo(subsidiary="FRNH", country="Australia", site_code="au", rsid="sscompany_name4au")
     ↓
 payload 의 "rsid" → "sscompany_name4au"
 payload 의 globalFilters[dateRange] → "2026-05-14T00:00:00.000/2026-05-18T00:00:00.000"

@@ -1,16 +1,14 @@
-# AA_segment_maker  
-<sub>2026-06-22  Jonghyun Park w/ Claude</sub>  
+# AA-Segments-Maker-by-API  
+<sub>2026-07-07  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
-
-최종 업데이트: 2026-06-22
 
 ---
 
 ## 폴더 구조
 
 ```
-AA_segment_maker/
+AA-Segments-Maker-by-API/
 ├── segment_maker/          # 세그먼트 생성·조회·삭제
 │   ├── aa_create_segment_v*.py     (CSV 입력, 생성+업데이트, AA validator patch. **현재 권장**)
 │   ├── aa_segment_lookup.py        (ID/이름 검색 → CSV + .dsl 역변환)
@@ -103,6 +101,14 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 | `panel_date_update/` | panel 시작/종료일 일괄 치환 — ISO interval / start*·end* 키 자동 탐지 |
 | `panel_maker/` | source project 의 panel(들) 을 빈 target project 로 복제 + segment ID 자동 swap. panel_contents (CC 패턴) / panel_contents_recomm (recomm fallback) |
 | `segment_share/` | 본인 owner segment 중 키워드 매칭된 것에 SHARE_USER_IDS 일괄 추가 (PUT) |
+
+### 기타 도구
+
+| 도구 | 설명 |
+|---|---|
+| `dateranges/` | Date Range 도구 모음 — `aa_daterange.py` 단건 CRUD + `aa_dateranges_list/update/create/upsert.py` 일괄 (입력 CSV: `dateranges_sites_input*.csv`) |
+| `column_filler/` | `tb_column_name_mapping` CSV 의 빈 column 을 유사도로 자동 채움 (`fill_column_by_similarity.py`) |
+| `cleanup_recent_json.py` (루트) | extract 재실행 전 최근 생성된 JSON 을 일괄 삭제 (키워드 제외 지원) |
 
 ---
 

@@ -233,7 +233,7 @@ v2 베이스 + **추가 segment 를 panel 의 globalFilter 에 끼워넣는** �
 | `site_registry.py` | 같은 폴더 | v2 와 동일 |
 | `sites_input.csv` | 같은 폴더 | v2 와 동일 |
 
-> 원본 `aa_segment_lookup.py` 는 `...\260504_AA_segment_maker\segment_maker\` 에 있음. v3 는 `Path(__file__).resolve().parent` 로 같은 폴더 사본을 import 하므로 운영 폴더마다 사본 두는 게 룰.
+> 원본 `aa_segment_lookup.py` 는 repo 의 `segment_maker/` 폴더에 있음. v3 는 `Path(__file__).resolve().parent` 로 같은 폴더 사본을 import 하므로 운영 폴더마다 사본 두는 게 룰.
 
 ## 사용법
 

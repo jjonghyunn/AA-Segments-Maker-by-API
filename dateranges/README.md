@@ -31,6 +31,7 @@ SITE, THIS_START, THIS_END, LAST_START, LAST_END, BEFORE_BASE
 1. 같은 폴더의 CSV (Excel 편집)
    - update 도구: `dateranges_sites_input.csv`
    - create 도구: `dateranges_sites_input_create.csv` (별도 파일 — 보통 update 와 다른 캠페인 값)
+   - upsert 도구: `dateranges_sites_input_upsert.csv`
 2. 1순위 파일 없으면 코드 안 `SITES_INLINE` dict (fallback)
 
 ## 8개 daterange 자동 산출 공식 (사이트당, 글로벌 `THIS_YEAR_YY`/`LAST_YEAR_YY`/`CAMPAIGN_TAG` 사용)
