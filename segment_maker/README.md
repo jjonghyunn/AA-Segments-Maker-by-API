@@ -98,6 +98,8 @@ python aa_segment_lookup.py --search "campaign" --modified-after 2025-01-01 --mo
 - `lookup/segment_lookup_<ts>.dsl` — 역변환된 DSL 멀티라인 (v2.3 입력으로 재사용 가능)
 
 > **sequence dimension-restriction round-trip (2026-07-08)**: sequence THEN 스텝 사이 "within N \<dim\>" 제약(AA `dimension-restriction`)을 DSL `WITHIN N <dim>` 스텝으로 표기 (예: `WITHIN 1 page`). `aa_create_segment_v2.3` 이 되읽어 재생성 → lookup↔maker 왕복. 차원은 조건문과 같은 short var(`page`) 표기. (sequence label strip 도 `hit`/`visit`/`visitor` scope 전부 처리하도록 일반화.)
+>
+> **`not-equal-any-of` 연산자 (2026-07-08)**: AA `not-streq-in`(UI "does not equal any of")을 DSL `not-equal-any-of` 로 표기 (예: `evar73 not-equal-any-of ["0","NA",...]`). maker 는 `not-equal-any-of`/`not-in` 을 네이티브 `not-streq-in` func 로 컴파일(`without` 래핑 아님). 긍정형은 `in`(=`equals-any-of`).
 
 ## aa_segment_lookup_from_pjt.py 사용법
 

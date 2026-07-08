@@ -104,6 +104,7 @@ FUNC_TO_DSL: dict[str, str] = {
     "contains-any-of": "contains-any-of",
     "contains-all-of": "contains-all-of",
     "streq-in": "in",
+    "not-streq-in": "not-equal-any-of",   # AA UI "does not equal any of"
     "starts-with": "starts-with",
     "ends-with": "ends-with",
     "matches-regex": "matches",
