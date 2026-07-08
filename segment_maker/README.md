@@ -99,7 +99,7 @@ python aa_segment_lookup.py --search "campaign" --modified-after 2025-01-01 --mo
 
 > **sequence dimension-restriction round-trip (2026-07-08)**: sequence THEN 스텝 사이 "within N \<dim\>" 제약(AA `dimension-restriction`)을 DSL `WITHIN N <dim>` 스텝으로 표기 (예: `WITHIN 1 page`). `aa_create_segment_v2.3` 이 되읽어 재생성 → lookup↔maker 왕복. 차원은 조건문과 같은 short var(`page`) 표기. (sequence label strip 도 `hit`/`visit`/`visitor` scope 전부 처리하도록 일반화.)
 >
-> **`not-equal-any-of` 연산자 (2026-07-08)**: AA `not-streq-in`(UI "does not equal any of")을 DSL `not-equal-any-of` 로 표기 (예: `evar73 not-equal-any-of ["0","NA",...]`). maker 는 `not-equal-any-of`/`not-in` 을 네이티브 `not-streq-in` func 로 컴파일(`without` 래핑 아님). 긍정형은 `in`(=`equals-any-of`).
+> **AA native 부정(not-*) func 패밀리 (2026-07-08)**: AA 네이티브 부정 func 을 읽기 쉬운 DSL 로 표기하고 maker 가 네이티브 func 그대로 되읽음(`without` 래핑 아님): `not-streq`→`not-equals`, `not-streq-in`→`not-equal-any-of`/`not-in`, `not-contains`, `not-contains-any-of`, `not-starts-with`, `not-ends-with`, `not-exists`. 예: `evar73 not-equal-any-of ["0","NA",...]`, `page not-starts-with "in:"`, `evar40 not-exists`. (별개 미처리 gap: `event-exists`, `eq`.)
 
 ## aa_segment_lookup_from_pjt.py 사용법
 

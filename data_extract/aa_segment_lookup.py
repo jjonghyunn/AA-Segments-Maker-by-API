@@ -109,6 +109,12 @@ FUNC_TO_DSL: dict[str, str] = {
     "ends-with": "ends-with",
     "matches-regex": "matches",
     "exists": "exists",
+    "not-streq": "not-equals",                     # does not equal
+    "not-contains": "not-contains",                # does not contain
+    "not-contains-any-of": "not-contains-any-of",  # does not contain any of
+    "not-starts-with": "not-starts-with",
+    "not-ends-with": "not-ends-with",
+    "not-exists": "not-exists",                    # does not exist (no value)
     "gt": ">",
     "ge": ">=",
     "lt": "<",

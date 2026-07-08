@@ -172,6 +172,12 @@ OPERATOR_MAP: dict[str, str] = {
     "ends-with": "ends-with",
     "matches": "matches-regex",
     "exists": "exists",
+    "not-equals": "not-streq",            # does not equal (native)
+    "not-contains": "not-contains",
+    "not-contains-any-of": "not-contains-any-of",
+    "not-starts-with": "not-starts-with",
+    "not-ends-with": "not-ends-with",
+    "not-exists": "not-exists",           # does not exist (no value)
     ">": "gt",
     ">=": "ge",
     "<": "lt",
@@ -193,6 +199,12 @@ FUNC_TO_DSL: dict[str, str] = {
     "ends-with": "ends-with",
     "matches-regex": "matches",
     "exists": "exists",
+    "not-streq": "not-equals",
+    "not-contains": "not-contains",
+    "not-contains-any-of": "not-contains-any-of",
+    "not-starts-with": "not-starts-with",
+    "not-ends-with": "not-ends-with",
+    "not-exists": "not-exists",
     "gt": ">",
     "ge": ">=",
     "lt": "<",
@@ -204,10 +216,10 @@ CONTEXT_TO_SCOPE = {"hits": "hit", "visits": "visit", "visitors": "visitor"}
 SCOPE_TO_CONTEXT = {"hit": "hits", "visit": "visits", "visitor": "visitors"}
 
 # 리스트 값을 받는 연산자
-LIST_OPERATORS = {"contains-any-of", "contains-all-of", "streq-in", "in", "equals-any-of", "not-equal-any-of", "not-in"}
+LIST_OPERATORS = {"contains-any-of", "contains-all-of", "streq-in", "in", "equals-any-of", "not-equal-any-of", "not-in", "not-contains-any-of"}
 
 # 값이 없는 연산자
-NO_VALUE_OPERATORS = {"exists"}
+NO_VALUE_OPERATORS = {"exists", "not-exists"}
 
 # 숫자 비교 연산자
 NUMERIC_OPERATORS = {">", ">=", "<", "<=", "gt", "ge", "lt", "le"}
