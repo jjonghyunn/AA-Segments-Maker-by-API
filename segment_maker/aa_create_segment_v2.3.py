@@ -118,7 +118,7 @@ INPUT_CSV = "segments_input_260526_1653.csv" #global
 # --cache <name> argparse 로도 override 가능 (CLI 우선).
 # 시나리오 csv (글로벌+US 섞임) 처리 시 → 글로벌·US evar 캐시 + ATC 캐시 모두 박아야
 # delayed_purchase 의 ATC visit segment-ref 까지 inline 처리됨.
-CACHE_NAME = "26sw_evar_global,26sw_evar_us,add_to_cart_global,add_to_cart_us"
+CACHE_NAME = "evar_global,evar_us,add_to_cart_global,add_to_cart_us"
 
 # --lookup-by-name 시 활용할 lookup csv 파일명 (default).
 # 빈 값이면 같은 폴더의 lookup/ 하위의 모든 segment_lookup_*.csv 자동 merge (사전순 reverse — 새 거 우선).
@@ -308,6 +308,16 @@ class SequenceNode:
 
 
 @dataclass
+class RestrictionNode:
+    # sequence THEN-step "WITHIN N <dim>" restriction (AA dimension-restriction node).
+    # lookup renders 'WITHIN 1 page' -> rebuilt here into dimension-restriction.
+    count: int
+    limit: str
+    attribute_name: str
+    line: int = 0
+
+
+@dataclass
 class ContainerNode:
     context: str            # "hits", "visits", "visitors"
     description: str = ""   # 이름 지정 컨테이너
@@ -338,6 +348,7 @@ class Token:
 
 _RE_NAMED_SCOPE = re.compile(r"^'([^']+)'!(hit|visit|visitor)\(\s*$")
 _RE_SCOPE = re.compile(r"^(hit|visit|visitor)\(\s*$")
+_RE_RESTRICTION = re.compile(r"^(WITHIN|AFTER)\s+(\d+)\s+(\S.*)$", re.IGNORECASE)
 
 
 def _tokenize(text: str) -> list[Token]:
@@ -385,6 +396,12 @@ def _tokenize(text: str) -> list[Token]:
             continue
         if raw == "THEN":
             tokens.append(Token("THEN", raw, line=lineno))
+            i += 1
+            continue
+
+        # WITHIN N <dim> / AFTER N <dim> -> sequence dimension-restriction step
+        if _RE_RESTRICTION.match(raw):
+            tokens.append(Token("RESTRICTION", raw, line=lineno))
             i += 1
             continue
 
@@ -663,6 +680,16 @@ class _Parser:
             self._advance()
             return _parse_condition(t.value, t.line)
 
+        # WITHIN N <dim> -> sequence dimension-restriction step
+        if t.type == "RESTRICTION":
+            self._advance()
+            mr = _RE_RESTRICTION.match(t.value.strip())
+            limit = mr.group(1).lower()
+            count = int(mr.group(2))
+            attr_raw = mr.group(3).strip()
+            full_var, _ = _resolve_variable(attr_raw)
+            return RestrictionNode(count=count, limit=limit, attribute_name=full_var, line=t.line)
+
         raise DSLParseError(f"예상치 못한 토큰: '{t.value}'", line=t.line)
 
 
@@ -710,6 +737,13 @@ def _compile_condition(node: ConditionNode) -> dict:
 
 def _wrap_in_container(node: Any, parent_context: str) -> dict:
     """노드를 container로 감싸기 (AA 패턴 재현)."""
+    if isinstance(node, RestrictionNode):
+        return {
+            "count": node.count,
+            "limit": node.limit,
+            "attribute": {"func": "attr", "name": node.attribute_name},
+            "func": "dimension-restriction",
+        }
     if isinstance(node, ContainerNode):
         return _compile_node(node)
     # segment-ref는 container로 감싸지 않음 (AA API 패턴)
@@ -1374,12 +1408,12 @@ def _fetch_segment_container(seg_id: str, headers: dict, gcid: str) -> dict | No
 # 제거 후 sequence (THEN) 가 outer hit 의 직접 pred 가 되어 _patch_root_sequence_for_hit_scope 가
 # sequence → sequence-prefix + context=visitors 자동 변환. AA reference 룰 충족:
 #   container.context=hits → pred.func=sequence-prefix(context=visitors) → stream[i].context=visits
-_SEQUENCE_LABEL_VISITOR_RE = re.compile(r'\[sequence-(?:after|before|all)\]\s*visitor\(')
+_SEQUENCE_LABEL_SCOPE_RE = re.compile(r'\[sequence-(?:after|before|all)\]\s*(?:hit|visit|visitor)\(')
 
 
 def _strip_sequence_label_tokens(dsl_text):
     while True:
-        m = _SEQUENCE_LABEL_VISITOR_RE.search(dsl_text)
+        m = _SEQUENCE_LABEL_SCOPE_RE.search(dsl_text)
         if not m:
             break
         start = m.start()

@@ -297,6 +297,18 @@ def _decompile_pred(pred: dict, indent: int, parent_context: str) -> list[str]:
     if func == "datetime-interval-ref":
         return [f"{pad}{_format_datetime_interval(pred)}"]
 
+    # dimension-restriction -- sequence THEN-step "within N <dim>" restriction.
+    # AA: {"func":"dimension-restriction","count":1,"limit":"within",
+    #      "attribute":{"func":"attr","name":"variables/page","description":"Pages"}}
+    # -> "WITHIN 1 page" (short var; round-trips via aa_create_segment _resolve_variable).
+    if func == "dimension-restriction":
+        n = pred.get("count", "?")
+        lim = str(pred.get("limit", "within")).upper()
+        attr = pred.get("attribute") or {}
+        attr_name = attr.get("name", "")
+        attr_tok = (_reverse_variable(attr_name) if attr_name else "") or attr.get("description") or "?"
+        return [f"{pad}{lim} {n} {attr_tok}"]
+
     leaf = _decompile_leaf(pred, parent_context)
     return [f"{pad}{l}" for l in leaf]
 

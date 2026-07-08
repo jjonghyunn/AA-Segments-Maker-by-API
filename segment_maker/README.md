@@ -97,6 +97,8 @@ python aa_segment_lookup.py --search "campaign" --modified-after 2025-01-01 --mo
 - `lookup/segment_lookup_<ts>.csv` — `segment_id, name, owner_id, owner_name, owner_email, rsid, modified, description, tags, structure`
 - `lookup/segment_lookup_<ts>.dsl` — 역변환된 DSL 멀티라인 (v2.3 입력으로 재사용 가능)
 
+> **sequence dimension-restriction round-trip (2026-07-08)**: sequence THEN 스텝 사이 "within N \<dim\>" 제약(AA `dimension-restriction`)을 DSL `WITHIN N <dim>` 스텝으로 표기 (예: `WITHIN 1 page`). `aa_create_segment_v2.3` 이 되읽어 재생성 → lookup↔maker 왕복. 차원은 조건문과 같은 short var(`page`) 표기. (sequence label strip 도 `hit`/`visit`/`visitor` scope 전부 처리하도록 일반화.)
+
 ## aa_segment_lookup_from_pjt.py 사용법
 
 project ID 만 넣으면 그 project 가 의존하는 모든 segment 의 structure 까지 한 번에 추출.
