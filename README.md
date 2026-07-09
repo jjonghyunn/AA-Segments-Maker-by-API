@@ -1,5 +1,5 @@
 # AA-Segments-Maker-by-API  
-<sub>2026-07-07  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-09  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
@@ -138,10 +138,19 @@ COMPANY_ID = "your_aa_company_id"
 | exists | `exists` | (없음) |
 | event<N> exists | `event-exists` | `"evt": event` (metric 컨테이너) |
 | 숫자 비교 | `eq` / `gt` / `lt` / `ge` / `le` | `"num": 숫자` |
-| NOT (부정) | `without` wrapper | `"pred": {...}` |
+| NOT (컨테이너 부정) | `without` wrapper | `"pred": {...}` |
+| does not equal | `not-streq` (DSL `not-equals`) | `"str": "값"` |
+| does not equal any of | `not-streq-in` (DSL `not-equal-any-of`) | `"list": [...]` |
+| does not contain | `not-contains` | `"str": "값"` |
+| does not contain any of | `not-contains-any-of` | `"list": [...]` |
+| does not start with | `not-starts-with` | `"str": "값"` |
+| does not end with | `not-ends-with` | `"str": "값"` |
+| does not exist | `not-exists` | (없음) |
 | AND / OR | `and` / `or` | `"preds": [{...}]` |
 
 Container 스코프: `"hits"` / `"visits"` / `"visitors"`
+
+> **부정(negation) 2가지**: ① 컨테이너 전체 부정 = `without` wrapper, ② leaf 단일 조건 부정 = 위 native `not-*` func (`not-streq`→DSL `not-equals`, `not-streq-in`→`not-equal-any-of`, `not-contains`/`not-starts-with`/`not-exists` …). lookup 이 native func 을 DSL 로 표기하고 maker 가 그대로 되읽어 왕복(round-trip). (⚠ `event-exists`(metric) / numeric `eq` 의 부정은 아직 미매핑.)
 
 ---
 
