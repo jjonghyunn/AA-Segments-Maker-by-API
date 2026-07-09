@@ -1,5 +1,5 @@
 # segment_maker/  
-<sub>2026-06-22  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-09  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
 
@@ -23,6 +23,62 @@ Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
 | `segments_result_example.csv` | `--apply` 실행 결과 CSV 형식 (`Action` = POST/PUT, `Status`, `SegmentId` …) |
 
 > 예시 파일의 캠페인명·ID·RSID 는 placeholder (`[CAMPAIGN NAME]`, `YOUR_ID`, `YOUR_SEGMENT_ID`, `sscompany_name4mstglobal`). 실제 환경 값으로 바꿔 사용.
+
+## 구조(DSL) 문법 요약
+
+`structure` 칼럼(한 줄 ` | ` 구분) 또는 `.dsl` 파일에 쓰는 세그먼트 **조건 문법** 요약. `aa_segment_lookup` 출력 DSL 과 동일 문법이라 lookup→maker 왕복(round-trip) 가능.
+
+```
+hit(                          # 컨테이너 (hit/visit/visitor)
+  page contains "keyword"
+  AND NOT prop29 contains-any-of ["a", "b"]
+)
+OR
+'Named'!hit(                  # 이름 지정 컨테이너
+  evar22 = "value"
+)
+AND @YOUR_SEGMENT_ID          # 기존 세그먼트 참조 (@<segment_id>)
+```
+
+### sequence (THEN)
+
+```
+visit(
+  page contains "campaign"
+  THEN
+  event1 exists
+)
+```
+
+### NOT 복합조건
+
+```
+NOT (
+  prop29 contains-any-of ["a", "b"]
+  OR
+  prop39 contains "prize"
+)
+```
+
+### 다중 세그먼트 입력 (.dsl)
+
+여러 세그먼트를 `--- segment` 구분선으로 한 파일에 나열:
+
+```
+--- segment
+name: Segment Name
+description: 설명
+rsid: sscompany_name4mstglobal
+tags: [tag1, tag2]
+
+hit( page contains "keyword" )
+
+--- segment
+name: Another Segment
+...
+```
+
+> 조건 연산자·부정(not-*) 패밀리·sequence 표기 등은 `aa_segment_lookup` 출력 DSL 과 동일 문법 (lookup↔maker 왕복).
 
 ## aa_create_segment_v2.3.py — CSV 입력 + AA validator patch 자동화 (권장)
 
