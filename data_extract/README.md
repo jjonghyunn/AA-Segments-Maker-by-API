@@ -1,5 +1,5 @@
 # [구버전 참고 · v1~v3, 삭제됨] extract_data.py / extract_data_v2.py / extract_data_v3.py  
-> ⚠ 본 문서가 다루는 v1~v3.1 파일들은 삭제됨 (2026-06-17). **최신은 `extract_data_v4.0.py` — `extract_data.md` 참조.** 본 문서는 구버전 참고용.  
+> ⚠ 본 문서가 다루는 v1~v3.1 파일들은 삭제됨 (2026-06-17). **최신은 `extract_data_v4.1.py` — `extract_data.md` 참조.** 본 문서는 구버전 참고용.  
 <sub>2026-06-09  Jonghyun Park w/ Claude</sub>  
 
 Adobe Workspace project의 모든 panel × reportlet에서 세그먼트/메트릭 이름 + 실제 데이터 값을 **동시다발적으로** 추출.

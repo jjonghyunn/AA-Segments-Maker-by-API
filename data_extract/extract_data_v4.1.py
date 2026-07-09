@@ -1,5 +1,11 @@
-# extract_data_v4.0.py
-# 2026-06-12  Jonghyun Park w/ Claude
+﻿# extract_data_v4.1.py
+# 2026-07-09  Jonghyun Park w/ Claude
+# v4.1 (2026-07-09): breakdown 깊이/부모행 출력 제어 상수 2개 추가 —
+#                    BREAKDOWN_MAX_DEPTH (정수 깊이 캡: -1=무제한, 0=총계만, 1=bd1까지, N=bdN까지) +
+#                    INCLUDE_PARENT_ROWS (dim1 총계행 출력 포함 여부; False=breakdown행만 "bd만" 모드).
+#                    "총계만 / 총계+bd1 / bd1만" 등을 enum 나열 없이 상수 2개 조합으로 표현.
+#                    기본값(-1, True)은 v4.0 출력과 100% 동일. CLI --breakdown-max-depth / --no-parent-rows.
+#                    그 외 추출 로직은 v4.0 과 동일.
 # v4.0 (2026-06-29): 출력 CSV 쓰기 직후 자가 무결성 검증(_verify_csv_written) 추가 —
 #                    stack/table CSV 를 다시 읽어 모든 행의 필드수가 헤더와 일치하는지 확인,
 #                    정상이면 ✓(데이터 행수×칼럼수), 불일치 시 ⚠ 경고 + 재추출 권장 (OneDrive 동기화/복사 등 외부 손상 즉시 감지).
@@ -175,6 +181,21 @@ REQUIRED_TABLE_KEYWORDS: list[str] = []
 BREAKDOWN_ENABLED: bool = True
 BREAKDOWN_DIMENSIONS: list[str] = []
 BREAKDOWN_TOP_N: int = 0
+#   BREAKDOWN_MAX_DEPTH (v4.1): breakdown 깊이 캡. 정수 1개로 모든 깊이 표현 (enum 나열 회피).
+#       -1(또는 <0) → 무제한 (자동감지/DIMENSIONS 전부, v4.0 동작)
+#        0          → 분해 안 함 (dim1 총계만 — BREAKDOWN_ENABLED=False 와 동일 효과)
+#        1 = bd1까지, 2 = bd2까지, ... N = bdN까지
+#   INCLUDE_PARENT_ROWS (v4.1): dim1 총계(부모) 행을 출력 CSV(stack/table)에 포함할지.
+#        True  → 총계행 + breakdown행 (v4.0 동작)
+#        False → breakdown행만 (총계행 제외, "bd만" 모드)
+#   ※ 속도: INCLUDE_PARENT_ROWS True/False 는 API 호출량 동일 → 속도차 사실상 없음.
+#     dim1(Lv1) 추출은 breakdown 부모 목록 확보용으로 항상 필요(_run_breakdowns frontier),
+#     이 상수는 그 총계행을 CSV 에 쓰냐 마냐(디스크 몇 행)만 결정. 즉 "bd1까지"(PARENT=True)와
+#     "bd1만"(PARENT=False)은 같은 시간. 속도를 줄이는 건 BREAKDOWN_MAX_DEPTH(깊이↓ = /reports 호출 곱연산↓),
+#     INCLUDE_PARENT_ROWS 아님.
+#   조합 예: 총계만=(MAX_DEPTH=0) · 총계+bd1=(MAX_DEPTH=1,PARENT=True) · bd1만=(MAX_DEPTH=1,PARENT=False)
+BREAKDOWN_MAX_DEPTH: int = -1
+INCLUDE_PARENT_ROWS: bool = True
 # v4.0: --estimate 시 True — breakdown 단계별 1경로 샘플만 떠서 총 /reports 호출수·ETA 추정 후 추출 생략 (CLI 전용 런타임 플래그)
 ESTIMATE_ONLY: bool = False
 
@@ -1064,12 +1085,20 @@ def _build_report_payload(project: dict, panel: dict, reportlet: dict, *,
 
 
 # ─── N단계 breakdown (v3.5) ────────────────────────────────────────
+def _cap_bd_depth(chain: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """BREAKDOWN_MAX_DEPTH 깊이 캡 적용 (v4.1). <0(또는 None)=무제한, N>=0 이면 chain[:N].
+    N=0 이면 빈 체인 → breakdown 안 함(BREAKDOWN_ENABLED 여부와 무관하게 dim1 총계만)."""
+    if BREAKDOWN_MAX_DEPTH is not None and BREAKDOWN_MAX_DEPTH >= 0:
+        return chain[:BREAKDOWN_MAX_DEPTH]
+    return chain
+
+
 def _detect_breakdown_chain(reportlet: dict) -> list[tuple[str, str]]:
     """행(dim1) 아래로 분해할 하위 차원 체인을 (dim_id, dim_name) 리스트로 깊이순 반환.
     BREAKDOWN_DIMENSIONS 가 지정되면 그걸 우선 사용(name=""), 아니면 freeformTable.breakdowns 의
     nested dimension 을 깊이순으로 자동감지. 빈 리스트면 분해 안 함(v3.4 동작)."""
     if BREAKDOWN_DIMENSIONS:
-        return [(d, "") for d in BREAKDOWN_DIMENSIONS if d]
+        return _cap_bd_depth([(d, "") for d in BREAKDOWN_DIMENSIONS if d])
     chain: list[tuple[str, str]] = []
     ff = reportlet.get("freeformTable") or {}
     node_list = ff.get("breakdowns") or []
@@ -1091,7 +1120,7 @@ def _detect_breakdown_chain(reportlet: dict) -> list[tuple[str, str]]:
                  or dim_obj.get("description") or did)
         chain.append((did, dname))
         node_list = entry.get("breakdowns") or []
-    return chain
+    return _cap_bd_depth(chain)
 
 
 def _breakdown_top_branches(reportlet: dict) -> list[str]:
@@ -1708,35 +1737,37 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             seg_names_per_metric = t.get("seg_names_per_metric") or []
             base_cols = [site.site_code, site.rsid, start_date, end_date,
                          t["panel_name"], t["tb_name"], t["reportlet_name"], dim_id, dim_name]
-            summary = t.get("summary_data", [])
-            rows = t["rows"]
-            if summary and not rows:
-                # summary 만 (dimension row 없음) — itemId/dim_value 비우고 metric N개 unpivot
-                for i, v in enumerate(summary, start=1):
-                    m_name = metric_names[i-1] if i-1 < len(metric_names) else ""
-                    seg_list = seg_names_per_metric[i-1] if i-1 < len(seg_names_per_metric) else []
-                    seg_str = "; ".join(s for s in seg_list if s)
-                    device = t.get("device_case") or _parse_device(seg_list)   # v3.8: 케이스 라벨 우선
-                    w.writerow(base_cols + ["", "(summary)", f"value{i}", m_name, _normalize_metric(m_name), seg_str, device,
-                                            v if v is not None else ""] + bd_blank)
-            else:
-                # outer loop = metric (value_n), inner loop = dimension rows
-                # → value1 전체 dim → value2 전체 dim ... (의도 csv 의 정렬)
-                max_data = max((len(r.get("data") or []) for r in rows), default=0)
-                n = max(len(metric_names), max_data)
-                for i in range(n):
-                    m_name = metric_names[i] if i < len(metric_names) else ""
-                    seg_list = seg_names_per_metric[i] if i < len(seg_names_per_metric) else []
-                    seg_str = "; ".join(s for s in seg_list if s)
-                    device = t.get("device_case") or _parse_device(seg_list)   # v3.8: 케이스 라벨 우선
-                    vn = f"value{i+1}"
-                    for r in rows:
-                        item_id = r.get("itemId", "")
-                        dim_val = r.get("value", "")
-                        data = r.get("data") or []
-                        v = data[i] if i < len(data) else ""
-                        w.writerow(base_cols + [item_id, dim_val, vn, m_name, _normalize_metric(m_name), seg_str, device,
+            # v4.1: INCLUDE_PARENT_ROWS=False 면 dim1 총계(부모) 행을 skip (breakdown 행만 출력)
+            if INCLUDE_PARENT_ROWS:
+                summary = t.get("summary_data", [])
+                rows = t["rows"]
+                if summary and not rows:
+                    # summary 만 (dimension row 없음) — itemId/dim_value 비우고 metric N개 unpivot
+                    for i, v in enumerate(summary, start=1):
+                        m_name = metric_names[i-1] if i-1 < len(metric_names) else ""
+                        seg_list = seg_names_per_metric[i-1] if i-1 < len(seg_names_per_metric) else []
+                        seg_str = "; ".join(s for s in seg_list if s)
+                        device = t.get("device_case") or _parse_device(seg_list)   # v3.8: 케이스 라벨 우선
+                        w.writerow(base_cols + ["", "(summary)", f"value{i}", m_name, _normalize_metric(m_name), seg_str, device,
                                                 v if v is not None else ""] + bd_blank)
+                else:
+                    # outer loop = metric (value_n), inner loop = dimension rows
+                    # → value1 전체 dim → value2 전체 dim ... (의도 csv 의 정렬)
+                    max_data = max((len(r.get("data") or []) for r in rows), default=0)
+                    n = max(len(metric_names), max_data)
+                    for i in range(n):
+                        m_name = metric_names[i] if i < len(metric_names) else ""
+                        seg_list = seg_names_per_metric[i] if i < len(seg_names_per_metric) else []
+                        seg_str = "; ".join(s for s in seg_list if s)
+                        device = t.get("device_case") or _parse_device(seg_list)   # v3.8: 케이스 라벨 우선
+                        vn = f"value{i+1}"
+                        for r in rows:
+                            item_id = r.get("itemId", "")
+                            dim_val = r.get("value", "")
+                            data = r.get("data") or []
+                            v = data[i] if i < len(data) else ""
+                            w.writerow(base_cols + [item_id, dim_val, vn, m_name, _normalize_metric(m_name), seg_str, device,
+                                                    v if v is not None else ""] + bd_blank)
             # v3.5: breakdown rows — itemId/dim_short = path[0](dim1 부모), bd{k}_* = path[k]
             bd_rows = t.get("breakdown_rows") or []
             if bd_rows:
@@ -1811,12 +1842,14 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                          t.get("dimension_id", ""), t.get("dimension_name", ""),
                          t.get("device_case", "")]   # v3.8
             seg_vals = _seg_values(t)
-            summary = t.get("summary_data", [])
-            if summary:
-                w.writerow(base_cols + ["", "(summary)"] + _vals_row(summary) + seg_vals + bd_blank)
-            for r in t["rows"]:
-                w.writerow(base_cols + [r.get("itemId", ""), r.get("value", "")]
-                           + _vals_row(r.get("data") or []) + seg_vals + bd_blank)
+            # v4.1: INCLUDE_PARENT_ROWS=False 면 dim1 총계/summary 행을 skip (breakdown 행만 출력)
+            if INCLUDE_PARENT_ROWS:
+                summary = t.get("summary_data", [])
+                if summary:
+                    w.writerow(base_cols + ["", "(summary)"] + _vals_row(summary) + seg_vals + bd_blank)
+                for r in t["rows"]:
+                    w.writerow(base_cols + [r.get("itemId", ""), r.get("value", "")]
+                               + _vals_row(r.get("data") or []) + seg_vals + bd_blank)
             for br in t.get("breakdown_rows") or []:
                 path = br["path"]
                 p0 = path[0]   # (dim1_id, dim1_name, item_id, value)
@@ -1920,6 +1953,11 @@ def main() -> int:
     parser.add_argument("--breakdown-dims", type=str, default=None, metavar="d1,d2,...",
                         help="dim1 다음 분해 차원 id 들을 콤마로 (BREAKDOWN_DIMENSIONS override). "
                              "예: variables/product,variables/evar92")
+    parser.add_argument("--breakdown-max-depth", type=int, default=None, metavar="N",
+                        help="breakdown 깊이 캡 (BREAKDOWN_MAX_DEPTH override). "
+                             "-1=무제한, 0=총계만(분해안함), 1=bd1까지, N=bdN까지")
+    parser.add_argument("--no-parent-rows", action="store_true",
+                        help="dim1 총계(부모) 행을 출력에서 제외 — breakdown 행만 (INCLUDE_PARENT_ROWS=False)")
     parser.add_argument("--site-workers", type=int, default=SITE_WORKERS, metavar="N",
                         help=f"site 단위 병렬 워커 수 (default {SITE_WORKERS}, 1=순차). "
                              f"동시 API 요청 ≈ N × --workers — 429 뜨면 줄이기")
@@ -1930,6 +1968,10 @@ def main() -> int:
         globals()["BREAKDOWN_TOP_N"] = args.breakdown_top_n
     if args.breakdown_dims is not None:
         globals()["BREAKDOWN_DIMENSIONS"] = [d.strip() for d in args.breakdown_dims.split(",") if d.strip()]
+    if args.breakdown_max_depth is not None:
+        globals()["BREAKDOWN_MAX_DEPTH"] = args.breakdown_max_depth
+    if args.no_parent_rows:
+        globals()["INCLUDE_PARENT_ROWS"] = False
     # v3.7: breakdown limit 은 _run_breakdowns 가 module 전역을 참조 → CLI 값으로 갱신
     globals()["LIMIT_BD"] = args.limit_bd
     globals()["LIMIT_BD2"] = args.limit_bd2
@@ -1963,12 +2005,15 @@ def main() -> int:
                   f"(X site 는 requires_app 케이스 제외, 미매칭 site 는 _old 제거→X 간주)")
     else:
         print(f"  DEVICE_CASES  : 0건 (케이스 반복 없음 — v3.7 동작)")
-    if BREAKDOWN_ENABLED:
+    _parent_disp = "포함" if INCLUDE_PARENT_ROWS else "제외(bd만)"
+    if BREAKDOWN_ENABLED and BREAKDOWN_MAX_DEPTH != 0:
         _bd_dims = BREAKDOWN_DIMENSIONS or "(테이블 breakdowns 자동감지)"
         _bd_topn = "전체" if BREAKDOWN_TOP_N == 0 else f"레벨별 상위 {BREAKDOWN_TOP_N}"
-        print(f"  BREAKDOWN     : ON  dims={_bd_dims}  top_n={_bd_topn}")
+        _bd_depth = "무제한" if (BREAKDOWN_MAX_DEPTH is None or BREAKDOWN_MAX_DEPTH < 0) else f"bd{BREAKDOWN_MAX_DEPTH}까지"
+        print(f"  BREAKDOWN     : ON  dims={_bd_dims}  top_n={_bd_topn}  max_depth={_bd_depth}  parent_rows={_parent_disp}")
     else:
-        print(f"  BREAKDOWN     : OFF (dim1 만)")
+        _why = "MAX_DEPTH=0" if (BREAKDOWN_ENABLED and BREAKDOWN_MAX_DEPTH == 0) else "BREAKDOWN_ENABLED=False"
+        print(f"  BREAKDOWN     : OFF (dim1 총계만, {_why})  parent_rows={_parent_disp}")
 
     # sites_input.csv 로드
     sites_rows = _load_sites_input(SITES_INPUT_CSV)
