@@ -9,7 +9,7 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 | `RESHAPE_standard_v1.6.py` | extract_data 출력 → `_union_standard_*.csv` union 정제 (범용). v1.6: wide 의 revenue 계열을 `<metric>_org`(원본)+`<metric>`(fx) 두 열로 분리 + `variable` 컬럼(dimension 뒤 토큰, 예 `variables/evar26`→`evar26`) 추가. v1.5: metric_origin + 정제 metric + value_origin + wide union(`_union_standard_wide_*`). v1.4: panel/table/reportlet 의 product 키워드(`Multi Purchase`/`Multi Order`/`Best Selling Product`) 행에 `product_category.yaml` 로 `category` 컬럼 분류 추가 (`ADD_CATEGORY_COLUMN`). v1.3: `stack_data_extract_*` 입력 패턴 대응 (구버전 `extract_data_*` 호환). v1.2: metric / Panel name 출력 컬럼 추가 + `EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션. v1.1: breakdown 행 모드(`BREAKDOWN_ROWS_MODE`) + device/bd 컬럼 passthrough + `_old` 접미사 SITE CODE 정규화 |
 | `site_registry.py` | `site_code → (subsidiary, country, rsid)` 매핑. `lookup_site()` 함수 제공 |
 | `table_data_extract_example.csv` / `stack_data_extract_example.csv` | 출력 2종(가로형 table / 세로형 stack) 형식 예시 (placeholder 값) |
-| `_contents/` (하위폴더) | **캠페인 콘텐츠(콘텐츠 배너·시나리오) 분석 전용** 변형. contents 프로젝트의 site × device 5종(pc/mobile/app/android/ios) payload 분기 + `RESHAPE_contents` 후처리(환율·Delayed 합산·SITE CODE 정규화)가 묶인 도구 세트. generic `extract_data_v4.1.py` 와 별개 — 콘텐츠 캠페인 추출은 여기 사용. 상세: `_contents/README.md` |
+| `_contents/` (하위폴더) | **캠페인 콘텐츠(콘텐츠 배너·시나리오) 분석 전용** 변형. contents 프로젝트의 site × device 5종(pc/mobile/app/android/ios) payload 분기 + `RESHAPE_contents` 후처리(환율·Delayed 합산·SITE CODE 정규화)가 묶인 도구 세트. generic `extract_data_v4.1.py` 와 별개 — 콘텐츠 캠페인 추출은 여기 사용. 추출: `_contents/extract_data_v3.2_contents.py`, 정제 상세: `_contents/RESHAPE_contents_v1.1.md` |
 
 ## v3.8 신규 기능 (2026-06-12)
 

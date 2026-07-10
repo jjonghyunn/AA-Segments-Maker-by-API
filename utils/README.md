@@ -15,5 +15,6 @@ Adobe Analytics 유틸리티 스크립트 모음.
 python find_user_id.py --ims-user-id "B22...e"    # IMS ID 정확 매칭
 python find_user_id.py --login user1            # login substring
 python find_user_id.py --email user@example.com    # email substring
+python find_user_id.py --name "user1"              # fullName substring
 python find_user_id.py --all --csv users.csv       # 전체 사용자 CSV dump
 ```

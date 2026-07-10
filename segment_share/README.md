@@ -3,7 +3,7 @@
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_share
 
-운영 사본 — 실제 KEYWORDS / SHARE_USER_IDS / AUTH 경로 박혀있는 작업본. generic 변경은 repo 사본에 동기화.
+로컬 운영 사본엔 실제 KEYWORDS / SHARE_USER_IDS / AUTH 경로를 박아 쓰지만, **이 repo 사본은 placeholder**. generic 변경은 repo 사본에 동기화.
 
 ---
 

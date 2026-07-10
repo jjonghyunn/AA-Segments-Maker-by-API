@@ -1,4 +1,4 @@
-# sites_input.csv — extract_data_v4.0.py 입력 템플릿
+# sites_input.csv — extract_data_v4.1.py 입력 템플릿
 # 형식: site_code,start_date,end_date  (ISO YYYY-MM-DD)
 # 빈 줄 / '#' 로 시작하는 라인은 자동 skip. 실제 캠페인 site·기간으로 행만 교체.
 #

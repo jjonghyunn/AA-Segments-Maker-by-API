@@ -11,7 +11,7 @@
 Adobe Workspace project 의 지정한 panel 들 (기본: 전체) 을 다른 (빈) target project 로
 복제하면서 panel 안의 segment ID 들을 다른 키워드 패턴의 segment 로 자동 swap 하는 도구.
 
-clone_project_first_panel.py 의 변형 버전.
+panel_contents.py 의 변형 버전 (recomm 계열).
 주요 차이:
   · NEW_KEYWORDS = [CAMPAIGN NAME] (CAMPAIGN NAME 캠페인용)
   · 매칭 방식: 이름 정규화 대신 "CC_<번호>" / "US_CC_<번호>" 패턴 + 끝 suffix

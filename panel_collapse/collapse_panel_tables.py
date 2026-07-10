@@ -17,7 +17,7 @@ collapsed=True 로 일괄 강제 — 워크스페이스 열었을 때 모든 테
 
 참고
   · panel_date_update/update_panel_date.py — GET/PUT 흐름, dry-run 구조 동일
-  · panel_maker/clone_project_first_panel.py — _collapse_all_subpanels 동일 헬퍼
+  · panel_maker/panel_contents.py — _collapse_all_subpanels 동일 헬퍼
 
 사용 예
   python collapse_panel_tables.py             # dry-run (안전 확인용)

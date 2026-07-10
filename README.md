@@ -55,7 +55,7 @@ python aa_segment_lookup.py --search "[CAMPAIGN NAME]"     # → lookup/segment_
 
 # 4) Workspace 프로젝트 패널 데이터 추출
 cd ../data_extract
-python extract_data_v4.0.py                # sites_input.csv 의 site 별로 추출
+python extract_data_v4.1.py                # sites_input.csv 의 site 별로 추출
 #   → stack_data_extract_<site>_<ts>.csv  (형식: stack_data_extract_example.csv)
 #   → table_data_extract_<site>_<ts>.csv  (형식: table_data_extract_example.csv)
 python RESHAPE_standard_v1.6.py            # union 정제
@@ -93,7 +93,7 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 
 ### Panel 운영 도구 (운영 사본 모음)
 
-코드 상단에 실제 PROJECT_ID·키워드가 박혀있는 운영 작업본. 캠페인 바꿀 때 상수만 교체. generic 변경은 repo 사본에도 동기화.
+로컬 운영 작업본은 코드 상단에 실제 PROJECT_ID·키워드를 박아 쓰지만, **공개 repo 사본은 placeholder**. 캠페인 바꿀 때 상수만 교체. generic 변경은 repo 사본에도 동기화.
 
 | 폴더 | 용도 |
 |---|---|

@@ -3,7 +3,7 @@
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/panel_date_update
 
-운영 사본 — 실제 PROJECT_ID/AUTH 경로/캠페인별 패턴이 박혀있는 작업본. generic 변경(룰/기능)은 repo 사본에도 동기화할 것. 단순 운영값(PROJECT_ID/날짜) 변경은 repo 안 올림.
+로컬 운영 사본엔 실제 PROJECT_ID/AUTH 경로/캠페인별 패턴을 박아 쓰지만, **이 repo 사본은 placeholder**. generic 변경(룰/기능)은 repo 사본에도 동기화할 것. 단순 운영값(PROJECT_ID/날짜) 변경은 repo 안 올림.
 
 ## 용도
 
