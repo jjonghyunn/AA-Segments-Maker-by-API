@@ -287,7 +287,7 @@ def item_from_segments(segments: str) -> str:
 # ─── product category 분류 (v1.4) ──────────────────────────────────
 def load_category_rules(path: Path):
     """product_category.yaml → [(category_name, [include_re], [exclude_re]), …].
-    divisions·categories 의 파일 순서를 보존 (예: Smartthings 가 ACC 보다 먼저 매칭돼야 함).
+    divisions·categories 의 파일 순서를 보존 (예: ServiceApp 이 ACC 보다 먼저 매칭돼야 함).
     division 명(ETC 등)은 출력 라벨이 아니라 그룹일 뿐 — leaf category 명만 사용."""
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}

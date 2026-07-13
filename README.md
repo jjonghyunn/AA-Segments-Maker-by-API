@@ -70,7 +70,6 @@ python RESHAPE_standard_v1.6.py            # union 정제
 | 도구 | 설명 |
 |---|---|
 | **`aa_create_segment_v*.py` (CSV) — 권장** | CSV 입력 (structure 칼럼) → 생성(POST) / 업데이트(PUT). dry-run CSV 자동, AA validator patch (event-exists / segment-ref auto-fetch + cache / NOT container) |
-| 구버전 DSL maker | SQL-like DSL → AA JSON 자동 변환. 다중 일괄 생성, `@segment_id` 참조, THEN/NOT 복합 (레거시 — 정리 완료) |
 | `input_csv_maker(_*).py` | raw `seg_make_ref_*.csv` → input CSV + `.dsl` + `_WARN.csv` 자동 변환. variant: us / from_ref_batch 룰 차이 |
 | `aa_segment_lookup.py` | ID 또는 이름 키워드로 검색 → CSV (owner 이름/이메일 + structure 포함) + `.dsl` 역변환. 결과는 `lookup/` 하위. `--search` 는 모든 키워드(첫 키워드 포함)를 이름 **연속 substring** 으로 AND (v1.2), owner 보강은 AA `GET /users` (v1.1). `SEARCH_RESULT_LIMIT` 상수로 상한 조정. `--modified-after/before YYYY-MM-DD` 로 수정일 필터(AA 가 생성일 미제공 → `modified` 기준, both inclusive) |
 | `aa_segment_lookup_from_pjt.py` | project 의 panel 들이 참조하는 segment 목록 일괄 lookup (출력 포맷 동일, `lookup/` 하위) |
@@ -157,5 +156,7 @@ Container 스코프: `"hits"` / `"visits"` / `"visitors"`
 ## 의존성
 
 ```
-pip install aanalytics2 pandas requests
+pip install aanalytics2 requests pyyaml
 ```
+
+- `pyyaml` 은 `data_extract/RESHAPE_standard_v*.py` 의 product 카테고리 분류(`product_category.yaml`)에만 필요.
