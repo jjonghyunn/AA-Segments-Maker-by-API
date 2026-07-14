@@ -1,5 +1,5 @@
 # AA-Segments-Maker-by-API  
-<sub>2026-07-09  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-14  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
@@ -116,7 +116,7 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 모든 스크립트 공통: `aanalytics2` 라이브러리 + OAuth Server-to-Server auth JSON.
 
 ```python
-AUTH_JSON_PATH = "path/to/aanalytics_auth.json"
+AUTH_JSON_PATH = "path/to/aanalyticsact_auth.json"
 COMPANY_ID = "your_aa_company_id"
 ```
 

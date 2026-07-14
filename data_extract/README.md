@@ -1,5 +1,5 @@
 # data_extract  
-<sub>2026-07-13  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-14  Jonghyun Park w/ Claude</sub>  
 
 Adobe Workspace project 의 panel × reportlet 에서 세그먼트/메트릭 이름 + 실제 데이터 값을 동시다발적으로 추출하고, 그 결과를 정제하는 도구 모음.
 
@@ -9,7 +9,10 @@ Adobe Workspace project 의 panel × reportlet 에서 세그먼트/메트릭 이
 |---|---|---|
 | `extract_data_v4.1.py` | [`extract_data.md`](extract_data.md) | **현행 추출기** — N단계 breakdown + device 컬럼 + 사이트별 RSID/dateRange override + site 병렬(`SITE_WORKERS`) |
 | `RESHAPE_standard_v1.6.py` | [`RESHAPE_standard_v1.6.md`](RESHAPE_standard_v1.6.md) | 추출본 union 정제 — breakdown 행 모드 + `_old` SITE CODE 정규화 + metric/Panel name 컬럼 + product 카테고리 분류 |
-| `_contents/extract_data_v3.2_contents.py` | [`_contents/RESHAPE_contents_v1.1.md`](_contents/RESHAPE_contents_v1.1.md) | contents 계열 추출 + 정제 (별도 시리즈) |
+| `_contents/RESHAPE_contents_v1.1.py` | [`_contents/RESHAPE_contents_v1.1.md`](_contents/RESHAPE_contents_v1.1.md) | contents 계열 **정제기** (별도 시리즈) |
+| `_contents/extract_data_v3.2_contents.py` | *(전용 문서 없음 — 정제기 md 참고)* | contents 계열 추출기 (아래 주 참조) |
+
+> **`_contents` 시리즈 주**: contents 계열은 별개 lineage 로, 추출기가 메인(`v4.1`)보다 뒤처진 `v3.2` 이며 입력도 구 명명 `column_mapping_*.csv` 를 사용한다. 메인 계열과 통합되지 않은 채 분기·정체된 상태이며, 추출기 전용 문서는 없다(정제기 md 로 흐름 파악).
 
 ## 보조 파일
 
