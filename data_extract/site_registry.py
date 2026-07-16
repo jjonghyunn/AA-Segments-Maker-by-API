@@ -52,7 +52,7 @@ _SITE_MASTER: dict[str, tuple[str | None, str | None, str]] = {
     "levant_ar": ("FRYI", "Levant", "sscompany_name4levantar"),
     "africa_pt": ("FRJN", "Africa Pan", "sscompany_name4africapt"),
     "n_africa": ("FRZNT", "North Africa", "sscompany_name4nafrica"),
-    "pk": ("FRCNX", "Pakistan", "sscompany_name4pk"),
+    "pk": ("FRPK", "Pakistan", "sscompany_name4pk"),
     "ps": ("FRVY", "Palestine", "sscompany_name4ps"),
     "sa": ("FRFNE", "Saudi Arabia", "sscompany_name4sa"),
     "tr": ("FRGX", "Turkey", "sscompany_name4tr"),
