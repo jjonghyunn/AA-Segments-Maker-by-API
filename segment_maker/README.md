@@ -20,7 +20,7 @@ Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
 |---|---|
 | `segments_input_example.csv` | v2.3 가 받는 입력 CSV 형식 (`structure` 칼럼은 ` \| ` 구분 한 줄 DSL) |
 | `segments_input_example.dsl` | 같은 내용의 멀티라인 DSL (시각 확인용) |
-| `segments_result_example.csv` | `--apply` 실행 결과 CSV 형식 (`Action` = POST/PUT, `Status`, `SegmentId` …) |
+| `segments_result_example.csv` | `--apply` 실행 결과 CSV 형식 (`Action` = create/update, `Status`, `SegmentId` …) |
 
 > 예시 파일의 캠페인명·ID·RSID 는 placeholder (`[CAMPAIGN NAME]`, `YOUR_ID`, `YOUR_SEGMENT_ID`, `sscompany_name4mstglobal`). 실제 환경 값으로 바꿔 사용.
 
@@ -231,6 +231,8 @@ python aa_delete_segment.py --yes
 2. 이름 prefix 검증 — 삭제 직전 GET 으로 실제 이름 확인. `SAFE_NAME_PREFIX` (기본 `_test_`) 로 시작 안 하면 자동 skip
 3. `--yes` 플래그 게이트 — 없으면 preview 만
 
-`--from-csv` 생략 시 같은 폴더의 `result_*.csv` 중 가장 최신 1 개 자동 선택.
+`--from-csv` 생략 시 같은 폴더의 `result_*.csv` / `test_result_*.csv` 중 가장 최신 1 개 자동 선택.
+
+> ⚠ create 출력 파일(`segment_v2.3_result_*.csv`)은 `segment_` 로 시작해 이 자동 선택(`result_*` glob)에 **안 잡힌다** — create → delete 를 이어 돌릴 땐 `--from-csv` 로 파일을 직접 지정할 것.
 
 PowerShell 주의: `--yes` 는 따옴표 밖에 둘 것.
