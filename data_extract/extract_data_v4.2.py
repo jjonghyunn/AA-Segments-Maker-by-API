@@ -1,5 +1,15 @@
-﻿# extract_data_v4.1.py
-# 2026-07-09  Jonghyun Park w/ Claude
+﻿# extract_data_v4.2.py
+# 2026-07-24  Jonghyun Park w/ Claude
+# v4.2 (2026-07-24): 기간 분할·연도 shift 상수 2개 추가 (sites_input 에는 항상 site 별 "총기간"을 넣는다) —
+#                    MONTHLY (총기간을 달력 월로 쪼개 월마다 dateRange override 로 각각 추출.
+#                      출력에 period 컬럼('Jul 2025') 추가 + start_date/end_date 가 그 달 범위.
+#                      AA 프로젝트에 daterangemonth breakdown 을 만들 필요가 없고 bd 슬롯은 그대로 남음
+#                      → monthly × 기존 breakdown(예: 채널 detail) 병행 가능) +
+#                    YEAR_OFFSETS (sites_input 날짜의 연도를 N 만큼 shift. [0,-1] 이면 올해+작년
+#                      동기간을 한 실행으로. offset≠0 결과는 파일명에 _y{연도} 태그가 붙어 안 섞임)
+#                    → 연도별 폴더 사본(y25/y26) 없이 폴더 1개로 동기간 YoY 추출.
+#                    기본값(False, [0])은 v4.1 출력과 100% 동일. CLI --monthly / --year-offsets.
+#                    그 외 추출 로직은 v4.1 과 동일.
 # v4.1 (2026-07-09): breakdown 깊이/부모행 출력 제어 상수 2개 추가 —
 #                    BREAKDOWN_MAX_DEPTH (정수 깊이 캡: -1=무제한, 0=총계만, 1=bd1까지, N=bdN까지) +
 #                    INCLUDE_PARENT_ROWS (dim1 총계행 출력 포함 여부; False=breakdown행만 "bd만" 모드).
@@ -50,17 +60,18 @@ extract_data — AA Workspace 프로젝트의 panel·reportlet 구조를 여러 
 한 프로젝트를 site별 RSID + 기간(dateRange) override 로 반복 호출해 long/wide CSV 2종으로 떨군다.
 
 전체 흐름:
-  1) 설정 로드 — AUTH(OAuth S2S), PROJECT_ID, sites_input.csv(site_code·기간), 옵션 상수들.
+  1) 설정 로드 — AUTH(OAuth S2S), PROJECT_ID, sites_input.csv(site_code·총기간), 옵션 상수들.
+       · (v4.2) YEAR_OFFSETS 로 sites_input 날짜 연도를 shift 한 run 을 site 당 N개로 확장.
   2) 인증 → 프로젝트 GET → panel 목록 확보. dateRange·segment name 미리 조회(캐시).
-  3) site 별 반복 (SITE_WORKERS 병렬):
-       a. task 생성 = panel × reportlet/table × device case
+  3) site(×연도) 별 반복 (SITE_WORKERS 병렬):
+       a. task 생성 = panel × reportlet/table × device case × 기간조각
             (모두 옵션 — panel·table 은 REQUIRED_PANEL_KEYWORDS / REQUIRED_TABLE_KEYWORDS 이름 필터,
-             device case 는 DEVICE_CASES. 비우면 전체 대상 1회).
+             device case 는 DEVICE_CASES, 기간조각은 MONTHLY(v4.2). 비우면/끄면 전체 대상 1회).
        b. 각 task 의 globalFilter 구성:
             · 패널 기존 세그(panel.segmentGroups) 적용 — (옵션) SKIP_PANEL_SEGMENTS 로 패널 세그 전체 무시,
               SKIP_PANEL_SEGMENT_KEYWORDS 로 이름 키워드 매칭 세그만 골라 제외
             · (옵션) EXTRA_SEGMENTS 추가 — 이름→id 최초 1회 확정(+lookup 파일 저장) 후 매 task 적용, enabled 토글로 on/off
-            · site 기간(start/end) dateRange override
+            · site 기간(start/end) dateRange override — MONTHLY 면 그 달 조각의 기간
        c. /reports 호출 (MAX_WORKERS 병렬) — 페이지네이션 + 레벨별 행수 cap(LIMIT_LV1 / LIMIT_BD~LIMIT_BD4).
        d. (옵션) N단계 breakdown(BREAKDOWN_ENABLED) — dim1 의 각 item 을 하위 차원으로 재귀 분해 (metricFilter 체인 AND).
        e. 결과를 CSV 2종으로 기록 후 무결성 자가검증(v4.0):
@@ -83,7 +94,7 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -168,6 +179,30 @@ REQUIRED_PANEL_KEYWORDS: list[str] = []
 #   [kw, ...] → reportlet.name 에 키워드 하나라도 포함된 테이블만 처리 (OR, 대소문자 구분)
 # 예: ["Watch Visit debug"] → 그 이름 포함 테이블 1개만 (나머지 테이블 skip)
 REQUIRED_TABLE_KEYWORDS: list[str] = []
+
+# ─── 기간 분할 추출 / 연도 shift (v4.2) ─────────────────────────────
+# sites_input.csv 에는 항상 site 별 **총기간**(start_date~end_date)을 넣는다.
+# 아래 두 상수가 그 총기간을 "어떻게 뽑을지"(추출 방식)를 정한다.
+#
+# MONTHLY : 총기간을 통으로 1회 뽑을지, 달력 월 단위로 쪼개 월마다 뽑을지.
+#   False → 총기간 1회 추출 (v4.1 동작)
+#   True  → 총기간을 달력 월로 쪼개 월마다 dateRange override 로 각각 추출.
+#           · 출력에 period 컬럼 추가 ('Jul 2025' — AA daterangemonth 표기와 동일),
+#             start_date/end_date 는 그 달 범위로 기록 (양 끝 부분월은 총기간에 맞춰 잘림.
+#             예: 총기간 2025-07-06~07-21 → 'Jul 2025' 한 조각).
+#           · AA 프로젝트에 daterangemonth breakdown 을 미리 만들 필요가 없다(어떤 프로젝트든 월별 가능).
+#           · bd 슬롯을 안 쓰므로 기존 breakdown(예: 채널 detail)과 **병행** 가능.
+#           · task 수 = 패널 × 테이블 × device케이스 × 월수 — API 호출 그만큼 증가.
+MONTHLY: bool = False
+
+# YEAR_OFFSETS : sites_input 날짜의 **연도**를 N 만큼 shift 해서 추출 (동기간 YoY 비교용).
+#   [0]         → sites_input 그대로 (v4.1 동작, 파일명도 동일)
+#   [0, -1]     → 올해 + 작년 동기간을 한 실행으로 (site 당 2 run)
+#   [-2,-1,0], [0,1] 처럼 개수·부호 자유. 2/29 는 shift 후 없는 날이면 2/28 로 clamp.
+#   ※ offset≠0 인 run 의 출력 파일명에는 `_y{연도}` 태그가 붙는다
+#     (같은 output 폴더에서 연도별 파일이 안 섞이고, RESHAPE 의 "site별 최신 1개" 선택도 연도별로 분리).
+#   → 연도별 폴더 사본(y25/y26)을 만들지 않고 폴더 1개로 두 연도를 뽑기 위한 옵션.
+YEAR_OFFSETS: list[int] = [0]
 
 # ─── N단계 breakdown (행 차원 재귀 분해) ────────────────────────────
 # dim1(행 = dimensionSettings[0]) 의 각 item 을 하위 차원으로 분해해서 추출.
@@ -689,6 +724,48 @@ def _build_date_range_definition(start_date: str, end_date: str) -> str:
     start_dt = _dt.strptime(start_date, "%Y-%m-%d")
     end_dt = _dt.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
     return f"{start_dt:%Y-%m-%dT}00:00:00.000/{end_dt:%Y-%m-%dT}00:00:00.000"
+
+
+# ─── 연도 shift / 월 분할 (v4.2) ───────────────────────────────────
+def _shift_year(date_str: str, offset: int) -> str:
+    """'YYYY-MM-DD' 의 연도만 offset 만큼 이동. 2/29 처럼 shift 후 없는 날짜는 2/28 로 clamp.
+    예: ('2026-07-21', -1) → '2025-07-21'"""
+    if not offset:
+        return date_str
+    d = datetime.strptime(date_str, "%Y-%m-%d")
+    try:
+        return d.replace(year=d.year + offset).strftime("%Y-%m-%d")
+    except ValueError:      # 2/29 → 평년
+        return d.replace(year=d.year + offset, day=28).strftime("%Y-%m-%d")
+
+
+# 월 라벨용 영문 약어 — strftime('%b') 는 로케일 의존이라 고정 테이블 사용 (AA 표기 'Jul 2025' 와 일치)
+_MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _split_months(start_date: str, end_date: str) -> list[tuple[str, str, str]]:
+    """총기간을 달력 월 조각으로 분할 → [(조각시작, 조각끝, 라벨), ...].
+    MONTHLY=False 면 분할 없이 [(start, end, "")] 1개 (이하 로직 공통 처리용).
+    라벨은 'Jul 2025' 형식 — AA daterangemonth 표기와 동일해서 후처리에서 그대로 파싱된다.
+    양 끝은 총기간에 맞춰 잘림: ('2025-07-06','2025-07-21') → [('2025-07-06','2025-07-21','Jul 2025')]"""
+    if not MONTHLY:
+        return [(start_date, end_date, "")]
+    s = datetime.strptime(start_date, "%Y-%m-%d")
+    e = datetime.strptime(end_date, "%Y-%m-%d")
+    if e < s:
+        return [(start_date, end_date, "")]
+    out: list[tuple[str, str, str]] = []
+    cur = s
+    while cur <= e:
+        # 그 달의 마지막 날 = 다음 달 1일 - 1일
+        nxt_month = cur.replace(day=1) + timedelta(days=32)
+        month_end = nxt_month.replace(day=1) - timedelta(days=1)
+        chunk_end = min(month_end, e)
+        label = f"{_MONTH_ABBR[cur.month - 1]} {cur.year}"
+        out.append((cur.strftime("%Y-%m-%d"), chunk_end.strftime("%Y-%m-%d"), label))
+        cur = chunk_end + timedelta(days=1)
+    return out
 
 
 # ─── EXTRA_SEGMENTS resolver (이름 → ID) ──────────────────────────
@@ -1560,12 +1637,19 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                   *, workers: int, limit: int, dry_run: bool, ts: str,
                   include_global_for_us: bool,
                   resolved_extras: list[tuple[str, object]] | None = None,
-                  app_ox: dict[str, str] | None = None) -> dict:
+                  app_ox: dict[str, str] | None = None,
+                  file_tag: str = "") -> dict:
     """한 site 의 모든 panel × reportlet 추출 + CSV 저장.
     resolved_extras: [(segment_id, panel_scope), ...] — v3 신규.
-    app_ox: app_O_X.csv 로드 결과 (v3.8 DEVICE_CASES 케이스 선택용, None=csv 없음=전 site O)."""
-    date_range_def = _build_date_range_definition(start_date, end_date)
-    print(f"\n{'═'*78}\nSITE: {site.site_code}  →  rsid={site.rsid}  ({start_date} ~ {end_date})\n{'═'*78}")
+    app_ox: app_O_X.csv 로드 결과 (v3.8 DEVICE_CASES 케이스 선택용, None=csv 없음=전 site O).
+    file_tag: 출력 파일명 site 뒤에 붙는 태그 (v4.2 YEAR_OFFSETS 의 '_y2025' 등, ""=없음)."""
+    # v4.2: MONTHLY 면 총기간을 달력 월 조각으로 분할 (False 면 조각 1개 = 총기간)
+    periods = _split_months(start_date, end_date)
+    print(f"\n{'═'*78}\nSITE: {site.site_code}{file_tag}  →  rsid={site.rsid}  "
+          f"({start_date} ~ {end_date})\n{'═'*78}")
+    if MONTHLY:
+        print(f"  기간 분할(MONTHLY): {len(periods)}개  "
+              f"[{periods[0][2]} ~ {periods[-1][2]}]")
     if resolved_extras:
         print(f"  extra segments ({len(resolved_extras)}):")
         for sid, scope in resolved_extras:
@@ -1611,40 +1695,45 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             for case in site_cases:
                 # site 별 세그 치환 적용 (DEVICE_CASE_SITE_OVERRIDES — us_old 류)
                 case_seg_ids = [site_seg_override.get(s, s) for s in case["segment_ids"]] if case else []
-                payload, seg_names_per_metric, metric_names, panel_seg_names, dim_id, dim_name = \
-                    _build_report_payload(project, panel, rep,
-                                          override_rsid=site.rsid,
-                                          override_date_range=date_range_def,
-                                          extra_segment_ids=extra_ids_for_panel + case_seg_ids)
-                payload["settings"]["limit"] = min(limit, 100000) if limit > 0 else PAGE_SIZE_UNCAPPED
-                if case:
-                    # 케이스 세그 name 을 각 컬럼 stack 에 append — CSV segments 컬럼에 드러나고
-                    # _parse_device 도 같은 라벨 도출 (검증용 일관성)
-                    case_names = [_SEG_NAME_CACHE.get(sid) or sid for sid in case_seg_ids]
-                    seg_names_per_metric = [list(lst) + case_names for lst in seg_names_per_metric]
-                tasks.append({
-                    "order": task_order,
-                    "panel_idx": p_idx,
-                    "panel_name": p_name,
-                    "reportlet_name": r_name,
-                    "tb_name": tb_name,
-                    "device_case": case["device"] if case else "",   # v3.8
-                    "payload": payload,
-                    "max_rows": limit,   # v3.7: dim1(1st level) 행 cap (0=무제한)
-                    "seg_names_per_metric": seg_names_per_metric,
-                    "metric_names": metric_names,
-                    "panel_segments": panel_seg_names,
-                    "dimension_id": dim_id,
-                    "dimension_name": dim_name,
-                    "breakdown_chain": _detect_breakdown_chain(rep) if BREAKDOWN_ENABLED else [],
-                    "breakdown_branches": _breakdown_top_branches(rep) if BREAKDOWN_ENABLED else [],
-                    "breakdown_rows": [],
-                    "rows": [],
-                    "summary_data": [],
-                    "ok": False,
-                    "error": "",
-                })
-                task_order += 1
+                # v4.2: 기간조각(MONTHLY)별 task 1개씩 (MONTHLY=False 면 조각 1개 = v4.1 동작)
+                for pd_start, pd_end, pd_label in periods:
+                    payload, seg_names_per_metric, metric_names, panel_seg_names, dim_id, dim_name = \
+                        _build_report_payload(project, panel, rep,
+                                              override_rsid=site.rsid,
+                                              override_date_range=_build_date_range_definition(pd_start, pd_end),
+                                              extra_segment_ids=extra_ids_for_panel + case_seg_ids)
+                    payload["settings"]["limit"] = min(limit, 100000) if limit > 0 else PAGE_SIZE_UNCAPPED
+                    if case:
+                        # 케이스 세그 name 을 각 컬럼 stack 에 append — CSV segments 컬럼에 드러나고
+                        # _parse_device 도 같은 라벨 도출 (검증용 일관성)
+                        case_names = [_SEG_NAME_CACHE.get(sid) or sid for sid in case_seg_ids]
+                        seg_names_per_metric = [list(lst) + case_names for lst in seg_names_per_metric]
+                    tasks.append({
+                        "order": task_order,
+                        "panel_idx": p_idx,
+                        "panel_name": p_name,
+                        "reportlet_name": r_name,
+                        "tb_name": tb_name,
+                        "device_case": case["device"] if case else "",   # v3.8
+                        "period_start": pd_start,     # v4.2: 이 task 의 실제 추출 기간
+                        "period_end": pd_end,
+                        "period_label": pd_label,     # MONTHLY 일 때만 'Jul 2025', 아니면 ""
+                        "payload": payload,
+                        "max_rows": limit,   # v3.7: dim1(1st level) 행 cap (0=무제한)
+                        "seg_names_per_metric": seg_names_per_metric,
+                        "metric_names": metric_names,
+                        "panel_segments": panel_seg_names,
+                        "dimension_id": dim_id,
+                        "dimension_name": dim_name,
+                        "breakdown_chain": _detect_breakdown_chain(rep) if BREAKDOWN_ENABLED else [],
+                        "breakdown_branches": _breakdown_top_branches(rep) if BREAKDOWN_ENABLED else [],
+                        "breakdown_rows": [],
+                        "rows": [],
+                        "summary_data": [],
+                        "ok": False,
+                        "error": "",
+                    })
+                    task_order += 1
     print(f"  payload {len(tasks)}개 생성")
 
     if dry_run:
@@ -1660,7 +1749,9 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             result = fut.result()
             status = "OK" if result["ok"] else f"FAIL: {result['error'][:50]}"
             dev_tag = f" [{result['device_case']}]" if result.get("device_case") else ""
-            print(f"    [{done_count}/{len(tasks)}] {result['tb_name']}{dev_tag}: {len(result['rows'])} rows — {status}")
+            pd_tag = f" [{result['period_label']}]" if result.get("period_label") else ""   # v4.2
+            print(f"    [{done_count}/{len(tasks)}] {result['tb_name']}{dev_tag}{pd_tag}: "
+                  f"{len(result['rows'])} rows — {status}")
     elapsed = datetime.now() - start_time
     print(f"  소요: {elapsed}")
 
@@ -1686,6 +1777,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             calls = _run_breakdowns(t, headers, gcid, workers=workers)
             total_bd_calls += calls
             dev_tag = f" [{t['device_case']}]" if t.get("device_case") else ""
+            dev_tag += f" [{t['period_label']}]" if t.get("period_label") else ""   # v4.2
             br = t.get("breakdown_branches") or []
             used = t["breakdown_chain"][0][0] if t["breakdown_chain"] else ""
             others = list(dict.fromkeys(d for d in br if d != used))
@@ -1697,8 +1789,9 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
 
     # CSV 저장 (v3.7 파일명 개편 — 기존 extract_data_* → stack, column_mapping_* → table)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    stack_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_STACK}_{site.site_code}_{ts}.csv"
-    table_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_TABLE}_{site.site_code}_{ts}.csv"
+    # v4.2: file_tag = YEAR_OFFSETS 로 shift 한 run 의 '_y2025' 등 (offset 0 / 미사용이면 "")
+    stack_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_STACK}_{site.site_code}{file_tag}_{ts}.csv"
+    table_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_TABLE}_{site.site_code}{file_tag}_{ts}.csv"
 
     # dim_short — task 들의 dimension 마지막 토큰 (variables/evar26 → evar26).
     # 여러 dimension 섞여있으면 generic "dim_value" 로 fallback.
@@ -1718,9 +1811,11 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                         for t in tasks for br in (t.get("breakdown_rows") or [])),
                        default=0)
     bd_blank = [""] * (3 * max_bd_depth)
+    # v4.2: MONTHLY 일 때만 end_date 뒤에 period 컬럼 추가 (False 면 컬럼 자체가 없어 v4.1 출력과 동일)
+    period_header = ["period"] if MONTHLY else []
     with open(stack_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        header = ["site_code", "rsid", "start_date", "end_date",
+        header = ["site_code", "rsid", "start_date", "end_date"] + period_header + [
                   "panel", "table", "reportlet", "dimension", "dimension_name",
                   "itemId", dim_short,
                   "value_n", "metric_origin", "metric", "segments", "device",
@@ -1735,8 +1830,10 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             dim_name = t.get("dimension_name", "")
             metric_names = t.get("metric_names") or []
             seg_names_per_metric = t.get("seg_names_per_metric") or []
-            base_cols = [site.site_code, site.rsid, start_date, end_date,
-                         t["panel_name"], t["tb_name"], t["reportlet_name"], dim_id, dim_name]
+            # v4.2: 기간은 site 총기간이 아니라 이 task 의 기간조각 (MONTHLY=False 면 총기간과 동일)
+            base_cols = ([site.site_code, site.rsid, t["period_start"], t["period_end"]]
+                         + ([t["period_label"]] if MONTHLY else [])
+                         + [t["panel_name"], t["tb_name"], t["reportlet_name"], dim_id, dim_name])
             # v4.1: INCLUDE_PARENT_ROWS=False 면 dim1 총계(부모) 행을 skip (breakdown 행만 출력)
             if INCLUDE_PARENT_ROWS:
                 summary = t.get("summary_data", [])
@@ -1825,7 +1922,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
 
     with open(table_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        header = ["site_code", "rsid", "start_date", "end_date",
+        header = ["site_code", "rsid", "start_date", "end_date"] + period_header + [
                   "panel", "table", "reportlet", "dimension", "dimension_name",
                   "device",   # v3.8: 같은 테이블이 device 케이스 수만큼 반복 — 행 구분용
                   "itemId", dim_short]
@@ -1837,10 +1934,12 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
         for t in tasks:
             if not t["ok"]:
                 continue
-            base_cols = [site.site_code, site.rsid, start_date, end_date,
-                         t["panel_name"], t["tb_name"], t["reportlet_name"],
-                         t.get("dimension_id", ""), t.get("dimension_name", ""),
-                         t.get("device_case", "")]   # v3.8
+            # v4.2: 기간 = 이 task 의 기간조각 (+ MONTHLY 면 period 라벨)
+            base_cols = ([site.site_code, site.rsid, t["period_start"], t["period_end"]]
+                         + ([t["period_label"]] if MONTHLY else [])
+                         + [t["panel_name"], t["tb_name"], t["reportlet_name"],
+                            t.get("dimension_id", ""), t.get("dimension_name", ""),
+                            t.get("device_case", "")])   # v3.8
             seg_vals = _seg_values(t)
             # v4.1: INCLUDE_PARENT_ROWS=False 면 dim1 총계/summary 행을 skip (breakdown 행만 출력)
             if INCLUDE_PARENT_ROWS:
@@ -1958,6 +2057,13 @@ def main() -> int:
                              "-1=무제한, 0=총계만(분해안함), 1=bd1까지, N=bdN까지")
     parser.add_argument("--no-parent-rows", action="store_true",
                         help="dim1 총계(부모) 행을 출력에서 제외 — breakdown 행만 (INCLUDE_PARENT_ROWS=False)")
+    parser.add_argument("--monthly", dest="monthly", action="store_true", default=None,
+                        help="(v4.2) sites_input 총기간을 달력 월로 쪼개 월별 추출 (MONTHLY=True). 출력에 period 컬럼 추가")
+    parser.add_argument("--no-monthly", dest="monthly", action="store_false",
+                        help="(v4.2) 총기간 1회 추출 (MONTHLY=False)")
+    parser.add_argument("--year-offsets", type=str, default=None, metavar="0,-1",
+                        help="(v4.2) sites_input 날짜 연도를 shift 해 추출 (YEAR_OFFSETS override). "
+                             "예: '0,-1' = 올해+작년 동기간. offset≠0 은 파일명에 _y{연도} 태그")
     parser.add_argument("--site-workers", type=int, default=SITE_WORKERS, metavar="N",
                         help=f"site 단위 병렬 워커 수 (default {SITE_WORKERS}, 1=순차). "
                              f"동시 API 요청 ≈ N × --workers — 429 뜨면 줄이기")
@@ -1972,6 +2078,17 @@ def main() -> int:
         globals()["BREAKDOWN_MAX_DEPTH"] = args.breakdown_max_depth
     if args.no_parent_rows:
         globals()["INCLUDE_PARENT_ROWS"] = False
+    # v4.2: 기간 분할 / 연도 shift override
+    if args.monthly is not None:
+        globals()["MONTHLY"] = args.monthly
+    if args.year_offsets is not None:
+        try:
+            _offs = [int(v.strip()) for v in args.year_offsets.split(",") if v.strip()]
+        except ValueError:
+            raise SystemExit(f"❌ --year-offsets 형식 오류 (정수 콤마 나열): {args.year_offsets!r}")
+        if not _offs:
+            raise SystemExit("❌ --year-offsets 가 비었음 (예: --year-offsets 0,-1)")
+        globals()["YEAR_OFFSETS"] = _offs
     # v3.7: breakdown limit 은 _run_breakdowns 가 module 전역을 참조 → CLI 값으로 갱신
     globals()["LIMIT_BD"] = args.limit_bd
     globals()["LIMIT_BD2"] = args.limit_bd2
@@ -2014,6 +2131,9 @@ def main() -> int:
     else:
         _why = "MAX_DEPTH=0" if (BREAKDOWN_ENABLED and BREAKDOWN_MAX_DEPTH == 0) else "BREAKDOWN_ENABLED=False"
         print(f"  BREAKDOWN     : OFF (dim1 총계만, {_why})  parent_rows={_parent_disp}")
+    # v4.2: 기간 분할 / 연도 shift
+    print(f"  MONTHLY       : {'ON (총기간을 달력 월로 분할 — period 컬럼 추가)' if MONTHLY else 'OFF (총기간 1회)'}")
+    print(f"  YEAR_OFFSETS  : {YEAR_OFFSETS}  ({'sites_input 그대로' if YEAR_OFFSETS == [0] else 'site 당 ' + str(len(YEAR_OFFSETS)) + ' run — offset≠0 은 파일명 _y{연도} 태그'})")
 
     # sites_input.csv 로드
     sites_rows = _load_sites_input(SITES_INPUT_CSV)
@@ -2029,7 +2149,18 @@ def main() -> int:
             print(f"\n❌ --site {args.site} 매칭되는 row 없음")
             return 1
 
+    # v4.2: YEAR_OFFSETS 만큼 run 확장 — (site_code, start, end, file_tag)
+    #   offset 0 → tag "" (v4.1 과 동일한 파일명). offset≠0 → "_y{shift 된 연도}"
+    runs: list[tuple[str, str, str, str]] = []
+    for site_code, s_date, e_date in sites_rows:
+        for off in YEAR_OFFSETS:
+            s2, e2 = _shift_year(s_date, off), _shift_year(e_date, off)
+            runs.append((site_code, s2, e2, "" if off == 0 else f"_y{s2[:4]}"))
+
     print(f"  처리 site: {len(sites_rows)}개 → {[r[0] for r in sites_rows]}")
+    if YEAR_OFFSETS != [0]:
+        _yrs = sorted({r[1][:4] for r in runs})
+        print(f"  처리 run : {len(runs)}개 (site {len(sites_rows)} × 연도 {len(YEAR_OFFSETS)} → {_yrs})")
     print()
 
     # 인증 + project 한 번만
@@ -2096,7 +2227,7 @@ def main() -> int:
 
     # 사이트별 처리 — v3.6: SITE_WORKERS>1 이면 site 단위 병렬 (_contents 시리즈 포팅)
     def _run_one(item):
-        site_code, start_date, end_date = item
+        site_code, start_date, end_date, file_tag = item   # v4.2: file_tag 추가
         site_info = lookup_site(site_code)
         _t0 = datetime.now()
         res = _process_site(headers, gcid, project, panels,
@@ -2105,11 +2236,13 @@ def main() -> int:
                             dry_run=args.dry_run, ts=ts,
                             include_global_for_us=args.include_global_for_us,
                             resolved_extras=resolved_extras,
-                            app_ox=app_ox)
+                            app_ox=app_ox,
+                            file_tag=file_tag)
+        res["file_tag"] = file_tag
         res["elapsed_sec"] = (datetime.now() - _t0).total_seconds()
         return res
 
-    n_sites = len(sites_rows)
+    n_sites = len(runs)   # v4.2: site × 연도(YEAR_OFFSETS) run 수
     prog = {"done": 0, "elapsed_sum": 0.0}
     run_start = datetime.now()
 
@@ -2126,14 +2259,15 @@ def main() -> int:
         eta = avg * left / max(1, args.site_workers) if args.site_workers > 1 else avg * left
         wall = (datetime.now() - run_start).total_seconds()
         total = wall + eta
-        print(f"  [{prog['done']:2}/{n_sites}] site={res['site'].site_code:<10} "
+        _site_disp = f"{res['site'].site_code}{res.get('file_tag', '')}"
+        print(f"  [{prog['done']:2}/{n_sites}] site={_site_disp:<10} "
               f"✓ {el:6.1f}s  rows {rows:>8,}  | "
               f"누적 {_fmt_dur(wall)} | 평균 {avg:.1f}s/site | "
               f"남은 ~{_fmt_dur(eta)} | 전체 ~{_fmt_dur(total)} ({left} left)")
 
     results = []
     if args.site_workers <= 1:
-        for item in sites_rows:
+        for item in runs:
             res = _run_one(item)
             results.append(res)
             _report(res)
@@ -2141,7 +2275,7 @@ def main() -> int:
         print(f"  [site-parallel] {args.site_workers} sites 동시 처리 "
               f"(총 동시 API 요청 ≈ {args.site_workers * args.workers})")
         with ThreadPoolExecutor(max_workers=args.site_workers) as ex:
-            futures = {ex.submit(_run_one, item): item[0] for item in sites_rows}
+            futures = {ex.submit(_run_one, item): f"{item[0]}{item[3]}" for item in runs}
             for fut in as_completed(futures):
                 sc = futures[fut]
                 try:
@@ -2155,7 +2289,8 @@ def main() -> int:
     print(f"\n{'═'*78}\n[전체 summary]\n{'═'*78}")
     total_ok = sum(r["n_ok"] for r in results)
     total_fail = sum(r["n_fail"] for r in results)
-    print(f"  처리 site : {len(results)}")
+    print(f"  처리 run  : {len(results)}" + (f"  (site {len(sites_rows)} × 연도 {len(YEAR_OFFSETS)})"
+                                             if YEAR_OFFSETS != [0] else ""))
     print(f"  성공 task : {total_ok}")
     print(f"  실패 task : {total_fail}")
     if resolved_extras:
@@ -2163,7 +2298,8 @@ def main() -> int:
     print(f"\n사이트별:")
     for r in results:
         s = r["site"]
-        print(f"  {s.site_code:10}  ({s.rsid:35})  성공={r['n_ok']:3}  실패={r['n_fail']:3}")
+        print(f"  {s.site_code + r.get('file_tag', ''):16}  ({s.rsid:35})  "
+              f"성공={r['n_ok']:3}  실패={r['n_fail']:3}")
 
     return 0
 

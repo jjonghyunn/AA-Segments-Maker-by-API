@@ -55,10 +55,10 @@ python aa_segment_lookup.py --search "[CAMPAIGN NAME]"     # → lookup/segment_
 
 # 4) Workspace 프로젝트 패널 데이터 추출
 cd ../data_extract
-python extract_data_v4.1.py                # sites_input.csv 의 site 별로 추출
+python extract_data_v4.2.py                # sites_input.csv 의 site 별로 추출
 #   → stack_data_extract_<site>_<ts>.csv  (형식: stack_data_extract_example.csv)
 #   → table_data_extract_<site>_<ts>.csv  (형식: table_data_extract_example.csv)
-python RESHAPE_standard_v1.6.py            # union 정제
+python RESHAPE_standard_v1.7.py            # union 정제
 ```
 
 > 입력 CSV·structure DSL·결과 CSV 의 구체 형식은 `segment_maker/segments_input_example.csv` · `.dsl` · `segments_result_example.csv`, `data_extract/table_data_extract_example.csv` · `stack_data_extract_example.csv`, `panel_maker/panel_contents_mapping_example.csv` 참고. (모두 placeholder 값)

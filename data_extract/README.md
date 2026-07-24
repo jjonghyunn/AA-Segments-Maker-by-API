@@ -7,8 +7,8 @@ Adobe Workspace project 의 panel × reportlet 에서 세그먼트/메트릭 이
 
 | 도구 | 문서 | 용도 |
 |---|---|---|
-| `extract_data_v4.1.py` | [`extract_data.md`](extract_data.md) | **현행 추출기** — N단계 breakdown + device 컬럼 + 사이트별 RSID/dateRange override + site 병렬(`SITE_WORKERS`) |
-| `RESHAPE_standard_v1.6.py` | [`RESHAPE_standard_v1.6.md`](RESHAPE_standard_v1.6.md) | 추출본 union 정제 — breakdown 행 모드 + `_old` SITE CODE 정규화 + metric/Panel name 컬럼 + product 카테고리 분류 |
+| `extract_data_v4.2.py` | [`extract_data.md`](extract_data.md) | **현행 추출기** — N단계 breakdown + device 컬럼 + 사이트별 RSID/dateRange override + site 병렬(`SITE_WORKERS`) |
+| `RESHAPE_standard_v1.7.py` | [`RESHAPE_standard_v1.7.md`](RESHAPE_standard_v1.7.md) | 추출본 union 정제 — breakdown 행 모드 + `_old` SITE CODE 정규화 + metric/Panel name 컬럼 + product 카테고리 분류 |
 | `_contents/RESHAPE_contents_v1.1.py` | [`_contents/RESHAPE_contents_v1.1.md`](_contents/RESHAPE_contents_v1.1.md) | contents 계열 **정제기** (별도 시리즈) |
 | `_contents/extract_data_v3.2_contents.py` | *(전용 문서 없음 — 정제기 md 참고)* | contents 계열 추출기 (아래 주 참조) |
 
@@ -23,4 +23,4 @@ Adobe Workspace project 의 panel × reportlet 에서 세그먼트/메트릭 이
 | `sites_input.csv` | 입력 템플릿 — `site_code, start_date, end_date` |
 | `stack_data_extract_example.csv` / `table_data_extract_example.csv` | 출력 형식 예시 |
 
-> 구버전 `extract_data_v1~v3.x` 및 그 문서는 삭제됨(2026-06-17). 이력은 git history 참조. 현행은 `extract_data_v4.1.py` 단일 계열.
+> 구버전 `extract_data_v1~v3.x` 및 그 문서는 삭제됨(2026-06-17). 이력은 git history 참조. 현행은 `extract_data_v4.2.py` 단일 계열.

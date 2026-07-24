@@ -1,5 +1,13 @@
-# RESHAPE_standard_v1.6.py
-# 2026-06-23  Jonghyun Park w/ Claude
+# RESHAPE_standard_v1.7.py
+# 2026-07-24  Jonghyun Park w/ Claude
+# v1.7 (2026-07-24): extract_data_v4.2 출력 대응 —
+#                    · MONTHLY 추출물의 'period' 컬럼(월 라벨 'Jul 2026')을 출력에 passthrough
+#                      (device / bd{k}_* 와 동일 취급). 없으면 그대로 무시 → v1.6 출력과 동일.
+#                      v1.6 은 period 를 안 넘겨서 월 라벨이 유실됐다(행 자체는 start_date/end_date
+#                      로 분리 유지됐지만 'Jul 2026' 키가 사라져 피봇/조인이 불편).
+#                    · YEAR_OFFSETS 추출물(파일명 '_y{연도}' 태그)은 v1.6 에서도 이미 동작 —
+#                      site 키가 'us'/'us_y2025' 로 갈려 연도별 최신 1개씩 union 되고, 환율도
+#                      행별 end_date 연도로 조회되므로 두 연도가 섞여도 정상.
 # v1.6 (2026-06-23): · wide 출력에서 revenue 계열 metric 을 revenue_org(원본)+revenue(fx)
 #                      두 열로 분리 (기존 wide 는 fx 값만, 원본 누락이었음).
 #                    · 'variable' 컬럼 추가(long+wide) — extract 의 dimension(variables/evar26 등)
@@ -210,6 +218,14 @@ EXCLUDE_OUTPUT_COLUMNS: list[str] = []
 #   "only"           : breakdown 행만 (총계 행 제외)
 # v3.4 이하 출력(bd 컬럼 없음)이면 모드 무관 전체 처리.
 BREAKDOWN_ROWS_MODE = "include"
+
+# ─── 그대로 넘길(passthrough) 입력 컬럼 (v1.7) ──────────────────────
+# 입력 stack CSV 에 있으면 출력에도 같은 이름으로 실어 보내는 컬럼들.
+#   device : extract_data v3.5+ 의 device 케이스 라벨
+#   period : extract_data v4.2 MONTHLY 의 월 라벨 ('Jul 2026')
+# 여기 없는 컬럼이라도 `bd{k}_*` 형태(breakdown)는 정규식으로 자동 passthrough.
+# 입력에 없는 이름은 그냥 무시되므로, 새 컬럼이 생기면 이 리스트에 한 줄 추가하면 된다.
+PASSTHROUGH_COLUMNS: list[str] = ["device", "period"]
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -453,8 +469,10 @@ def process() -> int:
                 print("[category] 분류 yaml 없음 + product 키워드 매칭 행도 없음 → category 컬럼 skip")
 
     # v1.1: device / bd{k}_* 컬럼 감지 (v3.5+ 출력) — 있으면 출력에 passthrough
+    # v1.7: period (extract_data_v4.2 MONTHLY 의 월 라벨 'Jul 2026') 도 동일하게 passthrough.
+    #       입력에 없으면 자동으로 빠져 v1.6 출력과 동일.
     passthrough_cols = [c for c in first_fields
-                        if c == "device" or re.match(r"^bd\d+_", c)]
+                        if c in PASSTHROUGH_COLUMNS or re.match(r"^bd\d+_", c)]
     bd_item_cols = [c for c in first_fields if re.match(r"^bd\d+_itemId$", c)]
 
     def _is_bd_row(row: dict) -> bool:

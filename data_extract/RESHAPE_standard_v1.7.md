@@ -1,5 +1,5 @@
-# RESHAPE_standard_v1.6.py  
-<sub>2026-06-23  Jonghyun Park w/ Claude</sub>  
+# RESHAPE_standard_v1.7.py  
+<sub>2026-07-24  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -76,7 +76,8 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
   - `"include"` (기본): 둘 다 union — Workspace 테이블 그대로. ⚠ 단순 합산 시 이중집계 주의 (`bd{k}_itemId` 빈칸 여부로 총계/breakdown 구분해서 합산)
   - `"exclude"`: dim1 총계만 (v1.0 semantics)
   - `"only"`: breakdown 행만
-- **passthrough 컬럼** — 입력에 `device` / `bd{k}_dimension/itemId/value` 컬럼이 있으면 출력에 그대로 따라옴. v3.4 이하 출력(bd 컬럼 없음)은 모드 무관 전체 처리.
+- **passthrough 컬럼** — 입력에 `device` / `period` / `bd{k}_dimension/itemId/value` 컬럼이 있으면 출력에 그대로 따라옴 (`PASSTHROUGH_COLUMNS` 상수 + `bd{k}_*` 정규식). v3.4 이하 출력(bd 컬럼 없음)은 모드 무관 전체 처리.
+  - **(v1.7) `period`** — `extract_data_v4.2` 를 `MONTHLY=True` 로 뽑으면 월 라벨(`Jul 2026`)이 `period` 컬럼에 들어온다. v1.6 은 이걸 안 넘겨서 월 라벨이 유실됐다(행은 `start_date`/`end_date` 로 분리 유지). long·wide 양쪽에 실린다.
 
 ### 출력 컬럼 추가 (v1.2)
 
@@ -115,6 +116,7 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
 | `DROP_ZERO_VALUE` | VALUE==0 행 제외 | 0 행이 많아 빼고 싶을 때 |
 | `INCLUDE_REPORTLET` | 검수용 reportlet 컬럼 추가 | 출처 확인 필요할 때 |
 | `EXCLUDE_OUTPUT_COLUMNS` | 출력에서 뺄 컬럼명 리스트 (대소문자 무시, 빈 리스트=전부 유지) | 안 쓰는 컬럼 빼고 가볍게 뽑을 때 |
+| `PASSTHROUGH_COLUMNS` | 입력에 있으면 출력에 그대로 싣는 컬럼명 (기본 `["device", "period"]`, v1.7). `bd{k}_*` 는 정규식으로 자동 | extract 에 새 부가 컬럼이 생겼을 때 |
 | `INCLUDE_VARIABLE_COLUMN` · `VARIABLE_SOURCE_COLUMN` · `VARIABLE_OUTPUT_HEADER` | dimension(`variables/evar26`)에서 뒤 토큰만 `variable` 컬럼 추가 (v1.6) | 어떤 변수(evar/prop)에서 온 dim 값인지 표기할 때 |
 | `ADD_CATEGORY_COLUMN` | product 키워드 행에 category 컬럼 추가 (v1.4) | 제품코드 카테고리 분류가 필요할 때 |
 | `CATEGORY_YAML` | 분류 룰 yaml 경로 (기본 같은 폴더 `product_category.yaml`) | yaml 위치/룰 바꿀 때 |
@@ -130,16 +132,16 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
 TIER, SUBS, COUNTRY, SITE CODE, ITEM, VALUE, [value_origin],
 rsid, start_date, end_date, value_n, metric_origin, metric, [variable], <디멘션>,
 [category, category_non_acc_unknown_excl,] segments
-[, device, bd1_dimension, bd1_itemId, bd1_value, …], Panel name [, reportlet]
+[, device, period, bd1_dimension, bd1_itemId, bd1_value, …], Panel name [, reportlet]
 ```
 - `<디멘션>` = 자동 감지된 디멘션 이름(`campaign`, `evar26` …)
-- `[ ]` 표기 컬럼은 **조건부**로만 들어감 — `value_origin`(환율 적용 시), `variable`(extract 에 `dimension` 컬럼 있을 때, v1.6), `category` / `category_non_acc_unknown_excl`(`ADD_CATEGORY_COLUMN`+yaml 있을 때), `device` / `bd{k}_*`(입력에 있을 때). 각 컬럼의 동작·이유는 위 해당 기능 섹션 참고.
+- `[ ]` 표기 컬럼은 **조건부**로만 들어감 — `value_origin`(환율 적용 시), `variable`(extract 에 `dimension` 컬럼 있을 때, v1.6), `category` / `category_non_acc_unknown_excl`(`ADD_CATEGORY_COLUMN`+yaml 있을 때), `device` / `period`(v1.7) / `bd{k}_*`(입력에 있을 때). 각 컬럼의 동작·이유는 위 해당 기능 섹션 참고.
 - `EXCLUDE_OUTPUT_COLUMNS` 로 위 목록 중 원하는 컬럼을 출력에서 제외 가능.
 
 ## 실행
 
 ```bash
-python RESHAPE_standard_v1.6.py
+python RESHAPE_standard_v1.7.py
 ```
 - 같은 폴더에 `site_registry.py` 필요 (site_code → 국가/rsid)
 - `ADD_CATEGORY_COLUMN=True` 면 같은 폴더에 `product_category.yaml` 필요 (없고 키워드 매칭 행 있으면 경고 후 분류 skip)
