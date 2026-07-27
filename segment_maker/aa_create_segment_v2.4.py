@@ -1679,7 +1679,7 @@ def _fetch_existing_segment(headers: dict, base_endpoint: str, seg_id: str) -> d
         r = requests.get(
             f"{base_endpoint}/{seg_id}",
             headers=headers,
-            params={"expansion": "definition,name,description,reportSuiteName,tags"},
+            params={"expansion": "definition,name,description,reportSuiteName,tags,owner"},
             timeout=30,
         )
         if r.status_code != 200:
@@ -2090,6 +2090,17 @@ def main() -> int:
                     "url": ui_url, "error": "",
                 })
                 continue
+            # owner 변경 방지 게이트 — 기존 owner 와 다르면 Y/N 확인 (남의 세그 owner 탈취 방지)
+            if owner_id is not None and existing is not None:
+                _cur_owner = (existing.get("owner") or {}).get("id")
+                if _cur_owner is not None and _cur_owner != owner_id:
+                    _ans = input(f"  \u26a0 '{spec['name']}' ({seg_id}) owner {_cur_owner} -> {owner_id} 로 바뀝니다. 정말 진행? (Y/N): ").strip().lower()
+                    if _ans != "y":
+                        print(f"  [{i+1}/{len(specs)}] owner 변경 거부 -> skip '{spec['name']}'")
+                        results.append({"name": spec["name"], "seg_id": seg_id, "action": "skip",
+                                        "status": "SKIP(owner)", "url": UI_URL_TEMPLATE.format(seg_id=seg_id),
+                                        "error": "owner 변경 거부"})
+                        continue
             action_label = "update"
             print(f"  [{i+1}/{len(specs)}] update '{spec['name']}' ({seg_id}) ...", end=" ")
             r = requests.put(url, headers=headers, json=payload, timeout=60)
