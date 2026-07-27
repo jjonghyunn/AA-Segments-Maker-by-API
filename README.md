@@ -41,14 +41,14 @@ AA-Segments-Maker-by-API/
 세그먼트 생성 → 조회 → 데이터 추출까지의 기본 흐름. 각 단계 입력/출력 형식은 각 폴더의 `*_example.*` 파일 참고.
 
 ```bash
-# 1) raw 명세(seg_make_ref CSV) → v2.3 입력 CSV/DSL 자동 변환
+# 1) raw 명세(seg_make_ref CSV) → v2.4 입력 CSV/DSL 자동 변환
 cd segment_maker
 python input_csv_maker.py                  # → segments_input_<ts>.csv  (형식: segments_input_example.csv)
 
 # 2) dry-run 으로 파싱 검증 → 문제 없으면 실제 생성
-python aa_create_segment_v2.3.py --input segments_input_<ts>.csv                     # dry-run
-python aa_create_segment_v2.3.py --input segments_input_<ts>.csv --update-or-create --apply
-#   → segment_v2.3_result_<ts>.csv  (형식: segments_result_example.csv)
+python aa_create_segment_v2.4.py --input segments_input_<ts>.csv                     # dry-run
+python aa_create_segment_v2.4.py --input segments_input_<ts>.csv --update-or-create --apply
+#   → segment_v2_result_<ts>.csv  (형식: segments_result_example.csv)
 
 # 3) 만든 세그먼트 이름으로 재조회 (id/structure 확인)
 python aa_segment_lookup.py --search "[CAMPAIGN NAME]"     # → lookup/segment_lookup_<ts>.csv

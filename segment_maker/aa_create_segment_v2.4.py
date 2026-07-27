@@ -1,4 +1,4 @@
-# aa_create_segment_v2.3.py
+# aa_create_segment_v2.4.py
 # 2026-05-15  Jonghyun Park w/ Claude
 # updated: 2026-05-15  — v2.1 기반. --input 상대경로일 때 스크립트 폴더 기준 fallback 추가
 #                       (cwd 가 어디든 segment_maker 폴더의 segments.csv 자동 발견)
@@ -9,6 +9,7 @@
 # updated: 2026-05-22  — --lookup-by-name 의 source 위치를 같은 폴더의 lookup/ 하위로 변경 (segment_lookup_*.csv 가 lookup/ 로 이동됨)
 # updated: 2026-05-26  — v2.3: (1) DSL preprocess 추가 — [sequence-after] visitor( 같은 label+scope-keyword 토큰을 visit( 으로 strip → Delayed Purchase ParseError 해결. (2) v2.py 의존성 제거 — v2 의 parser/compiler/auth 코드 inline (self-contained). (3) OWNER_IMS_USER_ID + OWNER_LOGIN 빈 값 default (다른 사람 fork 시 자기 정보로 채움). OWNER_ID 는 유지.
 # updated: 2026-05-26  — _lift_inner_hit_into_visit_root 후처리 추가. visit/visitor scope segment 가 AA server-side simplification (outer-visit + 단일 inner-hit no_desc wrap → hit-scope 로 합침) 에 의해 hit scope 로 떨어지는 문제 fix. inner hit wrap 제거하고 outer.pred = inner.pred 직접 박아서 server 가 단일 wrap 패턴 simplify 못 하도록.
+# updated: 2026-07-27  — v2.4: prop/page 디멘션 → evar 변환 옵션 (CONVERT_TO_EVAR / EVAR_SPECIAL_MAP / EVAR_DEFAULT_PROP_TO_EVAR / EVAR_TARGET_RSID + --to-evar). 정의 트리 attr name 을 variables/prop{N}·page → variables/evar{M} 로 remap (op·값·구조 보존). 특수 페어링(page→evar40, prop29→evar92)은 suite별 상단 상수.
 """
 CSV 입력 → AA 세그먼트 일괄 생성 또는 업데이트.
 
@@ -125,6 +126,23 @@ CACHE_NAME = "evar_global,evar_us,add_to_cart_global,add_to_cart_us"
 # 특정 파일 명시하면 그것만 사용. --lookup-csv argparse 로도 override 가능.
 LOOKUP_CSV = ""   # 예: "lookup/segment_lookup_260518_1327_CAMPAIGN NAME.csv" 또는 "segment_lookup_260518_1327_CAMPAIGN NAME.csv" (LOOKUP_DIR 기준)
 
+
+# ─── prop→evar 변환 (v2.4) ─────────────────────────────────────────
+# CONVERT_TO_EVAR=True 면 정의(definition)의 prop/page 디멘션을 아래 매핑대로 evar 로
+# 변환한 뒤 생성/업데이트. op·값·구조는 그대로, prop 키워드만 evar 로 바뀜.
+# --to-evar / --no-to-evar 로도 토글 (CLI 우선).
+CONVERT_TO_EVAR = False
+# 특수 페어링 — 번호가 안 맞거나 이름이 다른 것. ⚠ suite(회사)별로 다르니 여기서 확정할 것.
+#   왼/오 모두 짧은 이름(page/prop29/evar92) 또는 variables/ 풀네임 허용.
+EVAR_SPECIAL_MAP: dict[str, str] = {
+    "page":   "evar40",   # pagename → evar40
+    "prop29": "evar92",
+}
+# 특수맵에 없는 그 외 prop{N} → evar{N} (번호 유지) 자동 변환 여부.
+EVAR_DEFAULT_PROP_TO_EVAR = True
+# 변환된 세그가 들어갈 report suite. 빈 값이면 각 row 의 rsid / DEFAULT_RSID 그대로.
+# (prop suite → eVar suite 는 보통 다른 report suite 라 지정 필요.)
+EVAR_TARGET_RSID = ""
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -1500,6 +1518,35 @@ def _lift_inner_hit_into_visit_root(definition: dict) -> dict:
     return definition
 
 
+_RE_PROP_FULL = re.compile(r"^variables/prop(\d+)$")
+
+
+def _evar_target_name(full_name: str):
+    """variables/prop{N}·variables/page → 매핑된 variables/evar{M}. 대상 아니면 None."""
+    short = full_name.split("/", 1)[1] if "/" in full_name else full_name
+    if short in EVAR_SPECIAL_MAP:
+        tgt = EVAR_SPECIAL_MAP[short]
+        return tgt if "/" in tgt else f"variables/{tgt}"
+    m = _RE_PROP_FULL.match(full_name)
+    if m and EVAR_DEFAULT_PROP_TO_EVAR:
+        return f"variables/evar{m.group(1)}"
+    return None
+
+
+def _convert_dims_to_evar(node):
+    """definition 트리 재귀 walk → attr 노드의 name(variables/prop{N}·page)을 evar 로 remap.
+    op·값·구조 보존. prop 키워드만 evar 로 바뀜 (v2.4)."""
+    if isinstance(node, dict):
+        if node.get("func") == "attr" and isinstance(node.get("name"), str):
+            tgt = _evar_target_name(node["name"])
+            if tgt:
+                node = {**node, "name": tgt}
+        return {k: _convert_dims_to_evar(v) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_convert_dims_to_evar(v) for v in node]
+    return node
+
+
 def _patch_definition_for_aa(node, *, fetch_seg_pred=None):
     """v2 컴파일 결과 JSON → AA validator 호환 형식 후처리.
 
@@ -1710,7 +1757,15 @@ def main() -> int:
     parser.add_argument("--cache", default=CACHE_NAME,
                         help="segment-ref 캐시 파일 suffix (예: --cache us → segment_ref_cache_us.json). "
                              f"빈 값이면 기본 segment_ref_cache.json. 코드 상단 CACHE_NAME 으로 default 지정 가능 (현재 {CACHE_NAME!r}).")
+    parser.add_argument("--to-evar", action=argparse.BooleanOptionalAction, default=CONVERT_TO_EVAR,
+                        help=f"정의의 prop/page 디멘션을 evar 로 변환 후 생성/업데이트 "
+                             f"(EVAR_SPECIAL_MAP + prop{{N}}→evar{{N}}; default {CONVERT_TO_EVAR}).")
     args = parser.parse_args()
+    convert_to_evar = args.to_evar
+    if convert_to_evar:
+        _rsid_note = f" → rsid={EVAR_TARGET_RSID}" if EVAR_TARGET_RSID else ""
+        print(f"[to-evar] prop/page → evar 변환 ON "
+              f"(special={EVAR_SPECIAL_MAP}, default prop→evar={EVAR_DEFAULT_PROP_TO_EVAR}){_rsid_note}")
     seg_ref_cache_paths = _resolve_cache_paths(args.cache)
     seg_ref_cache_path = seg_ref_cache_paths[0]   # save target = 첫 파일
     if len(seg_ref_cache_paths) == 1:
@@ -1898,6 +1953,10 @@ def main() -> int:
         try:
             ast = parse_dsl(dsl_text)
             definition = compile_to_definition(ast)
+            if convert_to_evar:
+                definition = _convert_dims_to_evar(definition)
+                if EVAR_TARGET_RSID:
+                    row = {**row, "rsid": EVAR_TARGET_RSID}
             definition = _patch_definition_for_aa(definition, fetch_seg_pred=fetch_seg_pred)
             definition = _lift_inner_hit_into_visit_root(definition)      # visit/visitor scope 보존 (server-side simplify 우회)
             definition = _patch_root_sequence_for_hit_scope(definition)   # Delayed Purchase: root sequence → sequence-prefix
