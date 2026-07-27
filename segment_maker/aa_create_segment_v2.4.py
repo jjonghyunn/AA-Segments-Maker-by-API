@@ -31,6 +31,15 @@ v2.2 변경점 (vs v2.1):
   python aa_create_segment_v2.2.py --update-or-create --no-lookup-by-name --apply
        # ↑ lookup csv 무시하고 강제 POST. lookup csv 에 동일 name 있으면 경고만 출력.
 
+  # (v2.4) prop/page → evar 변환:
+  python aa_create_segment_v2.4.py --input segments.csv --to-evar --apply
+       # ↑ CREATE. page/prop 디멘션을 evar 로 변환(EVAR_SPECIAL_MAP + prop{N}→evar{N}) 후 생성.
+       #   이름 끝 EVAR_NAME_SUFFIX(_Evar) 자동 부착, rsid = EVAR_TARGET_RSID 또는 CSV/DEFAULT_RSID.
+  python aa_create_segment_v2.4.py --input segments.csv --update --to-evar --apply
+       # ↑ 기존 evar 세그 재동기화(UPDATE). CSV segment_id = ★evar 세그 id★ (base id 아님!),
+       #   structure = base(prop) 세그 최신 DSL(aa_segment_lookup 으로 재추출).
+       #   --to-evar 가 매번 evar 로 변환해 PUT → base 갱신 시마다 이 명령으로 evar 세그 동기화.
+
 CSV 필수 칼럼:
   · CREATE (POST)               — name, structure
   · UPDATE (PUT)                — segment_id, structure  (csv 마다 박혀 있어야)
