@@ -228,7 +228,7 @@ python aa_delete_segment.py --yes
 
 3중 안전장치:
 1. result CSV 기반 — CSV 에 기록된 SegmentId 만 대상 (직접 ID/와일드카드 입력 불가)
-2. 이름 prefix 검증 — 삭제 직전 GET 으로 실제 이름 확인. `SAFE_NAME_PREFIX` (기본 `_test_`) 로 시작 안 하면 자동 skip
+2. 이름 prefix 검증 (opt-in) — 삭제 직전 GET 으로 실제 이름 확인. `SAFE_NAME_PREFIX` (기본 `""` = 검증 비활성) 에 값을 박으면 그 prefix 로 시작 안 하는 segment 는 자동 skip. `--safe-prefix "<PREFIX>"` 로도 override
 3. `--yes` 플래그 게이트 — 없으면 preview 만
 
 `--from-csv` 생략 시 같은 폴더의 `result_*.csv` / `test_result_*.csv` 중 가장 최신 1 개 자동 선택.

@@ -12,7 +12,7 @@ Adobe Workspace project 의 panel × reportlet 에서 세그먼트/메트릭 이
 | `_contents/RESHAPE_contents_v1.1.py` | [`_contents/RESHAPE_contents_v1.1.md`](_contents/RESHAPE_contents_v1.1.md) | contents 계열 **정제기** (별도 시리즈) |
 | `_contents/extract_data_v3.2_contents.py` | *(전용 문서 없음 — 정제기 md 참고)* | contents 계열 추출기 (아래 주 참조) |
 
-> **`_contents` 시리즈 주**: contents 계열은 별개 lineage 로, 추출기가 메인(`v4.1`)보다 뒤처진 `v3.2` 이며 입력도 구 명명 `column_mapping_*.csv` 를 사용한다. 메인 계열과 통합되지 않은 채 분기·정체된 상태이며, 추출기 전용 문서는 없다(정제기 md 로 흐름 파악).
+> **`_contents` 시리즈 주**: contents 계열은 별개 lineage 로, 추출기가 메인(`v4.2`)보다 뒤처진 `v3.2` 이며 입력도 구 명명 `column_mapping_*.csv` 를 사용한다. 메인 계열과 통합되지 않은 채 분기·정체된 상태이며, 추출기 전용 문서는 없다(정제기 md 로 흐름 파악).
 
 ## 보조 파일
 
