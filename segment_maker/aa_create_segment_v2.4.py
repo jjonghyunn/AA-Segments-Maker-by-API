@@ -149,6 +149,12 @@ EVAR_SPECIAL_MAP: dict[str, str] = {
 }
 # 특수맵에 없는 그 외 prop{N} → evar{N} (번호 유지) 자동 변환 여부.
 EVAR_DEFAULT_PROP_TO_EVAR = True
+# !!!!!!!!!!!!!!!!!!!! 재동기화(--update --to-evar) 필독 !!!!!!!!!!!!!!!!!!!!
+# evar 세그를 lookup CSV 로 --update 할 때는, 그 CSV 의 segment_id 를
+# ★반드시 evar 세그의 id 로 바꿀 것★. lookup CSV 의 segment_id 는 base(prop) 세그라,
+# 안 바꾸고 --update --to-evar 하면 BASE 세그를 evar 로 덮어써 파괴된다!!!
+# 정답 조합 = base structure + evar segment_id. (2026-07-27 실사고 → 원복함)
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # 변환된 세그가 들어갈 report suite. 빈 값이면 각 row 의 rsid / DEFAULT_RSID 그대로.
 # (prop suite → eVar suite 는 보통 다른 report suite 라 지정 필요. 예: "sscompany_name4mstglobal")
 EVAR_TARGET_RSID = ""
