@@ -48,7 +48,7 @@ python input_csv_maker.py                  # → segments_input_<ts>.csv  (형�
 # 2) dry-run 으로 파싱 검증 → 문제 없으면 실제 생성
 python aa_create_segment_v2.4.py --input segments_input_<ts>.csv                     # dry-run
 python aa_create_segment_v2.4.py --input segments_input_<ts>.csv --update-or-create --apply
-#   → segment_v2_result_<ts>.csv  (형식: segments_result_example.csv)
+#   → segment_v2.2_result_<ts>.csv  (형식: segments_result_example.csv)
 
 # 3) 만든 세그먼트 이름으로 재조회 (id/structure 확인)
 python aa_segment_lookup.py --search "[CAMPAIGN NAME]"     # → lookup/segment_lookup_<ts>.csv

@@ -143,6 +143,8 @@ EVAR_DEFAULT_PROP_TO_EVAR = True
 # 변환된 세그가 들어갈 report suite. 빈 값이면 각 row 의 rsid / DEFAULT_RSID 그대로.
 # (prop suite → eVar suite 는 보통 다른 report suite 라 지정 필요.)
 EVAR_TARGET_RSID = ""
+# 변환된 세그 이름 끝에 자동으로 붙일 접미사 (옵션). 예: "_Evar" / " (Evar)" / "(Evar)". 빈 값이면 미적용.
+EVAR_NAME_SUFFIX = "_Evar"
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -1957,6 +1959,8 @@ def main() -> int:
                 definition = _convert_dims_to_evar(definition)
                 if EVAR_TARGET_RSID:
                     row = {**row, "rsid": EVAR_TARGET_RSID}
+                if EVAR_NAME_SUFFIX and not row.get("name", "").endswith(EVAR_NAME_SUFFIX):
+                    row = {**row, "name": row.get("name", "") + EVAR_NAME_SUFFIX}
             definition = _patch_definition_for_aa(definition, fetch_seg_pred=fetch_seg_pred)
             definition = _lift_inner_hit_into_visit_root(definition)      # visit/visitor scope 보존 (server-side simplify 우회)
             definition = _patch_root_sequence_for_hit_scope(definition)   # Delayed Purchase: root sequence → sequence-prefix
