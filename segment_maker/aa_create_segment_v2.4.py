@@ -88,7 +88,7 @@ COMPANY_ID = "your_aa_company_id"
 #   YOUR_LOGIN_ID  user5     (User 5)
 #   YOUR_LOGIN_ID  user6      (User 6)
 #   YOUR_LOGIN_ID  user7   (User 7)
-OWNER_ID: int | None = YOUR_LOGIN_ID   # 자기 numeric loginId (위 팀원 목록 참조). None 이면 IMS/LOGIN 으로 lookup
+OWNER_ID: int | None = None   # 자기 numeric loginId 지정 (예: 9자리 YOUR_LOGIN_ID). None 이면 CREATE 시 인증계정 소유
 OWNER_IMS_USER_ID: str = ""        # 다른 사람 fork 시 자기 IMS user ID. 빈 값이면 OWNER_ID 사용
 OWNER_LOGIN: str = ""              # 다른 사람 fork 시 자기 login email substring. 빈 값이면 OWNER_ID 사용
                                    # 셋 다 빈 값이면 owner 필드 빠짐 — AA 가 인증 user 자동 사용
@@ -141,7 +141,7 @@ EVAR_SPECIAL_MAP: dict[str, str] = {
 # 특수맵에 없는 그 외 prop{N} → evar{N} (번호 유지) 자동 변환 여부.
 EVAR_DEFAULT_PROP_TO_EVAR = True
 # 변환된 세그가 들어갈 report suite. 빈 값이면 각 row 의 rsid / DEFAULT_RSID 그대로.
-# (prop suite → eVar suite 는 보통 다른 report suite 라 지정 필요.)
+# (prop suite → eVar suite 는 보통 다른 report suite 라 지정 필요. 예: "sscompany_name4mstglobal")
 EVAR_TARGET_RSID = ""
 # 변환된 세그 이름 끝에 자동으로 붙일 접미사 (옵션). 예: "_Evar" / " (Evar)" / "(Evar)". 빈 값이면 미적용.
 EVAR_NAME_SUFFIX = "_Evar"
