@@ -1,5 +1,5 @@
 # RESHAPE_standard_v1.7.py  
-<sub>2026-07-24  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -148,6 +148,11 @@ python RESHAPE_standard_v1.7.py
 - 입력: 같은 폴더 `output/stack_data_extract_*.csv` (+구버전 `extract_data_*.csv`)
 - 결과: `output/_union_standard_{날짜시간}.csv` (long) + `_union_standard_wide_{날짜시간}.csv` (wide)
 - revenue 행이 있으면 `currency.csv` (1열 site_code + 헤더에 `YYYY-MM-DD` 컬럼들) 도 같은 폴더에 필요
+
+> ⚠️ **`product_category.yaml` 과 `currency.csv` 는 repo 에 포함돼 있지 않다** (운영 데이터라 제외).
+> 같은 폴더의 **`product_category_example.yaml` / `currency_example.csv`** 로 형식을 확인한 뒤,
+> `_example` 을 뗀 이름(`product_category.yaml` / `currency.csv`)으로 본인 데이터를 채워 저장할 것.
+> 코드가 찾는 파일명은 `_example` 없는 쪽이다.
 
 ## 의존성
 

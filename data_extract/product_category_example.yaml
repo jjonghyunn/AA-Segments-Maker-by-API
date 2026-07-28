@@ -1,0 +1,72 @@
+modified: "2026-07-28"
+note: "제품코드(SKU) 분류 룰 예시 — 형식만 보여주는 샘플. 실제 사용 시 product_category.yaml 로 저장하고 본인 제품 taxonomy 로 교체할 것."
+
+# 구조
+#   divisions[]           사업부 단위
+#     └ categories[]      분류 카테고리 (RESHAPE 출력의 category 컬럼 값)
+#         ├ include[]     이 정규식 중 하나라도 fullmatch 되면 해당 카테고리
+#         └ exclude[]     include 에 걸려도 여기 걸리면 제외 (선택, 생략 가능)
+#
+# 매칭 순서 = 파일에 적힌 순서. 위에서부터 첫 매칭 카테고리로 확정되고,
+# division 은 매칭된 카테고리가 속한 division 으로 함께 결정된다.
+# 어느 include 에도 안 걸리면 category 는 빈 값.
+
+divisions:
+  - division: 'DIV1'
+    categories:
+      - category: 'Phone'
+        include:
+          - '^AA-[SG]\d{3,4}[A-Z0-9/]{0,8}$'   # 주력 라인
+          - '^AA-A\d{3,4}[A-Z0-9/]{0,8}$'      # 보급 라인
+        exclude:
+          - '^AA-[NJC]\d{3,4}[A-Z0-9/]{0,8}$'  # 단종 라인 제외
+
+      - category: 'Tablet'
+        include:
+          - '^AA-[XPT]\d{3,4}[A-Z0-9/]{0,8}$'
+        exclude:
+          - '^AA-W\d{3,4}[A-Z0-9/]{0,8}$'
+
+      - category: 'Bundle'
+        include:
+          - '^F-(?:9|M|X)[A-Z0-9/-]*$'
+        exclude: []
+
+  - division: 'DIV2'
+    categories:
+      - category: 'TV'
+        include:
+          - '^(?:BQ|BE|BN)\d{2,3}[A-Z0-9/-]+$'
+        exclude:
+          - '^(?:BU|BT)\d{2,3}[A-Z0-9/-]+$'    # 구형 모델 제외
+
+      - category: 'Monitor'
+        include:
+          - '^(?:CS|CF|CT)\d{2}[A-Z0-9/-]+$'
+        exclude: []
+
+  - division: 'DIV3'
+    categories:
+      - category: 'Washer'
+        include:
+          - '^(?:DW|DA)\d[A-Z0-9/]+$'
+        exclude: []
+
+      - category: 'Refrigerator'
+        include:
+          - '^(?:EB|EF|ER)\d[A-Z0-9/]+$'
+        exclude:
+          - '^EA-[A-Z0-9/-]+$'                 # 액세서리 제외
+
+  - division: 'ETC'
+    categories:
+      - category: 'Accessory'
+        include:
+          - '^(?:GP|ET|EF)-[A-Z0-9][A-Z0-9/-]*$'
+        exclude: []
+
+      - category: 'Service'
+        include:
+          - '^TRADE-(?:IN|UP)$'
+          - '^P-(?:CODE|PLAN)[A-Z0-9-]+$'
+        exclude: []

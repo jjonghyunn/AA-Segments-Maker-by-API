@@ -1,0 +1,9 @@
+site_code,App 론치 (O/X),비고
+au,O,
+be,O,
+be_old,O,_old 접미사 site 는 lookup 시 접미사 제거 후 재조회됨
+fr,O,
+jp,X,App 미론치 → requires_app 케이스 추출 제외
+uk,O,
+us,O,
+us_old,X,RSID 교체 전 구suite 는 App 값 미수집

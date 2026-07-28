@@ -1,5 +1,5 @@
 # panel_maker/ — AA Workspace project panel 복제 + segment swap  
-<sub>2026-06-22  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
 
 source project 의 panel 구조를 그대로 빈 target project 로 복제하면서 그 안의 segment ID 를 새 캠페인 segment 로 자동 swap. `SOURCE_PROJECT_ID` / `TARGET_PROJECT_ID` / `OLD_KEYWORDS` / `NEW_KEYWORDS` 등 환경 값은 스크립트 상단 상수로 본인 환경에 맞게 교체.
 
@@ -20,7 +20,8 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 | `panel_contents.py` | `CC_##.` / `US_CC_##.` + sub_num + suffix 패턴 매칭 | 전체 panel (`SOURCE_PANEL_INDICES="all"`) |
 | `panel_contents_recomm_v1.2.py` | panel_contents 변형 — Recommendation 계열 fallback type 추가, US_CC_[US] 잔재 제외 룰 | recomm 패널 전체 |
 | `panel_contents_mapping_example.csv` | 실행 결과 매핑 CSV 형식 예시 (Source/Target SegId·SegName·MatchStatus, placeholder 값) | - |
-| `panel_contents_mapping_*.csv` | panel_contents 계열 실행 결과 매핑 누적 | - |
+
+> 실행하면 타임스탬프가 붙은 결과 매핑 CSV(`panel_contents_mapping_<ts>.csv`)가 같은 폴더에 생성된다. 실행 산출물이라 repo 에는 올리지 않는다 — 형식은 위 `_example` 파일 참고.
 
 ## 사용자 설정 (스크립트별 상단 상수)
 
@@ -75,7 +76,7 @@ dry-run 결과 CSV (실행한 폴더에 timestamp 단위로 누적):
 1. `SOURCE_PROJECT_ID` / `TARGET_PROJECT_ID` 교체 (target 은 미리 UI 에서 본인 계정으로 빈 프로젝트 생성)
 2. `OLD_KEYWORDS` / `NEW_KEYWORDS` 교체 (예: `[CAMPAIGN NAME]` → `[NEW CAMPAIGN NAME]`)
 3. dry-run 실행 → 결과 CSV 의 `MatchStatus = NO_MATCH` / `AMBIGUOUS` 항목 확인
-4. 자동 매칭 안 된 건 → `MANUAL_OVERRIDES` 에 직접 박기 또는 NEW segment 생성 (`segment_maker/aa_create_segment_v2.3.py`). 타겟에 없어 대체 불가한 source 는 `REMOVE_UNMATCHED_FROM_PANEL=True` 로 컬럼째 제거
+4. 자동 매칭 안 된 건 → `MANUAL_OVERRIDES` 에 직접 박기 또는 NEW segment 생성 (`segment_maker/aa_create_segment_v2.4.py`). 타겟에 없어 대체 불가한 source 는 `REMOVE_UNMATCHED_FROM_PANEL=True` 로 컬럼째 제거
 5. 다시 dry-run → 모두 OK 면 `--apply`
 
 ## 안전장치

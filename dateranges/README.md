@@ -1,5 +1,5 @@
 # dateranges/ — Adobe Analytics Date Range 일괄 도구 모음  
-<sub>2026-06-09  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
 
 회사 전체 Date Range 컴포넌트를 **조회 / 갱신 / 생성 / upsert** 하는 4종 도구. 단일 record CRUD 는 같은 폴더의 `aa_daterange.py` 사용.
 
@@ -49,7 +49,7 @@ SITE, THIS_START, THIS_END, LAST_START, LAST_END, BEFORE_BASE
 
 `<S>` = 사이트, `<yy>`=THIS_YEAR_YY (올해 두자리), `<ly>`=LAST_YEAR_YY, `<T>`=CAMPAIGN_TAG (캠페인 2자 약어)
 
-→ 8 사이트 × 8 타입 = 64개 daterange 자동 생성/갱신.
+→ **입력 CSV 의 사이트 수 × 8 타입** 만큼 daterange 자동 생성/갱신. (예: 10 사이트면 80개)
 
 ## 1. aa_dateranges_list.py
 
@@ -91,7 +91,7 @@ python aa_dateranges_update.py --apply    # 실제 PUT
 ### 동작
 
 1. `dateranges_sites_input.csv` (또는 `SITES_INLINE`) 읽음
-2. 글로벌 상수 (`THIS_YEAR_YY`, `LAST_YEAR_YY`, `CAMPAIGN_TAG`) + 위 8개 산출 공식 → 64개 (이름, definition) 매핑 산출
+2. 글로벌 상수 (`THIS_YEAR_YY`, `LAST_YEAR_YY`, `CAMPAIGN_TAG`) + 위 8개 산출 공식 → 사이트 수 × 8 개의 (이름, definition) 매핑 산출
 3. 회사 전체 `GET /dateranges?includeType=all` fetch
 4. 이름 prefix `[...]` 가 산출 매핑과 일치하는 daterange 매칭 (같은 이름 다중 owner 면 각각)
 5. 매칭마다 PUT body 생성 — 기존 owner/tags/description 보존, name·definition 만 덮어씀

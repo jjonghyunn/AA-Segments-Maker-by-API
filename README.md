@@ -1,5 +1,5 @@
 # AA-Segments-Maker-by-API  
-<sub>2026-07-14  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
@@ -22,6 +22,8 @@ AA-Segments-Maker-by-API/
 │   ├── extract_data_v*.py          (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼 + site 병렬)
 │   ├── RESHAPE_standard_v*.py      (추출본 union 정제 — breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션 + product category 분류)
 │   ├── site_registry.py            (site_code ↔ rsid 매핑)
+│   ├── aa_segment_lookup.py        (extract_data 가 import 하는 필수 의존 — 원본은 segment_maker/, 갱신 시 동기화)
+│   ├── *_example.csv / *_example.yaml  (입출력 형식 예시 — 실제 입력 파일은 repo 미포함, README 참조)
 │   └── _contents/ …                (캠페인별 추출·정제 variant)
 ├── dateranges/             # Date Range 도구 (aa_daterange 단건 + list/update/create/upsert 일괄)
 ├── panel_collapse/         # panel 안 subPanel 일괄 collapse=True
@@ -87,6 +89,8 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 
 - **추출** (`extract_data_v*.py`, 권장) — `sites_input.csv` 의 row 별로 RSID + dateRange override → 같은 panel 구조를 여러 site 에 적용. `site_registry.py` 로 site_code ↔ RSID 매핑 분리. N단계 dimension breakdown (행 item 을 하위 차원으로 재귀 분해, `bd{k}_*` 컬럼) + device 컬럼 + site 단위 병렬 (`SITE_WORKERS`) + 레벨별 limit cap + device 케이스별 반복 추출 (`DEVICE_CASES` / `app_O_X.csv`). site 별 별도 CSV
 - **정제** (`RESHAPE_standard_v*.py`) — 추출본 union 정제. breakdown 행 모드(`include`/`exclude`/`only`) + device/bd passthrough + `_old` SITE CODE 정규화 + metric / Panel name 출력 컬럼·`EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션 + product 키워드 행 `product_category.yaml` category 분류
+
+> **입력 참조 파일은 repo 미포함** — `app_O_X.csv`(App 론치 O/X) · `currency.csv`(환율) · `product_category.yaml`(제품 분류 룰) 은 운영 데이터라 제외했다. 같은 폴더의 `*_example` 3종으로 형식을 확인하고 `_example` 을 뗀 이름으로 채워 쓸 것. 자세한 건 [`data_extract/README.md`](data_extract/README.md).
 
 구버전 lineage·상세 변경이력: `data_extract/extract_data.md`
 

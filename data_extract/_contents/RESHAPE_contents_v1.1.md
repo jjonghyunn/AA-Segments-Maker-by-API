@@ -1,5 +1,5 @@
 # RESHAPE_contents_v1.1.py  
-<sub>2026-05-26  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v3.2_contents.py` 가 떨군 `column_mapping_*.csv` 들을 union 형태로 정제해서 분석용 wide CSV (`_union_contents_<ts>.csv`) 생성.
 
@@ -44,6 +44,10 @@ python RESHAPE_contents_v1.1.py
 | `output/column_mapping_<site>_<ts>.csv` | extract_data_v3_contents 출력 (최신 ts batch 자동 선택) |
 | `currency.csv` | site_code × 연도 환율 |
 | `app_O_X.csv` | App 론치 여부 (O/X) per site |
+
+> ⚠️ `currency.csv` / `app_O_X.csv` 는 **repo 미포함** (운영 데이터). 상위 폴더 `data_extract/` 의
+> **`currency_example.csv` / `app_O_X_example.csv`** 로 형식을 확인한 뒤, `_example` 을 뗀 이름으로
+> 본인 데이터를 채워 **이 `_contents/` 폴더 안에** 두면 된다 (경로 기준 = 스크립트와 같은 폴더).
 
 ---
 
