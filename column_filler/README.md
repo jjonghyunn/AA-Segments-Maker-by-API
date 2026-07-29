@@ -1,7 +1,9 @@
 # column_filler/ — tb_column_name_mapping CSV 의 빈 column 자동 채움  
-<sub>2026-06-09  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
 
 캠페인 시즌이 바뀌어서 새 매핑 CSV (`tb_column_name_mapping_{ts}.csv`) 를 뽑았을 때, **이전 시즌의 column 컬럼 정리본** 을 참조해서 새 CSV 의 column 컬럼을 유사도 기반으로 자동 채워주는 유틸.
+
+> **입력 CSV 출처 — repo 미포함.** `tb_column_name_mapping_{ts}.csv` 를 만드는 도구는 이 repo 에 없다 (panel/reportlet JSON 추출기는 2026-06 정리 때 제거됨). 이 폴더는 그 CSV 를 **소비만** 한다 — `tb`, `column`, `segments`, `metric`, `period` 컬럼을 갖춘 CSV 라면 어떤 경로로 만들었든 입력으로 쓸 수 있다.
 
 ## 도구
 
@@ -11,7 +13,7 @@
 
 ## 사용 시나리오
 
-1. 새 캠페인 / 새 시즌마다 `tb_column_name_mapping_{ts}.csv` 가 새로 생성됨 (column 컬럼은 빈 값).
+1. 새 캠페인 / 새 시즌마다 `tb_column_name_mapping_{ts}.csv` 를 외부 도구로 새로 뽑음 (column 컬럼은 빈 값).
 2. 이전 시즌엔 비슷한 panel 구조에 column 명을 손으로 정리해서 reference 가 있음.
 3. 두 CSV 를 이 도구에 넣으면 신버전 column 컬럼이 유사도 기반으로 자동 채워짐.
 4. 결과 CSV (`*_filled.csv`) 를 검토하고 prior 변형이 없는 일부 행만 수동 보정.
@@ -102,7 +104,7 @@ NEW: 1729 rows  (tb_column_name_mapping_NEW.csv)
 
 | 증상 | 원인 / 해결 |
 |---|---|
-| `KeyError: 'segments'` / `'metric'` | NEW_CSV 가 v1 추출 결과 (segments/metric 컬럼 없음). v2.0 으로 재추출 필요 |
+| `KeyError: 'segments'` / `'metric'` | NEW_CSV 에 `segments` / `metric` 컬럼이 없음 (구버전 추출 결과). 두 컬럼을 포함하는 형식으로 다시 뽑아야 함 — 아래 "입력 CSV 출처" 참고 |
 | prior 행이 base year 값으로 채워짐 | old CSV 에 그 tb 의 `_prior` 변형이 없어서 base 로 fallback. column 결과에 `_prior` marker 가 빠져있을 수 있음 — prior 행만 따로 수동 보정 |
 | `period=campaign` 행이 last year 컬럼으로 채워짐 | strict 필터 동작 정상이라면 발생 X — NEW_CSV 의 period 컬럼이 비어있거나 잘못 채워졌는지 확인 |
 | 모든 행이 `채움 0` | OLD_CSV 와 NEW_CSV 가 다른 회사 / 다른 RSID 구조 → tb 이름이 전혀 안 겹쳐 jaccard 0. NAME_NORMALIZATION 룰 (token 기반) 검토 |

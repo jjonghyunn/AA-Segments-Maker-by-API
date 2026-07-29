@@ -5,7 +5,7 @@ aa_create_segment.py가 만든 result CSV의 SegmentId만 안전 삭제.
 
 안전장치 3중:
   1. result CSV 기반 — CSV에 기록된 SegmentId만 대상. 직접 ID/와일드카드 입력 불가.
-  2. 이름 prefix 검증 — 삭제 직전 GET으로 실제 이름 확인. SAFE_NAME_PREFIX (기본 "_test_")로
+  2. 이름 prefix 검증 — 삭제 직전 GET으로 실제 이름 확인. SAFE_NAME_PREFIX (기본 "" = 검증 비활성)로
                        시작 안 하면 자동 skip. 일반 운영 segment 보호.
   3. --yes 플래그 게이트 — 안 주면 삭제 후보 목록만 출력하고 끝남 (preview).
 

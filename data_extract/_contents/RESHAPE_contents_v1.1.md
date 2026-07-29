@@ -1,5 +1,5 @@
 # RESHAPE_contents_v1.1.py  
-<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v3.2_contents.py` 가 떨군 `column_mapping_*.csv` 들을 union 형태로 정제해서 분석용 wide CSV (`_union_contents_<ts>.csv`) 생성.
 
@@ -41,7 +41,7 @@ python RESHAPE_contents_v1.1.py
 
 | 파일 | 내용 |
 |---|---|
-| `output/column_mapping_<site>_<ts>.csv` | extract_data_v3_contents 출력 (최신 ts batch 자동 선택) |
+| `output/column_mapping_<site>_<ts>.csv` | `extract_data_v3.2_contents.py` 출력 (최신 ts batch 자동 선택) |
 | `currency.csv` | site_code × 연도 환율 |
 | `app_O_X.csv` | App 론치 여부 (O/X) per site |
 
@@ -166,7 +166,7 @@ segments 마지막 토큰에 `No Data` 포함 → row 제외 (출력 안 함).
 
 ## App 미론치 site 처리
 
-`app_O_X.csv` 에서 `X` 인 site → 그 site 의 app/android/ios device row 의 `data_value` 를 `"0"` 으로 덮어쓰기. row 자체는 출력에 유지. (reference notebook `RESHAPE_main_raw_v4.3.ipynb` 와 동일 동작)
+`app_O_X.csv` 에서 `X` 인 site → 그 site 의 app/android/ios device row 의 `data_value` 를 `"0"` 으로 덮어쓰기. row 자체는 출력에 유지. (레퍼런스 노트북 `RESHAPE_main_raw_v4.3.ipynb` 와 동일 동작 — **repo 미포함**, 로컬 작업본)
 
 ---
 

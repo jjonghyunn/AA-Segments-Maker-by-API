@@ -1,5 +1,5 @@
 # segment_share/ — segment 키워드 매칭 → 일괄 share 추가 (운영 사본)  
-<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_share
 
@@ -17,14 +17,14 @@ repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_s
 
 | 상수 | 값 |
 |---|---|
-| `AUTH_JSON_PATH` | `C:\Users\YOUR_USER\OneDrive - YOUR_COMPANY\your_folder\aanalyticsact_auth.json` |
+| `AUTH_JSON_PATH` | `C:\path\to\your\aanalytics_auth.json` |
 | `COMPANY_ID` | `your_aa_company_id` |
 | `RSID` | `""` (전체 RSID — 빈 문자열이면 server-side RSID 필터 안 함) |
 | `OWN_LOGIN_ID` | `YOUR_LOGIN_ID` (User 1 — 본인 owner segment 만 client-side 필터) |
-| `KEYWORDS` | `["visit"]` (name/description AND substring 매칭, case-insensitive) |
+| `KEYWORDS` | `["[CAMPAIGN NAME]"]` (name/description AND substring 매칭, case-insensitive. `"visit"` 등 나머지 후보는 주석 처리돼 있음) |
 | `OWNER_ID_FILTER` | `[]` (비어있으면 미사용) |
 | `OWNER_FULLNAME_INCLUDES` | `[]` (비어있으면 미사용) |
-| `TARGET_SEGMENT_IDS` | (코드 안 `TARGET_SEGMENT_IDS_RAW` 한 줄에 하나씩 박기 — 빈 리스트면 매칭 전체 대상) |
+| `TARGET_SEGMENT_IDS` | 코드 안 `TARGET_SEGMENT_IDS_RAW` 에 한 줄에 하나씩 박기. **기본값이 비어있지 않다** — placeholder id 가 여러 줄 들어있으므로, 매칭 전체를 대상으로 하려면 블록을 비우거나 각 줄 앞에 `#` 를 붙일 것 |
 | `SHARE_USER_IDS` | 본인 + 7명 (총 8명) |
 
 ### SHARE_USER_IDS 멤버
@@ -40,7 +40,7 @@ repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_s
 | user7@company_name.com | YOUR_LOGIN_ID | User 7 |
 | user8@... | YOUR_LOGIN_ID | User 8 |
 
-ID lookup 은 상위 폴더의 `company_name_aa_id_*.csv` 자동 pick (`AA_USER_CSV` — 가장 최신 timestamp). `find_user_id.py --all --csv ...` 로 갱신.
+ID lookup 은 상위 폴더의 `company_name_aa_id_*.csv` 자동 pick (`AA_USER_CSV` — 가장 최신 timestamp). **이 CSV 는 repo 에 포함되지 않는다** (회사 인원 목록이라 미업로드) — `../utils/find_user_id.py --all --csv company_name_aa_id_<ts>.csv` 로 직접 생성해 repo 루트 상위에 두면 된다. 없으면 `AA_USER_CSV = None` 으로 두고 owner 이름 enrich 없이 동작.
 
 ## 실행
 
@@ -65,14 +65,14 @@ python add_segment_shares.py --apply
 
 ```
 [2026-05-21 19:00:00] segment share 일괄 추가 도구
-  KEYWORDS         : ['visit']
+  KEYWORDS         : ['[CAMPAIGN NAME]']
   RSID 필터        : ''  (전체)
   추가할 user id   : [YOUR_LOGIN_ID, YOUR_LOGIN_ID, ..., YOUR_LOGIN_ID]
 
 GET /segments (본인 owner) ...
   본인 owner segment 총 N개
 
-KEYWORDS=['visit'] 매칭 segment: M개
+KEYWORDS=['[CAMPAIGN NAME]'] 매칭 segment: M개
 
 --- 매칭된 segment 목록 (첫 5개) ---
   #  segment id                    rsid                name
@@ -118,5 +118,5 @@ KEYWORDS=['visit'] 매칭 segment: M개
 ## 자매 도구
 
 - `../utils/find_user_id.py` — email/login/name 으로 numeric loginId 찾기
-- `../company_name_aa_id_*.csv` — 회사 전체 user id 매핑 (`find_user_id.py --all --csv ...` 로 생성)
+- `../company_name_aa_id_*.csv` — 회사 전체 user id 매핑. **repo 미포함** — `find_user_id.py --all --csv ...` 로 직접 생성
 - `../segment_maker/aa_create_segment_v2.4.py` — segment 생성 시 `OWNER_ID` 설정으로 본인 명의 보장

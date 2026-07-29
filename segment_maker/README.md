@@ -1,5 +1,5 @@
 # segment_maker/  
-<sub>2026-07-09  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
 
@@ -95,7 +95,9 @@ python aa_create_segment_v2.4.py --input segments.csv --to-evar --apply         
 `--input` 비우면 폴더의 최신 `segments_input_*.csv` 자동 pick.
 `--lookup-by-name` (default True) — `--update-or-create` 모드에서 segment_id 빈 row 는 폴더의 `segment_lookup_*.csv` 에서 name 매칭으로 자동 채움.
 
-**(v2.4) prop/page → evar 변환** — `--to-evar` (또는 상단 `CONVERT_TO_EVAR=True`): 정의의 prop/page 디멘션을 evar 로 remap 후 생성/업데이트 (op·값·구조 보존, prop 키워드만 evar 로). 특수 페어링은 상단 `EVAR_SPECIAL_MAP`(예: `page→evar40`, `prop29→evar92`), 그 외 `prop{N}→evar{N}`(`EVAR_DEFAULT_PROP_TO_EVAR`). 변환 세그의 report suite 변경은 `EVAR_TARGET_RSID`. ⚠ 페어링은 suite(회사)별로 다르니 상단 상수에서 확정할 것.
+**(v2.4) prop/page → evar 변환** — `--to-evar` (또는 상단 `CONVERT_TO_EVAR=True`): 정의의 prop/page 디멘션을 evar 로 remap 후 생성/업데이트 (op·값·구조 보존, prop 키워드만 evar 로). 특수 페어링은 상단 `EVAR_SPECIAL_MAP`(예: `page→evar40`, `prop29→evar92`), 그 외 `prop{N}→evar{N}`(`EVAR_DEFAULT_PROP_TO_EVAR`). 변환 세그의 report suite 변경은 `EVAR_TARGET_RSID`, 변환 세그 이름 끝에 붙일 접미사는 `EVAR_NAME_SUFFIX`(기본 `"_Evar"`, 빈 값이면 미적용). ⚠ 페어링은 suite(회사)별로 다르니 상단 상수에서 확정할 것.
+
+> ⚠ **`--update` 는 owner 변경 시 대화형 확인을 받는다.** 기존 owner 와 `OWNER_ID` 가 다르면 세그마다 `owner {현재} -> {새값} 로 바뀝니다. 정말 진행? (Y/N)` 프롬프트가 뜨고, `y` 가 아니면 그 세그는 `SKIP(owner)` 로 건너뛴다 (남의 세그 owner 탈취 방지). **무인/스케줄 실행이면 stdin 에서 멈추므로**, owner 를 안 바꿀 거면 `OWNER_ID = None` 으로 두어 게이트 자체가 안 걸리게 할 것.
 
 CSV 필수 칼럼:
 - CREATE — `name`, `structure`

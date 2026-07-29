@@ -1,5 +1,5 @@
 # utils/  
-<sub>2026-06-18  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 유틸리티 스크립트 모음.
 

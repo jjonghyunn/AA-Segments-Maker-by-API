@@ -1,5 +1,5 @@
 # panel_maker/ — AA Workspace project panel 복제 + segment swap  
-<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
 
 source project 의 panel 구조를 그대로 빈 target project 로 복제하면서 그 안의 segment ID 를 새 캠페인 segment 로 자동 swap. `SOURCE_PROJECT_ID` / `TARGET_PROJECT_ID` / `OLD_KEYWORDS` / `NEW_KEYWORDS` 등 환경 값은 스크립트 상단 상수로 본인 환경에 맞게 교체.
 
@@ -33,7 +33,14 @@ UI 에서 한 panel 씩 손으로 복제+segment 다시 끼우는 노동을 자�
 | `SKIP_KEYWORDS` | sub_num 같이 있을 때 자동 매칭 제외할 키워드 |
 | `PREFERRED_OWNER_ID` | AMBIGUOUS tie-breaker — 우선할 owner 의 numeric loginId |
 | `MANUAL_OVERRIDES` | source_id → target_id 직접 매핑 |
-| `REMOVE_UNMATCHED_FROM_PANEL` | `True` 면 NO_MATCH source segment 를 swap 대신 panel 에서 컬럼째 제거 (False=원본 ID 잔존). `panel_contents.py` 에 있음 |
+| `TARGET_SEG_NAME_KEYWORDS` / `TARGET_SEG_NAME_MODE` | NEW_KEYWORDS 로 잡힌 target 후보를 이름 키워드로 한 번 더 좁힘 (`"AND"`/`"OR"`, 대소문자 무시 substring). 빈 list = 추가 필터 없음. `panel_contents.py` 전용 |
+| `USE_NO_DATA_FALLBACK` | target 에 짝이 없는 번호/변형을 `No Data` segment 로 메꿔 컬럼 수 유지 (기본 `True`) |
+| `TRIM_TAIL_UNMATCHED_SUB_NUM` | `True` 면 target 의 max sub_num 을 넘는 **끝쪽** sub_num source 는 매핑 대신 panel JSON 에서 컬럼째 제거 (한 칸 당김). 시작/중간 빔은 영향 없음 — `No Data` 유지. `panel_contents.py` 전용 |
+| `SW_ORDER_MAPPING` | `True` 면 sub_num/primary 정확 매칭 무시하고 target 정렬 순서대로 위치 기반 zip 매핑. `panel_contents.py` 전용 |
+| `SHIFT_TAIL_TO_NEXT_PRIMARY` | `True` 면 (type, suffix) 그룹 안에서 target cursor 를 진행시키며 cascade shift 매핑. `SW_ORDER_MAPPING` 과 동시 활성 비추천. `panel_contents.py` 전용 |
+| `COLLAPSE_ALL_SUBPANELS` | 복제된 panel 의 모든 subPanel 을 접힌 상태로 강제 (기본 `True`) |
+| `RENAME_PANEL` / `PANEL_NAME_REPLACEMENTS` | panel 헤더 텍스트 정규식 치환 (캠페인 표기 갈아끼우기) |
+| `PREFERRED_SEGMENT_CSV` | 특정 result CSV 의 `SegmentId` 값만 swap 후보로 제한. 빈 string 이면 NEW_KEYWORDS 매칭 전체. `panel_contents_recomm_v1.2.py` 전용 |
 
 ## 매칭 룰 (CC 패턴)
 
@@ -76,7 +83,7 @@ dry-run 결과 CSV (실행한 폴더에 timestamp 단위로 누적):
 1. `SOURCE_PROJECT_ID` / `TARGET_PROJECT_ID` 교체 (target 은 미리 UI 에서 본인 계정으로 빈 프로젝트 생성)
 2. `OLD_KEYWORDS` / `NEW_KEYWORDS` 교체 (예: `[CAMPAIGN NAME]` → `[NEW CAMPAIGN NAME]`)
 3. dry-run 실행 → 결과 CSV 의 `MatchStatus = NO_MATCH` / `AMBIGUOUS` 항목 확인
-4. 자동 매칭 안 된 건 → `MANUAL_OVERRIDES` 에 직접 박기 또는 NEW segment 생성 (`segment_maker/aa_create_segment_v2.4.py`). 타겟에 없어 대체 불가한 source 는 `REMOVE_UNMATCHED_FROM_PANEL=True` 로 컬럼째 제거
+4. 자동 매칭 안 된 건 → `MANUAL_OVERRIDES` 에 직접 박기 또는 NEW segment 생성 (`segment_maker/aa_create_segment_v2.4.py`). 그냥 두면 `USE_NO_DATA_FALLBACK=True` 가 `No Data` segment 로 메꿔 컬럼 수를 유지하고, 끝쪽 sub_num 잔여분만 `TRIM_TAIL_UNMATCHED_SUB_NUM=True` 로 컬럼째 제거된다
 5. 다시 dry-run → 모두 OK 면 `--apply`
 
 ## 안전장치
@@ -88,5 +95,5 @@ dry-run 결과 CSV (실행한 폴더에 timestamp 단위로 누적):
 ## 자매 도구
 
 - `../panel_collapse/collapse_panel_tables.py` — panel 안 모든 subPanel `collapsed=True` 강제
-- `../panel_date_update/update_panel_date.py` — panel 종료일 일괄 치환
+- `../panel_date_update/update_panel_date.py` — panel 시작/종료일 일괄 치환
 - `../segment_maker/aa_segment_lookup_from_pjt.py` — project 안 panel 들이 참조하는 segment 일괄 lookup

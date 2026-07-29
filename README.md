@@ -1,5 +1,5 @@
 # AA-Segments-Maker-by-API  
-<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
@@ -23,15 +23,16 @@ AA-Segments-Maker-by-API/
 │   ├── RESHAPE_standard_v*.py      (추출본 union 정제 — breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션 + product category 분류)
 │   ├── site_registry.py            (site_code ↔ rsid 매핑)
 │   ├── aa_segment_lookup.py        (extract_data 가 import 하는 필수 의존 — 원본은 segment_maker/, 갱신 시 동기화)
+│   ├── sites_input.csv             (추출 대상 site/기간 입력 템플릿)
 │   ├── *_example.csv / *_example.yaml  (입출력 형식 예시 — 실제 입력 파일은 repo 미포함, README 참조)
 │   └── _contents/ …                (캠페인별 추출·정제 variant)
 ├── dateranges/             # Date Range 도구 (aa_daterange 단건 + list/update/create/upsert 일괄)
 ├── panel_collapse/         # panel 안 subPanel 일괄 collapse=True
 ├── panel_date_update/      # panel 시작/종료일 일괄 치환
-├── panel_maker/            # 첫 panel/전체 panel 복제 + segment swap (recomm variant 포함)
+├── panel_maker/            # source project panel 복제 + segment swap (기본 전체 panel, recomm variant 포함)
 ├── segment_share/          # 본인 owner segment 키워드 매칭 → 일괄 share 추가
 ├── column_filler/          # tb_column_name_mapping 빈 컬럼 유사도 자동 채움
-└── (루트 유지)             cleanup_recent_json.py
+└── (루트 유지)             cleanup_recent_json.py, requirements.txt, LICENSE
 ```
 
 > 구버전은 정리 완료 (2026-06-17). 활성 경로엔 항상 최신 1개만.
@@ -57,7 +58,7 @@ python aa_segment_lookup.py --search "[CAMPAIGN NAME]"     # → lookup/segment_
 
 # 4) Workspace 프로젝트 패널 데이터 추출
 cd ../data_extract
-python extract_data_v4.2.py                # sites_input.csv 의 site 별로 추출
+python extract_data_v4.3.py                # sites_input.csv 의 site 별로 추출
 #   → stack_data_extract_<site>_<ts>.csv  (형식: stack_data_extract_example.csv)
 #   → table_data_extract_<site>_<ts>.csv  (형식: table_data_extract_example.csv)
 python RESHAPE_standard_v1.7.py            # union 정제
@@ -120,7 +121,7 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 모든 스크립트 공통: `aanalytics2` 라이브러리 + OAuth Server-to-Server auth JSON.
 
 ```python
-AUTH_JSON_PATH = "path/to/aanalyticsact_auth.json"
+AUTH_JSON_PATH = r"C:\path\to\your\aanalytics_auth.json"
 COMPANY_ID = "your_aa_company_id"
 ```
 
