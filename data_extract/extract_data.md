@@ -7,12 +7,12 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 
 | 파일 | 용도 |
 |---|---|
-| `extract_data_v4.2.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** + **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + **stack/table 출력 2종** + **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성) + **(v3.9) stack metric → metric_origin** + **(v4.0) breakdown 단계별 cap `LIMIT_BD`~`LIMIT_BD4` + 출력 무결성 자가검증 + breakdown 진행률·남은예상시간 + `--estimate` 사전추정** + **(v4.1) breakdown 깊이/부모행 출력 제어 `BREAKDOWN_MAX_DEPTH`(깊이 캡)·`INCLUDE_PARENT_ROWS`(총계행 포함 여부) — 총계만/총계+bd1/bd1만 조합** + **(v4.2) 기간 분할·연도 shift `MONTHLY`(총기간을 달력 월로 쪼개 월별 추출, period 컬럼)·`YEAR_OFFSETS`(sites_input 연도 ±N shift, 동기간 YoY 를 한 실행으로)** |
+| `extract_data_v4.3.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** + **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + **stack/table 출력 2종** + **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성) + **(v3.9) stack metric → metric_origin** + **(v4.0) breakdown 단계별 cap `LIMIT_BD`~`LIMIT_BD4` + 출력 무결성 자가검증 + breakdown 진행률·남은예상시간 + `--estimate` 사전추정** + **(v4.1) breakdown 깊이/부모행 출력 제어 `BREAKDOWN_MAX_DEPTH`(깊이 캡)·`INCLUDE_PARENT_ROWS`(총계행 포함 여부) — 총계만/총계+bd1/bd1만 조합** + **(v4.2) 기간 분할·연도 shift `MONTHLY`(총기간을 달력 월로 쪼개 월별 추출, period 컬럼)·`YEAR_OFFSETS`(sites_input 연도 ±N shift, 동기간 YoY 를 한 실행으로)** |
 | `RESHAPE_standard_v1.7.py` | extract_data 출력 → `_union_standard_*.csv` union 정제 (범용). **v1.7: `period` 컬럼(v4.2 MONTHLY 의 월 라벨) passthrough** (`PASSTHROUGH_COLUMNS`) — YEAR_OFFSETS 의 `_y{연도}` 파일은 v1.6 에서도 이미 연도별로 union 됨. v1.6: wide 의 revenue 계열을 `<metric>_org`(원본)+`<metric>`(fx) 두 열로 분리 + `variable` 컬럼(dimension 뒤 토큰, 예 `variables/evar26`→`evar26`) 추가. v1.5: metric_origin + 정제 metric + value_origin + wide union(`_union_standard_wide_*`). v1.4: panel/table/reportlet 의 product 키워드(`Multi Purchase`/`Multi Order`/`Best Selling Product`) 행에 `product_category.yaml` 로 `category` 컬럼 분류 추가 (`ADD_CATEGORY_COLUMN`). v1.3: `stack_data_extract_*` 입력 패턴 대응 (구버전 `extract_data_*` 호환). v1.2: metric / Panel name 출력 컬럼 추가 + `EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션. v1.1: breakdown 행 모드(`BREAKDOWN_ROWS_MODE`) + device/bd 컬럼 passthrough + `_old` 접미사 SITE CODE 정규화 |
 | `site_registry.py` | `site_code → (subsidiary, country, rsid)` 매핑. `lookup_site()` 함수 제공 |
 | `table_data_extract_example.csv` / `stack_data_extract_example.csv` | 출력 2종(가로형 table / 세로형 stack) 형식 예시 (placeholder 값) |
 | `app_O_X_example.csv` / `currency_example.csv` / `product_category_example.yaml` | **입력 참조 파일 형식 예시.** 실제 파일(`app_O_X.csv` / `currency.csv` / `product_category.yaml`)은 운영 데이터라 repo 미포함 — `_example` 을 뗀 이름으로 본인 데이터를 채워 같은 폴더에 저장할 것 |
-| `_contents/` (하위폴더) | **캠페인 콘텐츠(콘텐츠 배너·시나리오) 분석 전용** 변형. contents 프로젝트의 site × device 5종(pc/mobile/app/android/ios) payload 분기 + `RESHAPE_contents` 후처리(환율·Delayed 합산·SITE CODE 정규화)가 묶인 도구 세트. generic `extract_data_v4.2.py` 와 별개 — 콘텐츠 캠페인 추출은 여기 사용. 추출: `_contents/extract_data_v3.2_contents.py`, 정제 상세: `_contents/RESHAPE_contents_v1.1.md` |
+| `_contents/` (하위폴더) | **캠페인 콘텐츠(콘텐츠 배너·시나리오) 분석 전용** 변형. contents 프로젝트의 site × device 5종(pc/mobile/app/android/ios) payload 분기 + `RESHAPE_contents` 후처리(환율·Delayed 합산·SITE CODE 정규화)가 묶인 도구 세트. generic `extract_data_v4.3.py` 와 별개 — 콘텐츠 캠페인 추출은 여기 사용. 추출: `_contents/extract_data_v3.2_contents.py`, 정제 상세: `_contents/RESHAPE_contents_v1.1.md` |
 
 ## v4.2 신규 기능 (2026-07-24)
 
@@ -98,27 +98,27 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 
 → "프로젝트 URL 만 넣으면 구조 파악 + 데이터 추출 + 추가 segment 적용까지 한번에" 되는 단일 스크립트.
 
-## extract_data_v4.2.py 사용법
+## extract_data_v4.3.py 사용법
 
 ```bash
-python extract_data_v4.2.py                       # sites_input.csv 의 모든 site 처리
-python extract_data_v4.2.py --site us             # us 하나만
-python extract_data_v4.2.py --site us --site uk   # 여러 개 좁히기
-python extract_data_v4.2.py --dry-run             # payload 생성까지만 (API 호출 안 함)
-python extract_data_v4.2.py --workers 8           # 병렬 워커 수 (기본 6)
-python extract_data_v4.2.py --limit 200          # 1st level(dim1) reportlet 당 행 수 cap (0=무제한)
-python extract_data_v4.2.py --limit-bd 50        # breakdown 1단계(bd1=level2) 부모 item 당 행 수 cap (0=무제한)
-python extract_data_v4.2.py --limit-bd2 15 --limit-bd3 15 --limit-bd4 15   # breakdown 2/3/4단계(bd2~4 = level3~5) 각 cap
-python extract_data_v4.2.py --estimate           # 실제 추출 전 총 호출수·예상 소요시간만 출력 (dim1+단계별 1경로 샘플)
-python extract_data_v4.2.py --include-global-for-us            # us_old site 에서도 Global panel 추출
-python extract_data_v4.2.py --site-workers 3                   # site 3곳 동시 처리 (기본 5, 1=순차)
-python extract_data_v4.2.py --breakdown-top-n 5                # breakdown 레벨별 상위 5개만 (검증/성능)
-python extract_data_v4.2.py --breakdown-dims "variables/product,variables/evar92"  # 분해 차원 명시
-python extract_data_v4.2.py --breakdown-max-depth 1           # (v4.1) breakdown 깊이 캡 (0=총계만, 1=bd1까지, N=bdN까지, -1=무제한)
-python extract_data_v4.2.py --breakdown-max-depth 1 --no-parent-rows   # (v4.1) dim1 총계행 빼고 bd1 행만 ("bd만" 모드)
-python extract_data_v4.2.py --monthly                          # (v4.2) 총기간을 달력 월로 쪼개 월별 추출 (period 컬럼 추가)
-python extract_data_v4.2.py --year-offsets 0,-1                # (v4.2) 올해 + 작년 동기간 한 실행으로 (작년은 파일명 _y{연도})
-python extract_data_v4.2.py --monthly --year-offsets 0,-1      # (v4.2) 두 옵션 조합 — 2개 연도 × 월별
+python extract_data_v4.3.py                       # sites_input.csv 의 모든 site 처리
+python extract_data_v4.3.py --site us             # us 하나만
+python extract_data_v4.3.py --site us --site uk   # 여러 개 좁히기
+python extract_data_v4.3.py --dry-run             # payload 생성까지만 (API 호출 안 함)
+python extract_data_v4.3.py --workers 8           # 병렬 워커 수 (기본 6)
+python extract_data_v4.3.py --limit 200          # 1st level(dim1) reportlet 당 행 수 cap (0=무제한)
+python extract_data_v4.3.py --limit-bd 50        # breakdown 1단계(bd1=level2) 부모 item 당 행 수 cap (0=무제한)
+python extract_data_v4.3.py --limit-bd2 15 --limit-bd3 15 --limit-bd4 15   # breakdown 2/3/4단계(bd2~4 = level3~5) 각 cap
+python extract_data_v4.3.py --estimate           # 실제 추출 전 총 호출수·예상 소요시간만 출력 (dim1+단계별 1경로 샘플)
+python extract_data_v4.3.py --include-global-for-us            # us_old site 에서도 Global panel 추출
+python extract_data_v4.3.py --site-workers 3                   # site 3곳 동시 처리 (기본 5, 1=순차)
+python extract_data_v4.3.py --breakdown-top-n 5                # breakdown 레벨별 상위 5개만 (검증/성능)
+python extract_data_v4.3.py --breakdown-dims "variables/product,variables/evar92"  # 분해 차원 명시
+python extract_data_v4.3.py --breakdown-max-depth 1           # (v4.1) breakdown 깊이 캡 (0=총계만, 1=bd1까지, N=bdN까지, -1=무제한)
+python extract_data_v4.3.py --breakdown-max-depth 1 --no-parent-rows   # (v4.1) dim1 총계행 빼고 bd1 행만 ("bd만" 모드)
+python extract_data_v4.3.py --monthly                          # (v4.2) 총기간을 달력 월로 쪼개 월별 추출 (period 컬럼 추가)
+python extract_data_v4.3.py --year-offsets 0,-1                # (v4.2) 올해 + 작년 동기간 한 실행으로 (작년은 파일명 _y{연도})
+python extract_data_v4.3.py --monthly --year-offsets 0,-1      # (v4.2) 두 옵션 조합 — 2개 연도 × 월별
 ```
 
 ## 사용자 설정 (상단 상수)
@@ -326,9 +326,9 @@ columnTree 에 DateRange 컴포넌트가 있으면:
 ## 권장 사용 흐름
 
 1. `sites_input.csv` 의 site 들 + 캠페인 시즌의 start/end 채움
-2. `python extract_data_v4.2.py --dry-run --site us` 로 한 site payload 확인
+2. `python extract_data_v4.3.py --dry-run --site us` 로 한 site payload 확인
 3. breakdown 쓰는 경우 `--site <한곳> --breakdown-top-n 5` 로 소규모 검증 (총계 = breakdown 합 확인)
-4. OK 면 전체 실행 — `python extract_data_v4.2.py`
+4. OK 면 전체 실행 — `python extract_data_v4.3.py`
 5. `output/` 폴더의 사이트별 CSV 검토. 실패 site (FAIL 표시) 만 따로 `--site <code>` 로 재시도
 6. union 정제 필요 시 `python RESHAPE_standard_v1.7.py` (breakdown 행 처리 모드는 `BREAKDOWN_ROWS_MODE`)
 
@@ -342,5 +342,5 @@ Mac venv 사용 예 (Python 3.13):
 
 ```bash
 cd data_extract
-DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib .venv/bin/python3.13 extract_data_v4.2.py
+DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib .venv/bin/python3.13 extract_data_v4.3.py
 ```

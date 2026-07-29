@@ -77,7 +77,7 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
   - `"exclude"`: dim1 총계만 (v1.0 semantics)
   - `"only"`: breakdown 행만
 - **passthrough 컬럼** — 입력에 `device` / `period` / `bd{k}_dimension/itemId/value` 컬럼이 있으면 출력에 그대로 따라옴 (`PASSTHROUGH_COLUMNS` 상수 + `bd{k}_*` 정규식). v3.4 이하 출력(bd 컬럼 없음)은 모드 무관 전체 처리.
-  - **(v1.7) `period`** — `extract_data_v4.2` 를 `MONTHLY=True` 로 뽑으면 월 라벨(`Jul 2026`)이 `period` 컬럼에 들어온다. v1.6 은 이걸 안 넘겨서 월 라벨이 유실됐다(행은 `start_date`/`end_date` 로 분리 유지). long·wide 양쪽에 실린다.
+  - **(v1.7) `period`** — `extract_data_v4.3` 를 `MONTHLY=True` 로 뽑으면 월 라벨(`Jul 2026`)이 `period` 컬럼에 들어온다. v1.6 은 이걸 안 넘겨서 월 라벨이 유실됐다(행은 `start_date`/`end_date` 로 분리 유지). long·wide 양쪽에 실린다.
 
 ### 출력 컬럼 추가 (v1.2)
 

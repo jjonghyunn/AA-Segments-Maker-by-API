@@ -1,5 +1,21 @@
-﻿# extract_data_v4.2.py
-# 2026-07-24  Jonghyun Park w/ Claude
+# extract_data_v4.3.py
+# 2026-07-29  Jonghyun Park w/ Claude
+# v4.3 (2026-07-29): site ↔ 패널 매칭 2종 추가. 전 사본 공통 코드이며, 동작 여부는 상단 상수로만 갈린다.
+#   ① 패널 분류(group) 분기 — 패널을 이름 키워드로 분류하고(PANEL_GROUP_RULES),
+#      sites_input 의 분류 컬럼으로 site 마다 어느 분류의 패널을 돌지 정한다.
+#      분류값은 자유(EPP/B2C 는 예시). _load_sites_input 이 4-tuple 반환 / _panel_group() 신규.
+#      + PANEL_GROUP_YEAR_OFFSETS : 분류별 YEAR_OFFSETS override
+#      + PANEL_GROUP_SKIP_SITE_PANEL_RULE : 그 분류는 site↔패널 룰 면제
+#      **기본 미사용** — 상수가 전부 비어 있어, 설정하기 전에는 모든 패널을 그대로 추출한다
+#   ② SITE_PANEL_SITES — 패널명에 **site_code 가 토큰으로** 들어있으면 그 site 전용 패널로 보고,
+#      등록 site 는 전용 패널만 / 미등록 site 는 공용 패널만 돈다 (기존 US·Global 접두 룰 대체).
+#      토큰 경계(SITE_PANEL_BOUNDARY)로 'sec' 가 'second'/'section' 에 걸리는 오탐을 막는다.
+#      비어 있으면([]) 기존 접두 룰이 그대로 쓰인다. SITE_PANEL_ALIAS 로 패널 키워드 지정 가능.
+#   하위호환 3중 안전장치 — 다른 폴더에 그대로 복사해도 조용히 데이터가 빠지지 않게:
+#      · PANEL_GROUP_COLUMN 이 비었거나 sites_input 에 그 컬럼이 없으면 → 분류 필터 미적용
+#      · 컬럼이 있어도 **그 프로젝트에 해당 분류의 패널이 없으면** 그 site 만 미적용 + 경고
+#      · SITE_PANEL_SITES 가 비어 있으면 접두 룰로 폴백
+#   ※ v4.2 대비 **입력 상수(PROJECT_ID·LIMIT·MONTHLY·YEAR_OFFSETS 등)는 그대로**. 신규 상수만 추가됨.
 # v4.2 (2026-07-24): 기간 분할·연도 shift 상수 2개 추가 (sites_input 에는 항상 site 별 "총기간"을 넣는다) —
 #                    MONTHLY (총기간을 달력 월로 쪼개 월마다 dateRange override 로 각각 추출.
 #                      출력에 period 컬럼('Jul 2025') 추가 + start_date/end_date 가 그 달 범위.
@@ -185,7 +201,7 @@ REQUIRED_TABLE_KEYWORDS: list[str] = []
 # 아래 두 상수가 그 총기간을 "어떻게 뽑을지"(추출 방식)를 정한다.
 #
 # MONTHLY : 총기간을 통으로 1회 뽑을지, 달력 월 단위로 쪼개 월마다 뽑을지.
-#   False → 총기간 1회 추출 (v4.1 동작)
+#   False → 총기간을 쪼개지 않고 1회로 추출 (period 컬럼 없음)
 #   True  → 총기간을 달력 월로 쪼개 월마다 dateRange override 로 각각 추출.
 #           · 출력에 period 컬럼 추가 ('Jul 2025' — AA daterangemonth 표기와 동일),
 #             start_date/end_date 는 그 달 범위로 기록 (양 끝 부분월은 총기간에 맞춰 잘림.
@@ -196,7 +212,7 @@ REQUIRED_TABLE_KEYWORDS: list[str] = []
 MONTHLY: bool = False
 
 # YEAR_OFFSETS : sites_input 날짜의 **연도**를 N 만큼 shift 해서 추출 (동기간 YoY 비교용).
-#   [0]         → sites_input 그대로 (v4.1 동작, 파일명도 동일)
+#   [0]         → sites_input 날짜 그대로 1 run (파일명에 연도 태그 없음)
 #   [0, -1]     → 올해 + 작년 동기간을 한 실행으로 (site 당 2 run)
 #   [-2,-1,0], [0,1] 처럼 개수·부호 자유. 2/29 는 shift 후 없는 날이면 2/28 로 clamp.
 #   ※ offset≠0 인 run 의 출력 파일명에는 `_y{연도}` 태그가 붙는다
@@ -217,11 +233,11 @@ BREAKDOWN_ENABLED: bool = True
 BREAKDOWN_DIMENSIONS: list[str] = []
 BREAKDOWN_TOP_N: int = 0
 #   BREAKDOWN_MAX_DEPTH (v4.1): breakdown 깊이 캡. 정수 1개로 모든 깊이 표현 (enum 나열 회피).
-#       -1(또는 <0) → 무제한 (자동감지/DIMENSIONS 전부, v4.0 동작)
+#       -1(또는 <0) → 무제한 (자동감지된 차원 / DIMENSIONS 전부까지 분해)
 #        0          → 분해 안 함 (dim1 총계만 — BREAKDOWN_ENABLED=False 와 동일 효과)
 #        1 = bd1까지, 2 = bd2까지, ... N = bdN까지
 #   INCLUDE_PARENT_ROWS (v4.1): dim1 총계(부모) 행을 출력 CSV(stack/table)에 포함할지.
-#        True  → 총계행 + breakdown행 (v4.0 동작)
+#        True  → 총계행 + breakdown행 둘 다 출력
 #        False → breakdown행만 (총계행 제외, "bd만" 모드)
 #   ※ 속도: INCLUDE_PARENT_ROWS True/False 는 API 호출량 동일 → 속도차 사실상 없음.
 #     dim1(Lv1) 추출은 breakdown 부모 목록 확보용으로 항상 필요(_run_breakdowns frontier),
@@ -313,6 +329,71 @@ US_SITE_CODE         = "us_old"
 US_PANEL_PREFIX      = "US"
 GLOBAL_PANEL_PREFIX  = "Global"
 INCLUDE_GLOBAL_FOR_US = False  # CLI --include-global-for-us 로 override
+
+# ─── site_code ↔ 전용 패널 매칭 (접두 룰 대체, positive 매핑) ────────
+# 위 접두(prefix) 룰은 "US"/"Global" 두 단어에만 걸리는 negative skip 이라,
+# 그 밖의 패널(예: 'SEC EPP')은 전 site 에서 그냥 돌아 빈 결과만 만든다.
+# 아래 목록에 site_code 를 넣으면 **패널명에 그 site_code 가 들어간 패널에서만** 그 site 를 뽑는다.
+#
+#   SITE_PANEL_SITES = []                 → 미사용. 위 US/Global 접두 룰만 적용된다.
+#   SITE_PANEL_SITES = ["us_old","sec"]   → 접두 룰 **대신** 아래 규칙 적용:
+#       · 패널명에 등록 site_code 가 든 패널 = 그 site 전용 → 그 site 에서만 RUN
+#       · 어느 등록 site_code 도 없는 패널 = 공용 → **미등록 site 에서만** RUN
+#         (등록 site 는 전용 패널만 봄. INCLUDE_GLOBAL_FOR_US=True 면 공용 패널도 같이 RUN)
+#
+# 매칭은 **토큰 경계** 기준(대소문자 무시) — 영숫자·언더바가 아닌 문자(또는 문자열 끝)로 둘러싸여야 한다.
+#   'sec'    → 'SEC EPP' ✓ / '[SEC]' ✓ / 'SEC - EPP' ✓ / 'second' ✗ 'insect' ✗ 'section' ✗
+#   'us_old' → 'US_old EPP (Y25용)' ✓ / 'US EPP' ✗ (us 뒤가 언더바라 'us' 토큰도 아님)
+# 패널명이 site_code 와 다르게 적혀 있으면 SITE_PANEL_ALIAS 로 키워드를 따로 지정한다.
+SITE_PANEL_SITES: list[str] = []
+SITE_PANEL_ALIAS: dict[str, list[str]] = {}   # 예: {"us_old": ["US_old", "US old"]}
+# 토큰 경계 정규식 — {kw} 자리에 키워드가 escape 되어 들어간다. 경계를 바꾸고 싶으면 여기서 조정.
+SITE_PANEL_BOUNDARY = r"(?<![0-9A-Za-z_]){kw}(?![0-9A-Za-z_])"
+
+# ─── 패널 분류(group) × site 매칭 ───────────────────────────────────
+# **기본 미사용**(아래 값이 전부 비어 있음). 쓰려면 이 폴더에서만 값을 채운다.
+#
+# 무엇을 하나: 패널을 이름 키워드로 몇 개 분류로 나누고, sites_input.csv 의 분류 컬럼으로
+#   site 마다 "이 site 는 어느 분류의 패널에서 뽑을지" 를 정한다.
+#   분류가 안 맞는 패널은 그 site 에서 skip 된다.
+#
+# 설정 예 (한 캠페인을 EPP / B2C 로 나눈 사례 — **어디까지나 예시**다):
+#     PANEL_GROUP_COLUMN        = "EPP_B2C"
+#     PANEL_GROUP_RULES         = [("EPP", "EPP"), ("B2C", "B2C")]
+#     PANEL_GROUP_SITE_DEFAULT  = "EPP"
+#     PANEL_GROUP_PANEL_DEFAULT = "EPP"
+#   → sites_input 의 us 행이 B2C 면 'Global B2C' 패널만 돌고 'Global EPP' 는 skip.
+#   분류값은 자유다. 예컨대 ("Mobile","MO")/("PC","PC") 처럼 디바이스로 나눠도 된다.
+#
+# ⚠ RULES 는 **위에서부터 첫 매칭**이라 순서가 중요하다. 한 패널명이 여러 키워드를 갖는 경우
+#    더 구체적인 쪽을 위에 둔다. (예: '② Global - EPP (B2C RS)' 는 EPP·B2C 를 다 가지므로
+#     EPP 를 먼저 둬야 EPP 로 잡힌다. B2C 를 먼저 두면 B2C 로 오분류.)
+#
+# 안전장치 3중 — 다른 폴더에 그대로 복사해도 조용히 데이터가 빠지지 않는다.
+# 아래 어느 경우든 **분류 필터를 적용하지 않고 그 site 에서 모든 패널을 추출**한다:
+#   · PANEL_GROUP_COLUMN 이 비어 있을 때 (지금 기본값 — 기능 미사용)
+#   · 컬럼명을 넣었는데 sites_input 헤더에 그 컬럼이 없을 때
+#   · 컬럼이 있어도 그 프로젝트에 해당 분류의 패널이 하나도 없을 때 (그 site 만, 경고 출력)
+PANEL_GROUP_COLUMN        = ""   # sites_input.csv 의 분류 컬럼명. "" 면 기능 미사용
+PANEL_GROUP_RULES: list[tuple[str, str]] = []   # [(패널명 키워드, 분류값), ...] 위에서부터 부분일치
+PANEL_GROUP_SITE_DEFAULT  = ""   # 컬럼은 있는데 셀이 빈 site 의 분류
+PANEL_GROUP_PANEL_DEFAULT = ""   # 어느 키워드에도 안 걸리는 패널의 분류
+PANEL_GROUP_OFF           = ""   # 미사용 sentinel — 이 값이면 분류 필터를 적용하지 않는다
+
+# ─── 분류별 YEAR_OFFSETS override ───────────────────────────────────
+# 여기 등록된 분류는 전역 YEAR_OFFSETS 대신 이 offset 목록만 돈다 (미등록 분류 = YEAR_OFFSETS).
+# 기본 미사용({}). 특정 분류만 연도 확장을 막고 싶을 때 쓴다.
+#   예) {"B2C": [0]} — 그 분류 site 는 올해만. 다른 연도는 sites_input 에 행을 따로 넣는다.
+#       (사례: 그 분류가 신 report suite 에만 있어 연도 -1 이 빈 run 이 되는 경우. 이전 연도는
+#        구 suite site 행을 sites_input 에 따로 넣어 뽑는다)
+PANEL_GROUP_YEAR_OFFSETS: dict[str, list[int]] = {}
+
+# ─── site↔패널 룰 면제 분류 ─────────────────────────────────────────
+# 여기 등록된 분류는 아래 SITE_PANEL_SITES / US·Global 접두 룰을 적용하지 않는다.
+# 기본 미사용([]). 그 분류에 패널이 하나뿐이라 중복 위험이 없을 때 쓴다.
+#   예) ["B2C"] — B2C 패널이 'Global B2C' 하나뿐이면 접두 룰이 오히려 방해가 된다
+#       (us_old 행이 "us site → Global panel skip" 에 걸려 아무 패널도 못 돌게 됨)
+PANEL_GROUP_SKIP_SITE_PANEL_RULE: list[str] = []
 
 # ─── 추가 세그먼트 (이름 검색 → globalFilter 적용) ─────────────────
 # 비어있으면 v2 와 동일 동작. 항목 하나 = 추가 segment 1개.
@@ -1550,22 +1631,42 @@ def _extract_one(task: dict, headers: dict, gcid: str) -> dict:
 
 
 # ─── sites_input.csv 로드 ──────────────────────────────────────────
-def _load_sites_input(path: Path) -> list[tuple[str, str, str]]:
-    """sites_input.csv 읽음 — site_code, start_date, end_date.
-    빈 줄 / # 시작 주석 라인 무시."""
-    rows: list[tuple[str, str, str]] = []
+def _load_sites_input(path: Path) -> list[tuple[str, str, str, str]]:
+    """sites_input.csv 읽음 — site_code, start_date, end_date, site_group(EPP/B2C).
+
+    - 빈 줄 / # 시작 주석 라인 무시.
+    - site_code/start/end 중 하나라도 비면 skip → 앞에 빈칸(`,,,`)을 넣어 컬럼을 오른쪽으로
+      민 행은 자동으로 **비활성 행**이 된다 (기존 관행 유지).
+    - kind(4번째 값):
+        · PANEL_GROUP_COLUMN 이 비었거나 헤더에 그 컬럼이 없으면 **전 행 PANEL_GROUP_OFF("")**
+          → 분류 필터를 적용하지 않고 모든 패널을 추출한다.
+        · 컬럼은 있는데 셀이 비면 PANEL_GROUP_SITE_DEFAULT.
+        · 등록 안 된 값이면 경고 후 PANEL_GROUP_SITE_DEFAULT.
+    """
+    rows: list[tuple[str, str, str, str]] = []
     if not path.exists():
         return rows
     with open(path, encoding="utf-8-sig") as f:
         # 주석 라인 skip 후 DictReader
         lines = [ln for ln in f if ln.strip() and not ln.strip().startswith("#")]
+    known_groups = {k for _, k in PANEL_GROUP_RULES}
     reader = csv.DictReader(lines)
+    # 컬럼명이 비어 있으면(기본값) 기능 자체를 쓰지 않는다
+    has_group_col = bool(PANEL_GROUP_COLUMN) and PANEL_GROUP_COLUMN in (reader.fieldnames or [])
     for r in reader:
         site = (r.get("site_code") or "").strip()
         s = (r.get("start_date") or "").strip()
         e = (r.get("end_date") or "").strip()
+        if has_group_col:
+            kind = (r.get(PANEL_GROUP_COLUMN) or "").strip().upper() or PANEL_GROUP_SITE_DEFAULT
+            if known_groups and kind not in known_groups:
+                print(f"  ⚠ sites_input '{site}' 의 {PANEL_GROUP_COLUMN}='{kind}' 는 미등록 값 "
+                      f"(등록: {sorted(known_groups)}) → {PANEL_GROUP_SITE_DEFAULT} 로 처리")
+                kind = PANEL_GROUP_SITE_DEFAULT
+        else:
+            kind = PANEL_GROUP_OFF   # 분류 컬럼 미설정/미존재 → 필터 없이 전 패널 대상
         if site and s and e:
-            rows.append((site, s, e))
+            rows.append((site, s, e, kind))
     return rows
 
 
@@ -1609,14 +1710,86 @@ def _cases_for_flag(app_flag: str) -> list[dict]:
     return [c for c in DEVICE_CASES if not c.get("requires_app")]
 
 
-def _should_skip_panel(panel_name: str, site_code: str, include_global_for_us: bool) -> tuple[bool, str]:
-    """site × panel prefix 룰 적용. (skip, reason) 반환."""
+def _panel_group(panel_name: str) -> str:
+    """패널명 → 'EPP' / 'B2C'. PANEL_GROUP_RULES 위에서부터 부분일치(대소문자 무시).
+    ⚠ 'EPP' 가 먼저 — '② Global - EPP (B2C RS)' 처럼 두 토큰이 다 든 구 패널명 대응."""
+    if not PANEL_GROUP_RULES:
+        return PANEL_GROUP_OFF   # 분류 룰 미설정 = 기능 off
+    pn = (panel_name or "").upper()
+    for kw, kind in PANEL_GROUP_RULES:
+        if kw.upper() in pn:
+            return kind
+    return PANEL_GROUP_PANEL_DEFAULT
+
+
+def _site_panel_keywords(site_code: str) -> list[str]:
+    """그 site 의 전용 패널 키워드. SITE_PANEL_ALIAS 우선, 없으면 site_code 자체."""
+    sc = site_code.strip().lower()
+    return SITE_PANEL_ALIAS.get(sc) or [sc]
+
+
+def _panel_owner_sites(panel_name: str) -> list[str]:
+    """패널명에 **토큰 경계**로 들어있는 등록 site_code 목록 (없으면 [] = 공용 패널).
+    'sec' 가 'second'/'section' 에 우연히 걸리지 않도록 경계 정규식을 쓴다."""
+    pn = panel_name or ""
+    out = []
+    for sc in SITE_PANEL_SITES:
+        for kw in _site_panel_keywords(sc):
+            if re.search(SITE_PANEL_BOUNDARY.format(kw=re.escape(kw)), pn, re.IGNORECASE):
+                out.append(sc.strip().lower())
+                break
+    return out
+
+
+def _skip_by_site_panel(panel_name: str, site_code: str, include_global_for_us: bool) -> tuple[bool, str]:
+    """SITE_PANEL_SITES 매핑 룰. (skip, reason)."""
+    sc = site_code.strip().lower()
+    owners = _panel_owner_sites(panel_name)
+    registered = {s.strip().lower() for s in SITE_PANEL_SITES}
+    if owners:
+        if sc not in owners:
+            return True, f"'{'/'.join(owners)}' 전용 패널 → {sc} skip"
+        return False, ""
+    # 공용 패널 — 전용 패널을 가진 site 는 기본 제외 (기존 [Global] skip 과 같은 취지)
+    if sc in registered and not include_global_for_us:
+        return True, f"{sc} 는 전용 패널만 사용 → 공용 패널 skip (--include-global-for-us 로 포함)"
+    return False, ""
+
+
+def _skip_by_prefix(panel_name: str, site_code: str, include_global_for_us: bool) -> tuple[bool, str]:
+    """기존 v4.2 US/Global 접두 룰. (skip, reason)."""
     is_us = site_code.lower() == US_SITE_CODE
     if panel_name.startswith(US_PANEL_PREFIX) and not is_us:
         return True, f"non-us site → {US_PANEL_PREFIX} panel skip"
     if panel_name.startswith(GLOBAL_PANEL_PREFIX) and is_us and not include_global_for_us:
         return True, f"us site → {GLOBAL_PANEL_PREFIX} panel skip (use --include-global-for-us to keep)"
     return False, ""
+
+
+def _skip_by_site(panel_name: str, site_code: str, include_global_for_us: bool) -> tuple[bool, str]:
+    """site ↔ panel 룰 — SITE_PANEL_SITES 가 비어있으면 기존 접두 룰, 아니면 매핑 룰."""
+    if SITE_PANEL_SITES:
+        return _skip_by_site_panel(panel_name, site_code, include_global_for_us)
+    return _skip_by_prefix(panel_name, site_code, include_global_for_us)
+
+
+def _should_skip_panel(panel_name: str, site_code: str, include_global_for_us: bool,
+                       site_group: str = PANEL_GROUP_OFF) -> tuple[bool, str]:
+    """site × panel 룰 적용. (skip, reason) 반환.
+    ① site kind(EPP/B2C) ↔ panel kind 불일치면 skip  ② site ↔ panel 룰(_skip_by_site).
+    site_group 가 PANEL_GROUP_OFF("") 면 ①을 건너뛴다 (분류 기능을 안 쓰는 폴더)."""
+    s_grp = (site_group or PANEL_GROUP_OFF).strip().upper()
+    if not s_grp:
+        # 분류 미설정/미해당 → 필터 없이 site↔패널 룰만 적용
+        return _skip_by_site(panel_name, site_code, include_global_for_us)
+    p_grp = _panel_group(panel_name)
+    if p_grp != s_grp:
+        return True, f"site kind={s_grp} → {p_grp} panel skip"
+    if s_grp in PANEL_GROUP_SKIP_SITE_PANEL_RULE:
+        # kind 별 패널이 1개뿐이라 [US]/[Global] 중복 위험 없음 → site↔panel 룰 면제
+        # (없으면 us_old(B2C) 행이 공용/Global 패널 skip 에 걸려 아무것도 못 돈다)
+        return False, ""
+    return _skip_by_site(panel_name, site_code, include_global_for_us)
 
 
 def _extras_for_panel(panel_name: str, resolved_extras: list[tuple[str, object]]) -> list[str]:
@@ -1638,15 +1811,17 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                   include_global_for_us: bool,
                   resolved_extras: list[tuple[str, object]] | None = None,
                   app_ox: dict[str, str] | None = None,
-                  file_tag: str = "") -> dict:
+                  file_tag: str = "",
+                  site_group: str = PANEL_GROUP_SITE_DEFAULT) -> dict:
     """한 site 의 모든 panel × reportlet 추출 + CSV 저장.
     resolved_extras: [(segment_id, panel_scope), ...] — v3 신규.
     app_ox: app_O_X.csv 로드 결과 (v3.8 DEVICE_CASES 케이스 선택용, None=csv 없음=전 site O).
-    file_tag: 출력 파일명 site 뒤에 붙는 태그 (v4.2 YEAR_OFFSETS 의 '_y2025' 등, ""=없음)."""
+    file_tag: 출력 파일명 site 뒤에 붙는 태그 (v4.2 YEAR_OFFSETS 의 '_y2025' 등, ""=없음).
+    site_group: sites_input 의 EPP_B2C 값 — 그 종류의 패널만 돈다."""
     # v4.2: MONTHLY 면 총기간을 달력 월 조각으로 분할 (False 면 조각 1개 = 총기간)
     periods = _split_months(start_date, end_date)
     print(f"\n{'═'*78}\nSITE: {site.site_code}{file_tag}  →  rsid={site.rsid}  "
-          f"({start_date} ~ {end_date})\n{'═'*78}")
+          f"({start_date} ~ {end_date})  [{site_group}]\n{'═'*78}")
     if MONTHLY:
         print(f"  기간 분할(MONTHLY): {len(periods)}개  "
               f"[{periods[0][2]} ~ {periods[-1][2]}]")
@@ -1669,13 +1844,26 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             print(f"  [seg-override] {_SEG_NAME_CACHE.get(_src) or _src} → "
                   f"{_SEG_NAME_CACHE.get(_dst) or _dst}")
 
+    # ─── kind 필터 유효성 검사 (하위호환 안전장치) ───────────────────
+    # 이 프로젝트에 그 분류의 패널이 **아예 없으면** 분류 필터를 끈다.
+    # 안 그러면 매칭되는 패널이 0개가 되어 그 site 가 통째로 skip 된다.
+    #   실제 사례: App Traffic 프로젝트(패널 'Global'/'Korea' = 전부 EPP 판정)에
+    #   Channel Detail 용 sites_input(us=B2C 행 포함)을 그대로 복사해 쓰던 폴더.
+    eff_group = (site_group or PANEL_GROUP_OFF).strip().upper()
+    if eff_group:
+        avail_kinds = {_panel_group(p.get("name", "")) for p in panels}
+        if eff_group not in avail_kinds:
+            print(f"  ⚠ 이 프로젝트에 {eff_group} 패널이 없음 (있는 kind: {sorted(avail_kinds)}) "
+                  f"→ 분류 필터 미적용 (이 site 는 모든 패널을 추출)")
+            eff_group = PANEL_GROUP_OFF
+
     tasks: list[dict] = []
     task_order = 0
     for p_idx, panel in enumerate(panels):
         p_name = panel.get("name", f"(panel-{p_idx})")
         if REQUIRED_PANEL_KEYWORDS and not any(kw in p_name for kw in REQUIRED_PANEL_KEYWORDS):
             continue
-        skip, reason = _should_skip_panel(p_name, site.site_code, include_global_for_us)
+        skip, reason = _should_skip_panel(p_name, site.site_code, include_global_for_us, eff_group)
         if skip:
             print(f"  ⊘ panel skip: {p_name}  ({reason})")
             continue
@@ -1695,7 +1883,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             for case in site_cases:
                 # site 별 세그 치환 적용 (DEVICE_CASE_SITE_OVERRIDES — us_old 류)
                 case_seg_ids = [site_seg_override.get(s, s) for s in case["segment_ids"]] if case else []
-                # v4.2: 기간조각(MONTHLY)별 task 1개씩 (MONTHLY=False 면 조각 1개 = v4.1 동작)
+                # 기간조각(MONTHLY)별 task 1개씩 (MONTHLY=False 면 조각이 1개 = 총기간 1회)
                 for pd_start, pd_end, pd_label in periods:
                     payload, seg_names_per_metric, metric_names, panel_seg_names, dim_id, dim_name = \
                         _build_report_payload(project, panel, rep,
@@ -2149,15 +2337,29 @@ def main() -> int:
             print(f"\n❌ --site {args.site} 매칭되는 row 없음")
             return 1
 
-    # v4.2: YEAR_OFFSETS 만큼 run 확장 — (site_code, start, end, file_tag)
+    # v4.2: YEAR_OFFSETS 만큼 run 확장 — (site_code, start, end, file_tag, site_group)
     #   offset 0 → tag "" (v4.1 과 동일한 파일명). offset≠0 → "_y{shift 된 연도}"
-    runs: list[tuple[str, str, str, str]] = []
-    for site_code, s_date, e_date in sites_rows:
-        for off in YEAR_OFFSETS:
+    #   kind 가 PANEL_GROUP_YEAR_OFFSETS 에 등록돼 있으면 그 kind 는 전역 YEAR_OFFSETS 대신 그 목록을 쓴다
+    #   (B2C=[0] — us 신 suite 에 2025 가 없어 offset -1 이 빈 run 이 되므로. us_old 행으로 따로 뽑는다)
+    runs: list[tuple[str, str, str, str, str]] = []
+    kind_off_used: dict[str, list[int]] = {}
+    for site_code, s_date, e_date, s_grp in sites_rows:
+        offs = PANEL_GROUP_YEAR_OFFSETS.get(s_grp, YEAR_OFFSETS)
+        kind_off_used[s_grp] = offs
+        for off in offs:
             s2, e2 = _shift_year(s_date, off), _shift_year(e_date, off)
-            runs.append((site_code, s2, e2, "" if off == 0 else f"_y{s2[:4]}"))
+            runs.append((site_code, s2, e2, "" if off == 0 else f"_y{s2[:4]}", s_grp))
 
+    _group_cnt: dict[str, int] = {}
+    for r in sites_rows:
+        _group_cnt[r[3]] = _group_cnt.get(r[3], 0) + 1
     print(f"  처리 site: {len(sites_rows)}개 → {[r[0] for r in sites_rows]}")
+    print(f"  site kind: " + ", ".join(f"{k}={v}" for k, v in sorted(_group_cnt.items()))
+          + "  (kind 별 패널만 추출 — " + ", ".join(f"{kw}→{kd}" for kw, kd in PANEL_GROUP_RULES) + ")")
+    for _k in sorted(_group_cnt):
+        if _k in PANEL_GROUP_YEAR_OFFSETS:
+            print(f"             ⚠ {_k} 는 YEAR_OFFSETS override = {PANEL_GROUP_YEAR_OFFSETS[_k]} "
+                  f"(전역 {YEAR_OFFSETS} 미적용 — 다른 연도는 sites_input 에 행을 따로 넣을 것)")
     if YEAR_OFFSETS != [0]:
         _yrs = sorted({r[1][:4] for r in runs})
         print(f"  처리 run : {len(runs)}개 (site {len(sites_rows)} × 연도 {len(YEAR_OFFSETS)} → {_yrs})")
@@ -2227,7 +2429,7 @@ def main() -> int:
 
     # 사이트별 처리 — v3.6: SITE_WORKERS>1 이면 site 단위 병렬 (_contents 시리즈 포팅)
     def _run_one(item):
-        site_code, start_date, end_date, file_tag = item   # v4.2: file_tag 추가
+        site_code, start_date, end_date, file_tag, site_group = item   # v4.2: file_tag / site_group
         site_info = lookup_site(site_code)
         _t0 = datetime.now()
         res = _process_site(headers, gcid, project, panels,
@@ -2237,7 +2439,8 @@ def main() -> int:
                             include_global_for_us=args.include_global_for_us,
                             resolved_extras=resolved_extras,
                             app_ox=app_ox,
-                            file_tag=file_tag)
+                            file_tag=file_tag,
+                            site_group=site_group)
         res["file_tag"] = file_tag
         res["elapsed_sec"] = (datetime.now() - _t0).total_seconds()
         return res
