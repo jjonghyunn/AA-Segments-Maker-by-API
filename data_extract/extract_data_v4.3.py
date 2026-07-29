@@ -3,13 +3,13 @@
 # v4.3 (2026-07-29): site ↔ 패널 매칭 2종 추가. 전 사본 공통 코드이며, 동작 여부는 상단 상수로만 갈린다.
 #   ① 패널 분류(group) 분기 — 패널을 이름 키워드로 분류하고(PANEL_GROUP_RULES),
 #      sites_input 의 분류 컬럼으로 site 마다 어느 분류의 패널을 돌지 정한다.
-#      분류값은 자유(EPP/B2C 는 예시). _load_sites_input 이 4-tuple 반환 / _panel_group() 신규.
+#      분류값은 자유(B2B/B2C 는 예시). _load_sites_input 이 4-tuple 반환 / _panel_group() 신규.
 #      + PANEL_GROUP_YEAR_OFFSETS : 분류별 YEAR_OFFSETS override
 #      + PANEL_GROUP_SKIP_SITE_PANEL_RULE : 그 분류는 site↔패널 룰 면제
 #      **기본 미사용** — 상수가 전부 비어 있어, 설정하기 전에는 모든 패널을 그대로 추출한다
 #   ② SITE_PANEL_SITES — 패널명에 **site_code 가 토큰으로** 들어있으면 그 site 전용 패널로 보고,
 #      등록 site 는 전용 패널만 / 미등록 site 는 공용 패널만 돈다 (기존 US·Global 접두 룰 대체).
-#      토큰 경계(SITE_PANEL_BOUNDARY)로 'sec' 가 'second'/'section' 에 걸리는 오탐을 막는다.
+#      토큰 경계(SITE_PANEL_BOUNDARY)로 짧은 site_code(예: 'in')가 'inside'/'main' 에 걸리는 오탐을 막는다.
 #      비어 있으면([]) 기존 접두 룰이 그대로 쓰인다. SITE_PANEL_ALIAS 로 패널 키워드 지정 가능.
 #   하위호환 3중 안전장치 — 다른 폴더에 그대로 복사해도 조용히 데이터가 빠지지 않게:
 #      · PANEL_GROUP_COLUMN 이 비었거나 sites_input 에 그 컬럼이 없으면 → 분류 필터 미적용
@@ -183,7 +183,7 @@ VERBOSE_PROGRESS = True
 #   [kw, ...] → panel.name 에 키워드 하나라도 포함된 panel 만 처리 (OR 매칭, 대소문자 구분),
 #               나머지 panel 은 자동 skip
 # 예: ["[Global]"]         → [Global] 로 시작하는 panel 만
-#     ["Revisit", "EPP"]   → 이름에 Revisit OR EPP 포함된 panel 만
+#     ["Revisit", "B2B"]   → 이름에 Revisit OR B2B 포함된 panel 만
 # 참고: EXTRA_SEGMENTS 의 panel_scope 와 역할이 다름.
 #   - REQUIRED_PANEL_KEYWORDS : 그 panel 자체를 "처리할지 말지"
 #   - panel_scope             : 처리되는 panel 중 추가 segment 를 "적용할지 말지"
@@ -332,18 +332,18 @@ INCLUDE_GLOBAL_FOR_US = False  # CLI --include-global-for-us 로 override
 
 # ─── site_code ↔ 전용 패널 매칭 (접두 룰 대체, positive 매핑) ────────
 # 위 접두(prefix) 룰은 "US"/"Global" 두 단어에만 걸리는 negative skip 이라,
-# 그 밖의 패널(예: 'SEC EPP')은 전 site 에서 그냥 돌아 빈 결과만 만든다.
+# 그 밖의 패널(예: 'HQ B2B')은 전 site 에서 그냥 돌아 빈 결과만 만든다.
 # 아래 목록에 site_code 를 넣으면 **패널명에 그 site_code 가 들어간 패널에서만** 그 site 를 뽑는다.
 #
 #   SITE_PANEL_SITES = []                 → 미사용. 위 US/Global 접두 룰만 적용된다.
-#   SITE_PANEL_SITES = ["us_old","sec"]   → 접두 룰 **대신** 아래 규칙 적용:
+#   SITE_PANEL_SITES = ["us_old","in"]    → 접두 룰 **대신** 아래 규칙 적용:
 #       · 패널명에 등록 site_code 가 든 패널 = 그 site 전용 → 그 site 에서만 RUN
 #       · 어느 등록 site_code 도 없는 패널 = 공용 → **미등록 site 에서만** RUN
 #         (등록 site 는 전용 패널만 봄. INCLUDE_GLOBAL_FOR_US=True 면 공용 패널도 같이 RUN)
 #
 # 매칭은 **토큰 경계** 기준(대소문자 무시) — 영숫자·언더바가 아닌 문자(또는 문자열 끝)로 둘러싸여야 한다.
-#   'sec'    → 'SEC EPP' ✓ / '[SEC]' ✓ / 'SEC - EPP' ✓ / 'second' ✗ 'insect' ✗ 'section' ✗
-#   'us_old' → 'US_old EPP (Y25용)' ✓ / 'US EPP' ✗ (us 뒤가 언더바라 'us' 토큰도 아님)
+#   'in'     → 'IN B2B' ✓ / '[IN]' ✓ / 'IN - B2B' ✓ / 'inside' ✗ 'main' ✗ 'point' ✗
+#   'us_old' → 'US_old B2B (Y25용)' ✓ / 'US B2B' ✗ (us 뒤가 언더바라 'us' 토큰도 아님)
 # 패널명이 site_code 와 다르게 적혀 있으면 SITE_PANEL_ALIAS 로 키워드를 따로 지정한다.
 SITE_PANEL_SITES: list[str] = []
 SITE_PANEL_ALIAS: dict[str, list[str]] = {}   # 예: {"us_old": ["US_old", "US old"]}
@@ -357,17 +357,17 @@ SITE_PANEL_BOUNDARY = r"(?<![0-9A-Za-z_]){kw}(?![0-9A-Za-z_])"
 #   site 마다 "이 site 는 어느 분류의 패널에서 뽑을지" 를 정한다.
 #   분류가 안 맞는 패널은 그 site 에서 skip 된다.
 #
-# 설정 예 (한 캠페인을 EPP / B2C 로 나눈 사례 — **어디까지나 예시**다):
-#     PANEL_GROUP_COLUMN        = "EPP_B2C"
-#     PANEL_GROUP_RULES         = [("EPP", "EPP"), ("B2C", "B2C")]
-#     PANEL_GROUP_SITE_DEFAULT  = "EPP"
-#     PANEL_GROUP_PANEL_DEFAULT = "EPP"
-#   → sites_input 의 us 행이 B2C 면 'Global B2C' 패널만 돌고 'Global EPP' 는 skip.
+# 설정 예 (한 캠페인을 B2B / B2C 로 나눈 사례 — **어디까지나 예시**다):
+#     PANEL_GROUP_COLUMN        = "B2B_B2C"
+#     PANEL_GROUP_RULES         = [("B2B", "B2B"), ("B2C", "B2C")]
+#     PANEL_GROUP_SITE_DEFAULT  = "B2B"
+#     PANEL_GROUP_PANEL_DEFAULT = "B2B"
+#   → sites_input 의 us 행이 B2C 면 'Global B2C' 패널만 돌고 'Global B2B' 는 skip.
 #   분류값은 자유다. 예컨대 ("Mobile","MO")/("PC","PC") 처럼 디바이스로 나눠도 된다.
 #
 # ⚠ RULES 는 **위에서부터 첫 매칭**이라 순서가 중요하다. 한 패널명이 여러 키워드를 갖는 경우
-#    더 구체적인 쪽을 위에 둔다. (예: '② Global - EPP (B2C RS)' 는 EPP·B2C 를 다 가지므로
-#     EPP 를 먼저 둬야 EPP 로 잡힌다. B2C 를 먼저 두면 B2C 로 오분류.)
+#    더 구체적인 쪽을 위에 둔다. (예: '② Global - B2B (B2C RS)' 는 B2B·B2C 를 다 가지므로
+#     B2B 를 먼저 둬야 B2B 로 잡힌다. B2C 를 먼저 두면 B2C 로 오분류.)
 #
 # 안전장치 3중 — 다른 폴더에 그대로 복사해도 조용히 데이터가 빠지지 않는다.
 # 아래 어느 경우든 **분류 필터를 적용하지 않고 그 site 에서 모든 패널을 추출**한다:
@@ -434,7 +434,7 @@ EXTRA_SEGMENTS: list[dict] = [
     #     → 패널 안에 그 키워드들이 모두 포함된 세그가 1개뿐이면 그걸로 자동 확정
     # 예시 1 — ID 직접 지정 (이름 검색 생략):
     # {"segment_id": "세그먼트_아이디_넘버", "panel_scope": "all"},
-    # {"segment_id": "세그먼트_아이디_넘버", "panel_scope": "all"},  # [US] Excluded EPP
+    # {"segment_id": "세그먼트_아이디_넘버", "panel_scope": "all"},  # [US] Excluded B2B
     # {"segment_id": "세그먼트_아이디_넘버", "panel_scope": "all" },  # [US] Excluded APP
     # 예시 2 — 풀네임 substring 검색:
     # {"name_keywords": "visitor id = d=mid, null (Exclude)"},
@@ -444,7 +444,7 @@ EXTRA_SEGMENTS: list[dict] = [
     #     "panel_scope": "all",
     # },
     # {
-    #     "name_keywords": ["[Global] Excluded EPP"],
+    #     "name_keywords": ["[Global] Excluded B2B"],
     #     "panel_scope": ["[Global]"],
     # },
 ]
@@ -459,12 +459,12 @@ EXTRA_SEGMENTS: list[dict] = [
 #                         (OR 매칭, case-insensitive). 나머지 panel 은 기존 동작 유지.
 # 예: True               → 전체 panel 적용
 #     ["[US]"]           → [US] panel 만 적용
-#     ["Revisit", "EPP"] → Revisit OR EPP 포함된 panel 만 적용
+#     ["Revisit", "B2B"] → Revisit OR B2B 포함된 panel 만 적용
 SKIP_PANEL_SEGMENTS: bool | list[str] = False
 
 # ─── 특정 패널 세그만 제거 (v3.4) ──────────────────────────────────
 # panel.segmentGroups 중 "이름에 아래 키워드를 모두(AND) 포함"하는 세그만
-# globalFilter 에서 제외(개별 스킵). 나머지 패널 세그(EPP 등)는 그대로 유지.
+# globalFilter 에서 제외(개별 스킵). 나머지 패널 세그(B2B 등)는 그대로 유지.
 #   []                                  → 아무것도 제거 안 함 (기본)
 #   ["visitor id", "d=mid", "null"]     → 그 키워드 다 든 세그((SJ) 류)만 제거
 # 주의: enabled:False 는 EXTRA 추가만 막을 뿐 패널 세그를 못 뺌 → 패널 세그 제거는 이 옵션으로.
@@ -1632,7 +1632,7 @@ def _extract_one(task: dict, headers: dict, gcid: str) -> dict:
 
 # ─── sites_input.csv 로드 ──────────────────────────────────────────
 def _load_sites_input(path: Path) -> list[tuple[str, str, str, str]]:
-    """sites_input.csv 읽음 — site_code, start_date, end_date, site_group(EPP/B2C).
+    """sites_input.csv 읽음 — site_code, start_date, end_date, site_group(B2B/B2C).
 
     - 빈 줄 / # 시작 주석 라인 무시.
     - site_code/start/end 중 하나라도 비면 skip → 앞에 빈칸(`,,,`)을 넣어 컬럼을 오른쪽으로
@@ -1711,8 +1711,8 @@ def _cases_for_flag(app_flag: str) -> list[dict]:
 
 
 def _panel_group(panel_name: str) -> str:
-    """패널명 → 'EPP' / 'B2C'. PANEL_GROUP_RULES 위에서부터 부분일치(대소문자 무시).
-    ⚠ 'EPP' 가 먼저 — '② Global - EPP (B2C RS)' 처럼 두 토큰이 다 든 구 패널명 대응."""
+    """패널명 → 'B2B' / 'B2C'. PANEL_GROUP_RULES 위에서부터 부분일치(대소문자 무시).
+    ⚠ 'B2B' 가 먼저 — '② Global - B2B (B2C RS)' 처럼 두 토큰이 다 든 구 패널명 대응."""
     if not PANEL_GROUP_RULES:
         return PANEL_GROUP_OFF   # 분류 룰 미설정 = 기능 off
     pn = (panel_name or "").upper()
@@ -1730,7 +1730,7 @@ def _site_panel_keywords(site_code: str) -> list[str]:
 
 def _panel_owner_sites(panel_name: str) -> list[str]:
     """패널명에 **토큰 경계**로 들어있는 등록 site_code 목록 (없으면 [] = 공용 패널).
-    'sec' 가 'second'/'section' 에 우연히 걸리지 않도록 경계 정규식을 쓴다."""
+    짧은 site_code(예: 'in')가 'inside'/'main' 에 우연히 걸리지 않도록 경계 정규식을 쓴다."""
     pn = panel_name or ""
     out = []
     for sc in SITE_PANEL_SITES:
@@ -1776,7 +1776,7 @@ def _skip_by_site(panel_name: str, site_code: str, include_global_for_us: bool) 
 def _should_skip_panel(panel_name: str, site_code: str, include_global_for_us: bool,
                        site_group: str = PANEL_GROUP_OFF) -> tuple[bool, str]:
     """site × panel 룰 적용. (skip, reason) 반환.
-    ① site kind(EPP/B2C) ↔ panel kind 불일치면 skip  ② site ↔ panel 룰(_skip_by_site).
+    ① site kind(B2B/B2C) ↔ panel kind 불일치면 skip  ② site ↔ panel 룰(_skip_by_site).
     site_group 가 PANEL_GROUP_OFF("") 면 ①을 건너뛴다 (분류 기능을 안 쓰는 폴더)."""
     s_grp = (site_group or PANEL_GROUP_OFF).strip().upper()
     if not s_grp:
@@ -1817,7 +1817,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
     resolved_extras: [(segment_id, panel_scope), ...] — v3 신규.
     app_ox: app_O_X.csv 로드 결과 (v3.8 DEVICE_CASES 케이스 선택용, None=csv 없음=전 site O).
     file_tag: 출력 파일명 site 뒤에 붙는 태그 (v4.2 YEAR_OFFSETS 의 '_y2025' 등, ""=없음).
-    site_group: sites_input 의 EPP_B2C 값 — 그 종류의 패널만 돈다."""
+    site_group: sites_input 의 B2B_B2C 값 — 그 종류의 패널만 돈다."""
     # v4.2: MONTHLY 면 총기간을 달력 월 조각으로 분할 (False 면 조각 1개 = 총기간)
     periods = _split_months(start_date, end_date)
     print(f"\n{'═'*78}\nSITE: {site.site_code}{file_tag}  →  rsid={site.rsid}  "
@@ -1847,7 +1847,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
     # ─── kind 필터 유효성 검사 (하위호환 안전장치) ───────────────────
     # 이 프로젝트에 그 분류의 패널이 **아예 없으면** 분류 필터를 끈다.
     # 안 그러면 매칭되는 패널이 0개가 되어 그 site 가 통째로 skip 된다.
-    #   실제 사례: App Traffic 프로젝트(패널 'Global'/'Korea' = 전부 EPP 판정)에
+    #   실제 사례: App Traffic 프로젝트(패널 'Global'/'Korea' = 전부 B2B 판정)에
     #   Channel Detail 용 sites_input(us=B2C 행 포함)을 그대로 복사해 쓰던 폴더.
     eff_group = (site_group or PANEL_GROUP_OFF).strip().upper()
     if eff_group:

@@ -409,7 +409,7 @@ def _build_date_range_definition(start_date: str, end_date: str) -> str:
 #                         (OR 매칭, case-insensitive). 나머지 panel 은 기존 동작 유지.
 # 예: True               → 전체 panel 적용
 #     ["[US]"]           → [US] panel 만 적용
-#     ["Revisit", "EPP"] → Revisit OR EPP 포함된 panel 만 적용
+#     ["Revisit", "B2B"] → Revisit OR B2B 포함된 panel 만 적용
 SKIP_PANEL_SEGMENTS: bool | list[str] = False
 
 

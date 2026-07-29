@@ -25,7 +25,7 @@ _SITE_MASTER: dict[str, tuple[str | None, str | None, str]] = {
     "sg": ("FRFC", "Singapore", "sscompany_name4sg"),
     "th": ("GFR", "Thailand", "sscompany_name4th"),
     "vn": ("FNIVAN", "Vietnam", "sscompany_name4vn"),
-    "sec": ("FRP", "Korea", "sscompany_name4sec"),
+    "hq": ("FRP", "Korea", "sscompany_name4hq"),
     "mm": ("GFR", "Myanmar", "sscompany_name4mm"),
     "jp": ("FRW", "Japan", "sscompany_name4jp"),
     "cn": ("FPVP", "China", "sscompany_name4cn"),

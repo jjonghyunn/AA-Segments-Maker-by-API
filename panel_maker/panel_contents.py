@@ -140,7 +140,7 @@ SUB_NUM_PATTERN = re.compile(r"\s-\s(\d+)\.", re.IGNORECASE)
 # ─── Old (source) 캠페인 prefix 식별 키워드 ────────────────────────
 # 이 키워드 중 하나라도 이름에 포함되어 있어야 swap 대상으로 본다.
 # 없으면 system / 공용 segment 로 간주하고 target 에서도 같은 ID 그대로 둠
-# (예: "No Data", "PC User (Visit)", "[part_name] Excluded EPP", "[Global] Excluded APP").
+# (예: "No Data", "PC User (Visit)", "[part_name] Excluded B2B", "[Global] Excluded APP").
 SWAP_REQUIRED_KEYWORDS = ["[CAMPAIGN NAME]", "CAMPAIGN NAME"]
 
 # ─── Ambiguous tie-breaker (소유자 우선순위) ──────────────────────

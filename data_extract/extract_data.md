@@ -22,7 +22,7 @@ site ↔ 패널 매칭 2종. **둘 다 기본 미사용** — 상수가 전부 �
 
 - 패널명에 **등록된 site_code 가 토큰으로** 들어 있으면 그 site 전용 패널 → 그 site 에서만 추출
 - 어느 등록 site_code 도 없는 패널 = 공용 → **미등록 site 에서만** 추출 (등록 site 는 전용 패널만 봄. `--include-global-for-us` 면 공용도 함께)
-- 매칭은 **토큰 경계** 기준·대소문자 무시 — 영숫자/언더바가 아닌 문자(또는 문자열 끝)로 둘러싸여야 한다. `sec` → `SEC EPP` ✓ / `[SEC]` ✓ / `second`·`section`·`insect` ✗. 경계 정규식은 `SITE_PANEL_BOUNDARY` 로 조정
+- 매칭은 **토큰 경계** 기준·대소문자 무시 — 영숫자/언더바가 아닌 문자(또는 문자열 끝)로 둘러싸여야 한다. `in` → `IN B2B` ✓ / `[IN]` ✓ / `inside`·`main`·`point` ✗. 경계 정규식은 `SITE_PANEL_BOUNDARY` 로 조정
 - 패널명이 site_code 와 다르게 적혀 있으면 `SITE_PANEL_ALIAS` 로 키워드 지정 (예: `{"us_old": ["US_old", "US old"]}`)
 - **비어 있으면(`[]`) 기존 접두 룰로 폴백**
 
@@ -31,15 +31,15 @@ site ↔ 패널 매칭 2종. **둘 다 기본 미사용** — 상수가 전부 �
 패널을 이름 키워드로 몇 개 분류로 나누고, `sites_input.csv` 의 분류 컬럼으로 site 마다 어느 분류의 패널에서 뽑을지 정한다. 분류가 안 맞는 패널은 그 site 에서 skip.
 
 ```python
-# 한 캠페인을 EPP / B2C 로 나눈 사례 — 분류값은 자유 (("Mobile","MO") 처럼 디바이스로 나눠도 됨)
-PANEL_GROUP_COLUMN        = "EPP_B2C"
-PANEL_GROUP_RULES         = [("EPP", "EPP"), ("B2C", "B2C")]
-PANEL_GROUP_SITE_DEFAULT  = "EPP"
-PANEL_GROUP_PANEL_DEFAULT = "EPP"
-# → sites_input 의 us 행이 B2C 면 'Global B2C' 패널만 돌고 'Global EPP' 는 skip
+# 한 캠페인을 B2B / B2C 로 나눈 사례 — 분류값은 자유 (("Mobile","MO") 처럼 디바이스로 나눠도 됨)
+PANEL_GROUP_COLUMN        = "B2B_B2C"
+PANEL_GROUP_RULES         = [("B2B", "B2B"), ("B2C", "B2C")]
+PANEL_GROUP_SITE_DEFAULT  = "B2B"
+PANEL_GROUP_PANEL_DEFAULT = "B2B"
+# → sites_input 의 us 행이 B2C 면 'Global B2C' 패널만 돌고 'Global B2B' 는 skip
 ```
 
-- ⚠ `PANEL_GROUP_RULES` 는 **위에서부터 첫 매칭**이라 순서가 중요하다. 한 패널명이 여러 키워드를 가지면 더 구체적인 쪽을 위에. (`② Global - EPP (B2C RS)` 는 EPP·B2C 를 다 가지므로 EPP 를 먼저 둬야 EPP 로 잡힌다)
+- ⚠ `PANEL_GROUP_RULES` 는 **위에서부터 첫 매칭**이라 순서가 중요하다. 한 패널명이 여러 키워드를 가지면 더 구체적인 쪽을 위에. (`② Global - B2B (B2C RS)` 는 B2B·B2C 를 다 가지므로 B2B 를 먼저 둬야 B2B 로 잡힌다)
 - **안전장치 3중** — 다른 폴더에 그대로 복사해도 조용히 데이터가 빠지지 않는다. 아래 어느 경우든 분류 필터를 적용하지 않고 그 site 의 모든 패널을 추출한다:
   - `PANEL_GROUP_COLUMN` 이 비어 있을 때 (기본값 = 기능 미사용)
   - 컬럼명을 넣었는데 `sites_input` 헤더에 그 컬럼이 없을 때
@@ -115,7 +115,7 @@ PANEL_GROUP_PANEL_DEFAULT = "EPP"
 ## v3.4 신규 기능
 
 1. **name_keywords 패널-우선 해석** — `EXTRA_SEGMENTS` 의 `name_keywords` 검색을 회사 전체보다 **프로젝트 패널 segmentGroups 안에서 먼저** 매칭. 패널 내 1건이면 자동 적용, 2건+면 중단(segment_id/세밀 키워드 안내), 0건이면 회사 전체 검색 fallback.
-2. **`SKIP_PANEL_SEGMENT_KEYWORDS`** — 패널 세그 중 이름에 키워드를 모두(AND) 포함하는 세그만 globalFilter 에서 제거(EPP 등 나머지는 유지). `[]` 면 미적용.
+2. **`SKIP_PANEL_SEGMENT_KEYWORDS`** — 패널 세그 중 이름에 키워드를 모두(AND) 포함하는 세그만 globalFilter 에서 제거(B2B 등 나머지는 유지). `[]` 면 미적용.
    - cf. `SKIP_PANEL_SEGMENTS=True`(패널 세그 전부 제거), `enabled:False`(EXTRA 추가만 차단 — 패널 세그는 못 뺌).
 3. **EXTRA ↔ SKIP 충돌 검사** — 같은 세그를 EXTRA(추가)+SKIP(제거) 동시 지정 시 경고 후 중단.
 
@@ -176,7 +176,7 @@ python extract_data_v4.3.py --monthly --year-offsets 0,-1      # (v4.2) 두 옵�
 | `SITE_PANEL_SITES` (v4.3) | 패널명에 site_code 가 토큰으로 든 패널을 그 site 전용으로 판정할 site 목록 (`[]`=기존 US·Global 접두 룰) | 패널이 site 별로 나뉜 프로젝트 |
 | `SITE_PANEL_ALIAS` (v4.3) | 패널명이 site_code 와 다를 때 쓸 키워드 (`{"us_old": ["US_old","US old"]}`) | 패널명 표기가 다를 때 |
 | `SITE_PANEL_BOUNDARY` (v4.3) | 토큰 경계 정규식 (`{kw}` 자리에 키워드 escape 되어 삽입) | 보통 고정 |
-| `PANEL_GROUP_COLUMN` (v4.3) | sites_input 의 분류 컬럼명 (`""`=분류 기능 미사용) | 패널을 EPP/B2C 식으로 나눌 때 |
+| `PANEL_GROUP_COLUMN` (v4.3) | sites_input 의 분류 컬럼명 (`""`=분류 기능 미사용) | 패널을 B2B/B2C 식으로 나눌 때 |
 | `PANEL_GROUP_RULES` (v4.3) | `[(패널명 키워드, 분류값), ...]` — **위에서부터 첫 매칭** | 〃 |
 | `PANEL_GROUP_SITE_DEFAULT` (v4.3) | 컬럼은 있는데 셀이 빈 site 의 분류 | 〃 |
 | `PANEL_GROUP_PANEL_DEFAULT` (v4.3) | 어느 키워드에도 안 걸리는 패널의 분류 | 〃 |
@@ -206,9 +206,9 @@ de,2026-05-12,2026-05-17
 - **(v4.2) 여기엔 총기간만 넣는다** — 월별로 쪼갤지(`MONTHLY`), 다른 연도 동기간도 뽑을지(`YEAR_OFFSETS`)는 상단 상수가 결정. 연도별로 sites_input 을 복사·수정하거나 폴더를 통째로 복제할 필요 없음
 - **(v4.3) 패널 분류 컬럼은 선택** — `PANEL_GROUP_COLUMN` 에 이름을 박으면 그 이름의 4번째 컬럼을 site 별 분류값으로 읽는다. 컬럼이 없어도(또는 상수가 `""` 여도) 그대로 동작하며 분류 필터만 적용되지 않는다. 예:
   ```csv
-  site_code,start_date,end_date,EPP_B2C
+  site_code,start_date,end_date,B2B_B2C
   us,2026-05-19,2026-06-09,B2C
-  uk,2026-05-11,2026-06-09,EPP
+  uk,2026-05-11,2026-06-09,B2B
   ```
 - 빈 줄 / `#` 시작 라인 자동 skip
 - **예시 파일 동봉** — 같은 폴더 `sites_input.csv` 가 바로 실행 가능한 템플릿 (US 2행 분할 / 언어변형 site 규칙 주석 포함). 실제 캠페인 site·기간으로 행만 교체
@@ -251,7 +251,7 @@ EXTRA_SEGMENTS: list[dict] = [
 
     # 4) panel 일부 적용
     {
-        "name_keywords": ["[Global] Excluded EPP"],
+        "name_keywords": ["[Global] Excluded B2B"],
         "panel_scope": ["[Global]"],
     },
 ]
