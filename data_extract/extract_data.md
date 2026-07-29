@@ -1,5 +1,5 @@
 # data_extract/extract_data.md  
-<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
 
 Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트릭 이름 + 실제 데이터 값을 동시다발적으로 추출.
 
@@ -13,6 +13,37 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 | `table_data_extract_example.csv` / `stack_data_extract_example.csv` | 출력 2종(가로형 table / 세로형 stack) 형식 예시 (placeholder 값) |
 | `app_O_X_example.csv` / `currency_example.csv` / `product_category_example.yaml` | **입력 참조 파일 형식 예시.** 실제 파일(`app_O_X.csv` / `currency.csv` / `product_category.yaml`)은 운영 데이터라 repo 미포함 — `_example` 을 뗀 이름으로 본인 데이터를 채워 같은 폴더에 저장할 것 |
 | `_contents/` (하위폴더) | **캠페인 콘텐츠(콘텐츠 배너·시나리오) 분석 전용** 변형. contents 프로젝트의 site × device 5종(pc/mobile/app/android/ios) payload 분기 + `RESHAPE_contents` 후처리(환율·Delayed 합산·SITE CODE 정규화)가 묶인 도구 세트. generic `extract_data_v4.3.py` 와 별개 — 콘텐츠 캠페인 추출은 여기 사용. 추출: `_contents/extract_data_v3.2_contents.py`, 정제 상세: `_contents/RESHAPE_contents_v1.1.md` |
+
+## v4.3 신규 기능 (2026-07-29)
+
+site ↔ 패널 매칭 2종. **둘 다 기본 미사용** — 상수가 전부 비어 있어, 설정하기 전에는 v4.2 와 100% 동일하게 모든 패널을 추출한다. 입력 상수(`PROJECT_ID`·`LIMIT`·`MONTHLY`·`YEAR_OFFSETS` 등)는 그대로고 신규 상수만 추가됐다.
+
+**① `SITE_PANEL_SITES` — 패널명의 site_code 토큰으로 전용/공용 판정** (기존 US·Global 접두 룰 대체)
+
+- 패널명에 **등록된 site_code 가 토큰으로** 들어 있으면 그 site 전용 패널 → 그 site 에서만 추출
+- 어느 등록 site_code 도 없는 패널 = 공용 → **미등록 site 에서만** 추출 (등록 site 는 전용 패널만 봄. `--include-global-for-us` 면 공용도 함께)
+- 매칭은 **토큰 경계** 기준·대소문자 무시 — 영숫자/언더바가 아닌 문자(또는 문자열 끝)로 둘러싸여야 한다. `sec` → `SEC EPP` ✓ / `[SEC]` ✓ / `second`·`section`·`insect` ✗. 경계 정규식은 `SITE_PANEL_BOUNDARY` 로 조정
+- 패널명이 site_code 와 다르게 적혀 있으면 `SITE_PANEL_ALIAS` 로 키워드 지정 (예: `{"us_old": ["US_old", "US old"]}`)
+- **비어 있으면(`[]`) 기존 접두 룰로 폴백**
+
+**② `PANEL_GROUP_*` — 패널 분류(group) × site 매칭**
+
+패널을 이름 키워드로 몇 개 분류로 나누고, `sites_input.csv` 의 분류 컬럼으로 site 마다 어느 분류의 패널에서 뽑을지 정한다. 분류가 안 맞는 패널은 그 site 에서 skip.
+
+```python
+# 한 캠페인을 EPP / B2C 로 나눈 사례 — 분류값은 자유 (("Mobile","MO") 처럼 디바이스로 나눠도 됨)
+PANEL_GROUP_COLUMN        = "EPP_B2C"
+PANEL_GROUP_RULES         = [("EPP", "EPP"), ("B2C", "B2C")]
+PANEL_GROUP_SITE_DEFAULT  = "EPP"
+PANEL_GROUP_PANEL_DEFAULT = "EPP"
+# → sites_input 의 us 행이 B2C 면 'Global B2C' 패널만 돌고 'Global EPP' 는 skip
+```
+
+- ⚠ `PANEL_GROUP_RULES` 는 **위에서부터 첫 매칭**이라 순서가 중요하다. 한 패널명이 여러 키워드를 가지면 더 구체적인 쪽을 위에. (`② Global - EPP (B2C RS)` 는 EPP·B2C 를 다 가지므로 EPP 를 먼저 둬야 EPP 로 잡힌다)
+- **안전장치 3중** — 다른 폴더에 그대로 복사해도 조용히 데이터가 빠지지 않는다. 아래 어느 경우든 분류 필터를 적용하지 않고 그 site 의 모든 패널을 추출한다:
+  - `PANEL_GROUP_COLUMN` 이 비어 있을 때 (기본값 = 기능 미사용)
+  - 컬럼명을 넣었는데 `sites_input` 헤더에 그 컬럼이 없을 때
+  - 컬럼이 있어도 그 프로젝트에 해당 분류의 패널이 하나도 없을 때 (그 site 만, 경고 출력)
 
 ## v4.2 신규 기능 (2026-07-24)
 
@@ -142,6 +173,16 @@ python extract_data_v4.3.py --monthly --year-offsets 0,-1      # (v4.2) 두 옵�
 | `INCLUDE_PARENT_ROWS` | dim1 총계(부모) 행 출력 포함 (`False`=breakdown 행만) | "bd만" 모드 |
 | `MONTHLY` (v4.2) | 총기간을 달력 월로 쪼개 월별 추출 (`False`=총기간 1회). `True` 면 `period` 컬럼 추가 | 월별 추이가 필요할 때 |
 | `YEAR_OFFSETS` (v4.2) | sites_input 날짜 연도 shift 리스트 (`[0]`=그대로, `[0,-1]`=올해+작년). offset≠0 은 파일명 `_y{연도}` 태그 | 동기간 YoY 를 한 폴더에서 |
+| `SITE_PANEL_SITES` (v4.3) | 패널명에 site_code 가 토큰으로 든 패널을 그 site 전용으로 판정할 site 목록 (`[]`=기존 US·Global 접두 룰) | 패널이 site 별로 나뉜 프로젝트 |
+| `SITE_PANEL_ALIAS` (v4.3) | 패널명이 site_code 와 다를 때 쓸 키워드 (`{"us_old": ["US_old","US old"]}`) | 패널명 표기가 다를 때 |
+| `SITE_PANEL_BOUNDARY` (v4.3) | 토큰 경계 정규식 (`{kw}` 자리에 키워드 escape 되어 삽입) | 보통 고정 |
+| `PANEL_GROUP_COLUMN` (v4.3) | sites_input 의 분류 컬럼명 (`""`=분류 기능 미사용) | 패널을 EPP/B2C 식으로 나눌 때 |
+| `PANEL_GROUP_RULES` (v4.3) | `[(패널명 키워드, 분류값), ...]` — **위에서부터 첫 매칭** | 〃 |
+| `PANEL_GROUP_SITE_DEFAULT` (v4.3) | 컬럼은 있는데 셀이 빈 site 의 분류 | 〃 |
+| `PANEL_GROUP_PANEL_DEFAULT` (v4.3) | 어느 키워드에도 안 걸리는 패널의 분류 | 〃 |
+| `PANEL_GROUP_OFF` (v4.3) | 이 값이면 분류 필터를 적용하지 않는 sentinel | 특정 site 만 분류 해제 |
+| `PANEL_GROUP_YEAR_OFFSETS` (v4.3) | 분류별 `YEAR_OFFSETS` override (`{}`=전역값). 예 `{"B2C": [0]}` | 특정 분류만 연도 확장 제외 |
+| `PANEL_GROUP_SKIP_SITE_PANEL_RULE` (v4.3) | 이 분류는 site↔패널 룰(위 ①·접두 룰) 면제 (`[]`=미사용) | 그 분류에 패널이 하나뿐일 때 |
 | `DEVICE_FROM_SEGMENT` | 세그명 → `device` 컬럼 추출 on/off | device 분기 테이블 |
 | `DEVICE_SEGMENT_RULES` | device 매칭 (정규식, 라벨) 순서 리스트 | 새 device 표기 등장 시 |
 | `EXTRA_SEGMENTS` | 추가 segment globalFilter 리스트 (빈 리스트 = v2 동일 동작) | 옵트인 |
@@ -163,6 +204,12 @@ de,2026-05-12,2026-05-17
 - `site_code` — `site_registry._SITE_MASTER` 의 key. 매핑에 없으면 fallback `sscompany_name4{site_code 의 _ 제거}` 사용
 - `start_date` / `end_date` — site 별 **총기간**, ISO `YYYY-MM-DD`. v3 가 `YYYY-MM-DDT00:00:00.000/다음날T00:00:00.000` 형식 (AA 컨벤션) 으로 자동 변환
 - **(v4.2) 여기엔 총기간만 넣는다** — 월별로 쪼갤지(`MONTHLY`), 다른 연도 동기간도 뽑을지(`YEAR_OFFSETS`)는 상단 상수가 결정. 연도별로 sites_input 을 복사·수정하거나 폴더를 통째로 복제할 필요 없음
+- **(v4.3) 패널 분류 컬럼은 선택** — `PANEL_GROUP_COLUMN` 에 이름을 박으면 그 이름의 4번째 컬럼을 site 별 분류값으로 읽는다. 컬럼이 없어도(또는 상수가 `""` 여도) 그대로 동작하며 분류 필터만 적용되지 않는다. 예:
+  ```csv
+  site_code,start_date,end_date,EPP_B2C
+  us,2026-05-19,2026-06-09,B2C
+  uk,2026-05-11,2026-06-09,EPP
+  ```
 - 빈 줄 / `#` 시작 라인 자동 skip
 - **예시 파일 동봉** — 같은 폴더 `sites_input.csv` 가 바로 실행 가능한 템플릿 (US 2행 분할 / 언어변형 site 규칙 주석 포함). 실제 캠페인 site·기간으로 행만 교체
 
