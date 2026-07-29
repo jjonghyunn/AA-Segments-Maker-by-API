@@ -1,5 +1,6 @@
 # aa_create_segment_v2.4.py
 # 2026-05-15  Jonghyun Park w/ Claude
+# updated: 2026-07-29 19:33  — 중복 main() 해소: DSL 러너를 main_dsl() 로 개명 (CSV 러너가 유일한 main)
 # updated: 2026-05-15  — v2.1 기반. --input 상대경로일 때 스크립트 폴더 기준 fallback 추가
 #                       (cwd 가 어디든 segment_maker 폴더의 segments.csv 자동 발견)
 # updated: 2026-05-18  — segment-ref cache patch (sequence-prefix 변환) +
@@ -1199,7 +1200,9 @@ def _lookup_owner_id(headers: dict, gcid: str, *,
 # Runner
 # ═══════════════════════════════════════════════════════════════════
 
-def main() -> int:
+def main_dsl() -> int:
+    # legacy DSL 진입점 — 현재 기본 진입점은 아래 CSV 기반 main().
+    # DSL 모드로 돌리려면 파일 하단 dispatch 를 main_dsl() 로 바꿔 실행.
     parser = argparse.ArgumentParser(
         description="DSL 기반 AA 세그먼트 다중 생성 (기본 dry-run)"
     )

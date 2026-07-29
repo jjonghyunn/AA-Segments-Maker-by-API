@@ -1,5 +1,6 @@
 # add_segment_shares.py
 # 2026-05-13  Jonghyun Park w/ Claude
+# updated: 2026-07-29 19:33  — bare placeholder 정리(0/주석) + 미설정 실행 가드 추가
 """
 Adobe Analytics segment 중 이름에 특정 키워드가 들어간 것들에 대해 shares 일괄 추가.
 
@@ -46,7 +47,7 @@ RSID = ""
 
 # 본인 numeric loginId — `/segments` GET 후 owner.id 가 이 값과 일치하는 segment 만 처리.
 # (AA API 의 ownerId 쿼리 파라미터는 지원 안 함 → 클라이언트 사이드 필터링)
-OWN_LOGIN_ID = YOUR_LOGIN_ID
+OWN_LOGIN_ID = 0  # 본인 numeric loginId 로 교체 (utils/find_user_id.py 로 조회)
 
 # 이 키워드가 name 또는 description 에 substring 으로 포함된 segment 매칭 (case-insensitive)
 # 같은 값을 AA API 의 `name` 쿼리 파라미터로도 보내서 server-side 사전 필터링 (회사 전체 22만 → 수십개로)
@@ -262,15 +263,15 @@ PRINT_FIRST_N = 5
 
 # shares 에 추가할 numeric loginId 리스트 (company_name_aa_id_*.csv 에서 lookup)
 # 본인 + 추가 인원
-SHARE_USER_IDS = [
-    YOUR_LOGIN_ID,   # user1@company_name.com  (User 1)
-    YOUR_LOGIN_ID,   # user2@company_name.com    (User 2)
-    YOUR_LOGIN_ID,   # user3@company_name.com (User 3)
-    YOUR_LOGIN_ID,   # user4@company_name.com        (User 4)
-    YOUR_LOGIN_ID,   # user5@company_name.com    (User 5)
-    YOUR_LOGIN_ID,   # user6@company_name.com     (User 6)
-    YOUR_LOGIN_ID,   # user7@company_name.com  (User 7)
-    YOUR_LOGIN_ID, # user8
+SHARE_USER_IDS: list[int] = [  # 아래 형식으로 numeric loginId 를 채울 것
+    # YOUR_LOGIN_ID,   # user1@company_name.com  (User 1)
+    # YOUR_LOGIN_ID,   # user2@company_name.com    (User 2)
+    # YOUR_LOGIN_ID,   # user3@company_name.com (User 3)
+    # YOUR_LOGIN_ID,   # user4@company_name.com        (User 4)
+    # YOUR_LOGIN_ID,   # user5@company_name.com    (User 5)
+    # YOUR_LOGIN_ID,   # user6@company_name.com     (User 6)
+    # YOUR_LOGIN_ID,   # user7@company_name.com  (User 7)
+    # YOUR_LOGIN_ID, # user8
 ]
 
 # ════════════════════════════════════════════════════════════════════
@@ -514,6 +515,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="키워드 매칭 segment 에 shares 일괄 추가")
     parser.add_argument("--apply", action="store_true", help="실제 PUT 실행 (기본은 dry-run)")
     args = parser.parse_args()
+
+    if OWN_LOGIN_ID == 0 or not SHARE_USER_IDS:
+        print("설정 필요: OWN_LOGIN_ID / SHARE_USER_IDS 를 본인 환경 값으로 채운 뒤 실행하세요 (utils/find_user_id.py 로 조회).")
+        return 1
 
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")

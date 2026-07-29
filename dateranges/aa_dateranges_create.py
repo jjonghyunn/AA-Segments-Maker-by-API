@@ -1,5 +1,6 @@
 # aa_dateranges_create.py
 # 2026-05-08  Jonghyun Park w/ Claude
+# updated: 2026-07-29 19:33  — bare placeholder 를 실행 가능한 센티널 0 으로 교체 (NameError 방지)
 """
 사이트별 6값 입력으로 N×8 daterange 일괄 생성 (POST).
 
@@ -59,7 +60,7 @@ CAMPAIGN_TAG  = "SW"     # 캠페인 코드 (짧은 약어)
 # POST_TRANSFER_TO_OWNER_ID:
 #   0          : 본인(token holder) owner 그대로 유지
 #   numeric ID : POST 직후 자동 PUT 으로 owner 이전 (admin 권한 필요)
-POST_TRANSFER_TO_OWNER_ID = YOUR_LOGIN_ID   # user2
+POST_TRANSFER_TO_OWNER_ID = 0   # 0=본인 유지 / 이전하려면 numeric loginId (find_user_id.py 로 조회)
 
 # 새 daterange 의 description, tags (모든 사이트 공통)
 NEW_DESCRIPTION = ""
