@@ -1,5 +1,5 @@
 # segment_share/ — segment 키워드 매칭 → 일괄 share 추가 (운영 사본)  
-<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
+<sub>2026-07-30  Jonghyun Park w/ Claude</sub>  
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_share
 
@@ -20,12 +20,12 @@ repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_s
 | `AUTH_JSON_PATH` | `C:\path\to\your\aanalytics_auth.json` |
 | `COMPANY_ID` | `your_aa_company_id` |
 | `RSID` | `""` (전체 RSID — 빈 문자열이면 server-side RSID 필터 안 함) |
-| `OWN_LOGIN_ID` | `YOUR_LOGIN_ID` (User 1 — 본인 owner segment 만 client-side 필터) |
+| `OWN_LOGIN_ID` | `0` — 본인 numeric loginId 로 교체 후 사용 (`utils/find_user_id.py` 로 조회). 미설정(`0`)이면 실행 시 안내 후 종료 |
 | `KEYWORDS` | `["[CAMPAIGN NAME]"]` (name/description AND substring 매칭, case-insensitive. `"visit"` 등 나머지 후보는 주석 처리돼 있음) |
 | `OWNER_ID_FILTER` | `[]` (비어있으면 미사용) |
 | `OWNER_FULLNAME_INCLUDES` | `[]` (비어있으면 미사용) |
 | `TARGET_SEGMENT_IDS` | 코드 안 `TARGET_SEGMENT_IDS_RAW` 에 한 줄에 하나씩 박기. **기본값이 비어있지 않다** — placeholder id 가 여러 줄 들어있으므로, 매칭 전체를 대상으로 하려면 블록을 비우거나 각 줄 앞에 `#` 를 붙일 것 |
-| `SHARE_USER_IDS` | 본인 + 7명 (총 8명) |
+| `SHARE_USER_IDS` | `[]` — 주석 예시를 참고해 numeric loginId 를 채울 것 (비어 있으면 실행 시 안내 후 종료). 운영에선 본인 + 7명 (총 8명) |
 
 ### SHARE_USER_IDS 멤버
 
