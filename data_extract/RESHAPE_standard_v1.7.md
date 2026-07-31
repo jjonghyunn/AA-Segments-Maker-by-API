@@ -87,6 +87,24 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
 
 ---
 
+## ⚠ 새 추출 구성(한 파일에 여러 패널) 사용 시 주의 (2026-07-31)
+
+`extract_data` 를 **site 당 1행 · 전 패널 한 파일** 구성으로 쓰면 아래를 확인할 것.
+(`RESHAPE_standard` 자체는 수정 없이 그대로 동작한다.)
+
+- **분류 구분은 `Panel name` 컬럼으로** — 입력 `panel` 이 출력에 그대로 실린다. 한 파일에 분류가
+  섞여도 사후에 이 컬럼으로 나눌 수 있다.
+- **dim 컬럼 자동 감지는 이미 대응** — `detect_dim_column()` 이 헤더의 `itemId` 다음 컬럼을 잡으므로
+  여러 차원이 섞여 `dim_value` 로 나와도 그대로 읽는다.
+- ⚠ **`DIM_EXCLUDE_VALUES` 기본값이 `Unspecified` 를 버린다.** 디멘션 미지정 라벨이라 보통은 맞지만,
+  **분류가 섞인 패널에서는 `Unspecified` 가 "그 분류가 아님"을 뜻하는 신호일 수 있다**(예: store 값이
+  안 찍힌 행 = 비-전용 트래픽). 그런 raw 를 돌릴 땐 이 목록에서 빼야 조용히 사라지지 않는다.
+- ⚠ **`SITES_FILTER` 는 raw `site_code` 기준**이다(`SITE_CODE_STRIP_OLD` 적용 **전**). 출력
+  `SITE CODE` 는 `_old` 가 떨어진 값이라 서로 다르다 — `us_old` 를 거르려면 `us_old` 라고 적을 것.
+- **(site × year) 조합 제외 수단은 없다** — `SITES_FILTER` 는 site 단위 화이트리스트뿐이다.
+  구/신 suite 가 같은 기간을 이중으로 담는 경우처럼 연도까지 봐야 하면, 캠페인 전용 RESHAPE 쪽에
+  조합 제외 룰을 두거나 추출 단계에서 걸러야 한다.
+
 ## 거르기 / 가공 동작
 
 - **디멘션 값 제외** — `DIM_EXCLUDE_VALUES` 에 (대소문자 무시) **정확히 일치**하는 디멘션값 행은 버린다.

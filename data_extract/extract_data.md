@@ -315,6 +315,24 @@ data_extract/
        - 사이트별 별도 CSV 저장
 ```
 
+## ⚠ 한 파일에 여러 패널이 담길 수 있다 (2026-07-31)
+
+`PANEL_GROUP_COLUMN` 을 비우고 **site 당 1행**으로 두면, 그 site 가 돌 수 있는 **모든 패널이 한 run
+= 한 파일**에 담긴다. sites_input 에 같은 `site_code` 를 분류(group)별로 여러 행 넣던 구성의 대안이다.
+
+- **왜 이 구성이 나은가** — 같은 site_code 가 여러 행이면 offset 0 출력 경로가 **완전히 같아져
+  나중에 끝난 run 이 앞 run 파일을 덮어쓴다.** `SITE_WORKERS` 병렬이라 어느 쪽이 남는지도 run 마다
+  달라지는 경합이고, 에러가 안 나 발견이 늦다 (실측: 한 분류의 데이터가 통째로 유실).
+  `GROUP_TAG_IN_FILENAME` 이 그 경우 파일명에 `_{group}` 을 붙여 막지만, 애초에 1행으로 두면 안 겪는다.
+- **분류 구분은 정제가 한다** — stack CSV 에 `panel` 컬럼이 있으므로 RESHAPE 단계에서 나누면 된다.
+  `RESHAPE_standard` 는 `panel` 을 **`Panel name` 컬럼으로 그대로 출력**한다.
+- **`SITE_EXTRA_PANELS`** — `SITE_PANEL_SITES` 등록 site 는 전용 패널만 보는 all-or-nothing 이라
+  "전용 패널 + 공용 패널" 조합을 표현할 수 없었다. `{site_code: [패널명 키워드]}` 로 공용 패널을 추가 허용한다.
+- ⚠ **여러 패널이 섞이면 dim1 컬럼명이 `dim_value` 로 폴백**된다(차원이 2종 이상이라). 단일 패널
+  파일은 여전히 차원 id 뒤 토큰(`evar73` 등). 정제 쪽은 헤더에서 자동 판별하므로 그대로 동작한다.
+- ⚠ **한 파일에 append 하는 방식은 못 쓴다** — 헤더(dim1 컬럼명, `bd{k}_*` 컬럼 수)가 run 단위로
+  계산돼 어긋난다. 그래서 파일 분리(`GROUP_TAG_IN_FILENAME`) 또는 1행 구성 둘 중 하나여야 한다.
+
 ## 출력 파일
 
 ```

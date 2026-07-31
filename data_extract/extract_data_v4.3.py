@@ -145,6 +145,19 @@ OUTPUT_PREFIX   = ""
 #   table = 기존 column_mapping_* 대체 (AA 테이블 모양 가로형, 1행 = item. 아래 SEG_VALUE_SEP 참고)
 OUTPUT_BASENAME_STACK = "stack_data_extract"
 OUTPUT_BASENAME_TABLE = "table_data_extract"
+# ─── 같은 site 가 group(B2B/B2C) 별로 여러 행일 때 파일명 충돌 방지 (2026-07-31) ──
+# sites_input 에 같은 site_code 가 group 별로 2행 이상 있으면 offset 0 출력 경로가 완전히 같아져
+# **나중에 끝난 run 이 앞 run 파일을 덮어쓴다** → 앞 run 데이터가 통째로 사라진다.
+#   실측(2026-07-31): ca/in/sg 등의 **2026 B2B 가 B2C run 에 덮여 유실**. SITE_WORKERS 병렬이라
+#   중간 시점에 따라 어느 쪽이 남는지도 달라져(경합) run 마다 결과가 바뀌었다. 에러가 안 나서 발견이 늦다.
+# True = 그런 site 에 한해 파일명 site 뒤에 _{group} 을 붙여 분리한다 (단일 group site 는 무변경).
+#   stack_data_extract_ca_B2B_{ts}.csv / stack_data_extract_ca_B2C_{ts}.csv
+#   stack_data_extract_us_old_{ts}.csv        ← group 1개뿐이라 이름 그대로
+# ⚠ 한 파일에 append 하는 방식은 못 쓴다 — 헤더가 run 단위로 계산돼 어긋난다
+#    (dim1 컬럼명 evar73/daterangeyear, bd{k}_* 컬럼 수 17 vs 20).
+# ⚠ 이름 규칙이 바뀌므로 **옛 이름 파일과 한 output 폴더에 섞지 말 것** — RESHAPE 는 파일명으로
+#    site 를 구분해 'ca_260729_*'(옛) 와 'ca_B2B_260731_*'(신) 를 별개 site 로 보고 둘 다 union 에 넣는다.
+GROUP_TAG_IN_FILENAME: bool = True
 # seg_value{i} 컬럼 구분자 (table CSV) — "metric;; segments" 형태로 metric 을 맨앞에 두고 결합.
 # segments 내부 구분자가 '; ' 라 세미콜론 2개(';;')로 분리 (split 시 SEG_VALUE_SEP 로 1회 split).
 SEG_VALUE_SEP = ";; "
@@ -346,6 +359,19 @@ INCLUDE_GLOBAL_FOR_US = False  # CLI --include-global-for-us 로 override
 #   'us_old' → 'US_old B2B (Y25용)' ✓ / 'US B2B' ✗ (us 뒤가 언더바라 'us' 토큰도 아님)
 # 패널명이 site_code 와 다르게 적혀 있으면 SITE_PANEL_ALIAS 로 키워드를 따로 지정한다.
 SITE_PANEL_SITES: list[str] = []
+# ─── 등록 site 의 공용 패널 추가 허용 (positive 예외, 2026-07-31) ────
+# 위 SITE_PANEL_SITES 에 등록된 site 는 기본적으로 **전용 패널만** 본다(all-or-nothing).
+# 그런데 어떤 site 는 전용 패널 + 공용 패널을 함께 필요로 한다 — 이 캠페인의 `us` 가 그렇다:
+#     us = 전용 B2B 패널 'US B2B (Y26용)'  +  공용 B2C 패널 'Global B2C'
+# 여기에 {site_code: [패널명 키워드, ...]} 를 적으면 그 site 는 전용 패널에 **더해** 이 공용 패널도 돈다.
+# 매칭은 부분일치(대소문자 무시).
+#
+# 왜 필요한가: 이게 없으면 "us 의 B2B 는 전용 패널, B2C 는 공용 패널" 을 표현할 방법이
+# sites_input 의 group 컬럼(B2B/B2C 2행)밖에 없었다. 그 2행 구조가 같은 출력 경로를 놓고
+# 경합해 **2026 B2B 가 통째로 유실되는 사고**(2026-07-31)를 냈다.
+# 이 상수로 site 당 1행 + 한 파일에 전 패널을 담는 구조가 가능해진다
+# (B2B/B2C 구분은 정제 단계에서 panel 컬럼으로 한다).
+SITE_EXTRA_PANELS: dict[str, list[str]] = {"us": ["Global B2C"]}
 SITE_PANEL_ALIAS: dict[str, list[str]] = {}   # 예: {"us_old": ["US_old", "US old"]}
 # 토큰 경계 정규식 — {kw} 자리에 키워드가 escape 되어 들어간다. 경계를 바꾸고 싶으면 여기서 조정.
 SITE_PANEL_BOUNDARY = r"(?<![0-9A-Za-z_]){kw}(?![0-9A-Za-z_])"
@@ -1750,6 +1776,11 @@ def _skip_by_site_panel(panel_name: str, site_code: str, include_global_for_us: 
         if sc not in owners:
             return True, f"'{'/'.join(owners)}' 전용 패널 → {sc} skip"
         return False, ""
+    # (2026-07-31) positive 예외 — 등록 site 라도 SITE_EXTRA_PANELS 에 적힌 공용 패널은 함께 돈다.
+    #   예) us = 전용 'US B2B (Y26용)' + 공용 'Global B2C'
+    for _kw in SITE_EXTRA_PANELS.get(sc, []):
+        if _kw.lower() in (panel_name or "").lower():
+            return False, ""
     # 공용 패널 — 전용 패널을 가진 site 는 기본 제외 (기존 [Global] skip 과 같은 취지)
     if sc in registered and not include_global_for_us:
         return True, f"{sc} 는 전용 패널만 사용 → 공용 패널 skip (--include-global-for-us 로 포함)"
@@ -2341,14 +2372,25 @@ def main() -> int:
     #   offset 0 → tag "" (v4.1 과 동일한 파일명). offset≠0 → "_y{shift 된 연도}"
     #   kind 가 PANEL_GROUP_YEAR_OFFSETS 에 등록돼 있으면 그 kind 는 전역 YEAR_OFFSETS 대신 그 목록을 쓴다
     #   (B2C=[0] — us 신 suite 에 2025 가 없어 offset -1 이 빈 run 이 되므로. us_old 행으로 따로 뽑는다)
+    # 2026-07-31: 같은 site_code 가 group 별로 2행 이상이면 파일명에 _{group} 태그를 붙인다.
+    #   (안 붙이면 offset 0 출력 경로가 같아져 나중 run 이 앞 run 을 덮어써 데이터가 유실된다.
+    #    GROUP_TAG_IN_FILENAME 주석 참고.)  group 이 1개뿐인 site 는 기존 파일명 그대로.
+    _grp_by_site: dict[str, set] = {}
+    for _sc, _s, _e, _g in sites_rows:
+        _grp_by_site.setdefault(_sc, set()).add(_g)
+    _multi_group_sites = {sc for sc, gs in _grp_by_site.items() if len(gs) > 1 and any(gs)}
+
     runs: list[tuple[str, str, str, str, str]] = []
     kind_off_used: dict[str, list[int]] = {}
     for site_code, s_date, e_date, s_grp in sites_rows:
         offs = PANEL_GROUP_YEAR_OFFSETS.get(s_grp, YEAR_OFFSETS)
         kind_off_used[s_grp] = offs
+        g_tag = (f"_{s_grp}" if GROUP_TAG_IN_FILENAME and site_code in _multi_group_sites
+                 and s_grp else "")
         for off in offs:
             s2, e2 = _shift_year(s_date, off), _shift_year(e_date, off)
-            runs.append((site_code, s2, e2, "" if off == 0 else f"_y{s2[:4]}", s_grp))
+            y_tag = "" if off == 0 else f"_y{s2[:4]}"
+            runs.append((site_code, s2, e2, f"{g_tag}{y_tag}", s_grp))
 
     _group_cnt: dict[str, int] = {}
     for r in sites_rows:
@@ -2356,6 +2398,11 @@ def main() -> int:
     print(f"  처리 site: {len(sites_rows)}개 → {[r[0] for r in sites_rows]}")
     print(f"  site kind: " + ", ".join(f"{k}={v}" for k, v in sorted(_group_cnt.items()))
           + "  (kind 별 패널만 추출 — " + ", ".join(f"{kw}→{kd}" for kw, kd in PANEL_GROUP_RULES) + ")")
+    if _multi_group_sites:
+        print(f"             ⚠ group 중복 site {sorted(_multi_group_sites)} → 파일명에 _{{group}} 태그 "
+              f"(같은 경로 덮어쓰기 방지). 옛 이름 파일과 한 폴더에 섞지 말 것")
+    elif GROUP_TAG_IN_FILENAME and len(_group_cnt) > 1:
+        print(f"             · group 중복 site 없음 → 파일명 태그 미적용 (기존 이름 그대로)")
     for _k in sorted(_group_cnt):
         if _k in PANEL_GROUP_YEAR_OFFSETS:
             print(f"             ⚠ {_k} 는 YEAR_OFFSETS override = {PANEL_GROUP_YEAR_OFFSETS[_k]} "
