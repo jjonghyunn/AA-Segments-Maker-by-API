@@ -113,6 +113,82 @@ input maker 는 참조 세그를 **id 가 아니라 이름으로** 찾습니다.
 - **6단계 검수를 건너뛰면 7단계 수치가 통째로 어긋납니다.** 반드시 거칠 것.
 - 7단계는 `data_extract/` 소관입니다.
 
+### 0-3. 세그 3종 구조 — 일반 / (Visit) / (Delayed Purchase)
+
+`SCOPE_MODE = "visit,hit,delayed_purchase"` 면 콘텐츠 하나당 세그가 3개 나옵니다.
+**셋은 같은 "조건 블록"을 공유하고, 감싸는 컨테이너와 결합 방식만 다릅니다.**
+
+#### 공통 조건 블록 (= 접미사 없는 일반 세그 그 자체)
+
+```
+hit(
+  'cc04 component'!hit(                        ← 컨테이너 라벨 = customlink 선두코드
+    hit(
+      'cc04 component'!hit( customlink starts-with 'cc04_<content>' )    ← ① 클릭 콜
+      AND
+      'v26'!hit( event26 event-exists AND evar26 starts-with '<kw>' )    ← ② 배너 식별 (eVar)
+      AND
+      'site'!hit( prop1 starts-with 'es' OR evar1 starts-with 'es' )     ← ③ site 포함
+      AND
+      not 'site'!hit( prop1 starts-with 'uk' OR evar1 starts-with 'uk' ) ← ④ site 제외
+    )
+  )
+)
+```
+
+- **scope = `hit`** — 적중 1건 안에서 ①~④ 가 **전부 AND**
+- **site 조건만 OR** (`prop1` 또는 `evar1` 중 하나만 맞아도 그 site)
+- customlink 브랜치가 2개 이상이면 브랜치끼리는 **OR** 로 묶여 `( hit(A) OR hit(B) )` 그룹이 됩니다
+
+#### (Visit) — 위 블록을 `visit()` 로 감싸고 **캠페인 메인 페이지 참조를 AND**
+
+```
+visit(
+  'page+content'!hit(
+    @<캠페인 메인 페이지 세그>        ← COMMON_SEGMENT_REF (프리웜 캐시에서 이름으로 찾음)
+    AND
+    ( <공통 조건 블록> )
+  )
+)
+```
+
+일반 세그와의 차이는 **딱 2개** — scope 가 `visit`, 메인 페이지 필터가 AND 로 추가.
+뜻은 "그 **방문**에서 캠페인 메인 페이지를 봤고 + 그 콘텐츠를 클릭했다".
+
+#### (Delayed Purchase) — 지연 전환. **THEN 두 번**으로 엮인 visitor 시퀀스
+
+```
+hit(
+  [sequence-after] visitor(
+    visit(
+      '<Visit 세그 이름>'!visit(
+        hit( @<메인 페이지 세그> AND ( <공통 조건 블록> ) )      ← ⓐ 콘텐츠 클릭
+        THEN
+        '[Global] Add to Cart Visit'!hit( @<ATC 세그> )         ← ⓑ 장바구니 담기
+      )
+      AND
+      'Order (All Products)'!hit( NOT orders event-exists )     ← ⓒ 이 방문엔 주문 없음
+    )
+    THEN
+    visit( 'Order (All Products)'!hit( orders event-exists ) )  ← ⓓ 이후 방문에서 주문
+  )
+)
+```
+
+읽는 순서: **ⓐ → ⓑ (같은 방문 안, `THEN`)** · 그 방문은 **ⓒ 주문 없음(`AND`)** · **→ ⓓ 나중 방문에서 주문(`THEN`)**.
+`[sequence-after]` 는 Adobe UI 의 "After Sequence" (raw `sequence-prefix`) 입니다.
+
+#### 한 눈에 비교
+
+| | scope | 메인 페이지 ref | 결합 방식 |
+|---|---|---|---|
+| **일반** (접미사 없음) | `hit` | 없음 | 조건 전부 `AND` (site 만 `prop OR evar`) |
+| **(Visit)** | `visit` | `AND` 로 추가 | 공통 블록 그대로 |
+| **(Delayed Purchase)** | `visitor` 시퀀스 | Visit 블록 안에 포함 | 클릭 **THEN** 카트 → **AND** 주문없음 → **THEN** 다음 방문 주문 |
+
+> 메인 페이지 참조와 ATC 참조는 **둘 다 프리웜 캐시에서 이름으로 찾아 박히는 것**입니다 (0-1 의 1단계).
+> `delayed_purchase` 를 쓰면 캐시가 반드시 있어야 하는 이유가 이것입니다.
+
 ---
 
 ## 파일 목록
@@ -240,9 +316,17 @@ CSV 필수 칼럼:
 > ⚠ **매번 새로 조회하지 않습니다.** `@<segment_id>` 는 (a) 캐시에서 정의를 꺼내 (b) **inline 으로 펼쳐 박습니다**
 > (AA 가 POST 에서 `segment-ref` func 을 거부하므로 참조 링크가 아니라 정의 복사본이 들어감).
 > 결과적으로 **두 겹으로 굳습니다** —
-> 1. 캐시가 있으면 AA 에서 원본 세그를 고쳐도 **옛 정의**가 박힌다 → 원본이 바뀌었으면 캐시를 지울 것
+> 1. 캐시가 있으면 AA 에서 원본 세그를 고쳐도 **옛 정의**가 박힌다
 > 2. 이미 만들어진 세그는 원본 세그와 링크가 없어, 나중에 원본을 고쳐도 **자동으로 안 따라간다**
->    → 파생 세그들을 `--update` 로 다시 돌려야 반영됨
+
+**원본 세그가 바뀌었을 때 (중요)**
+
+1. 캐시에서 **그 항목(또는 캐시 파일)을 지운다**
+2. `prewarm_seg_ref_cache.py --cache <name>` **재실행** → 새 정의를 다시 받음
+3. 그 참조를 쓰는 **파생 세그들을 `--update` 로 다시 돌린다** (이미 만들어진 세그는 자동 반영 X)
+
+> ⚠ **1번을 건너뛰고 프리웜만 다시 돌리면 아무 일도 안 일어납니다** — 프리웜은
+> **이미 캐시에 있는 id 를 건너뜁니다**. 반드시 **먼저 지우고** 재실행할 것.
 
 ### dry-run CSV
 
