@@ -18,14 +18,14 @@ AA-Segments-Maker-by-API/
 │   └── input_csv_maker_us.py / _from_ref_batch.py  (us / from_ref 일괄 variant)
 ├── utils/                  # 유틸리티
 │   └── find_user_id.py             (AA 사용자 numeric loginId 검색)
-├── data_extract/           # Workspace 리포트 데이터 추출 (extract_data_v*.py 권장 + _contents 등 캠페인 variant)
+├── data_extract/           # Workspace 리포트 데이터 추출 (extract_data_v*.py 권장 + _contents_tier1_2_uni 등 캠페인 variant)
 │   ├── extract_data_v*.py          (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼 + site 병렬)
 │   ├── RESHAPE_standard_v*.py      (추출본 union 정제 — breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션 + product category 분류)
 │   ├── site_registry.py            (site_code ↔ rsid 매핑)
 │   ├── aa_segment_lookup.py        (extract_data 가 import 하는 필수 의존 — 원본은 segment_maker/, 갱신 시 동기화)
 │   ├── sites_input.csv             (추출 대상 site/기간 입력 템플릿)
 │   ├── *_example.csv / *_example.yaml  (입출력 형식 예시 — 실제 입력 파일은 repo 미포함, README 참조)
-│   └── _contents/ …                (캠페인별 추출·정제 variant)
+│   └── _contents_tier1_2_uni/ …    (콘텐츠 CC_xx Tier1+Tier2 통합 추출·정제)
 ├── dateranges/             # Date Range 도구 (aa_daterange 단건 + list/update/create/upsert 일괄)
 ├── panel_collapse/         # panel 안 subPanel 일괄 collapse=True
 ├── panel_date_update/      # panel 시작/종료일 일괄 치환
