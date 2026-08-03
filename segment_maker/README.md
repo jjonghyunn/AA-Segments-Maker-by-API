@@ -163,8 +163,8 @@ visit(                          ⟨1⟩ scope = visit   ← 일반 세그와 다
 #### (Delayed Purchase) — 지연 전환. **THEN 두 번**으로 엮인 visitor 시퀀스
 
 ```
-hit(                                                         ⟨1⟩ 바깥 scope
-  [sequence-after] visitor(                                  ⟨2⟩ 방문자 시퀀스 (After Sequence)
+hit(                                                         ⟨1⟩ root container — 조건 없는 껍데기 (↓ 주석)
+  [sequence-after] visitor(                                  ⟨2⟩ ★ 실질 시작점 — 방문자 시퀀스 (After Sequence)
     visit(                                                   ⟨3⟩ ── 첫 방문 ──
       '<Visit 세그 이름>'!visit(                             ⟨4⟩ = Visit 세그 조건 그대로
         hit( @<메인 페이지 세그> AND ( <공통 조건 블록> ) )  ⓐ 콘텐츠 클릭
@@ -184,6 +184,14 @@ hit(                                                         ⟨1⟩ 바깥 scop
 
 읽는 순서: **ⓐ → ⓑ (같은 방문 안, `THEN`)** · 그 방문은 **ⓒ 주문 없음(`AND`)** · **→ ⓓ 나중 방문에서 주문(`THEN`)**.
 `[sequence-after]` 는 Adobe UI 의 "After Sequence" (raw `sequence-prefix`) 입니다.
+
+> **맨 바깥 `hit(` ⟨1⟩ 은 조건이 없습니다** — 읽을 때는 `⟨2⟩ [sequence-after] visitor(` 부터 보면 됩니다.
+> 그렇다고 **지워도 되는 건 아닙니다.** AA 가 이 유형을 저장하는 형태 자체가
+> `container{ context:"hits", pred:{ func:"sequence-prefix", context:"visitors", … } }` 라서,
+> 그 root container 가 DSL 에서 `hit(` 으로 나타납니다.
+> AA validator 룰이 그렇습니다 — full `sequence` 는 hit-scope 를 **거부**하고,
+> `sequence-prefix` 만 hit-scope 컨테이너 안에서 허용됩니다(자체 `context` 필수).
+> `aa_segment_lookup.py` 로 실제 세그를 역변환해도 이 `hit(` 이 그대로 나옵니다.
 
 #### 한 눈에 비교
 
