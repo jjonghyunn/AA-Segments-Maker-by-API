@@ -163,35 +163,31 @@ visit(                          ⟨1⟩ scope = visit   ← 일반 세그와 다
 #### (Delayed Purchase) — 지연 전환. **THEN 두 번**으로 엮인 visitor 시퀀스
 
 ```
-hit(                                                         ⟨1⟩ root container — 조건 없는 껍데기 (↓ 주석)
-  [sequence-after] visitor(                                  ⟨2⟩ ★ 실질 시작점 — 방문자 시퀀스 (After Sequence)
-    visit(                                                   ⟨3⟩ ── 첫 방문 ──
-      '<Visit 세그 이름>'!visit(                             ⟨4⟩ = Visit 세그 조건 그대로
-        hit( @<메인 페이지 세그> AND ( <공통 조건 블록> ) )  ⓐ 콘텐츠 클릭
-        THEN
-        '[Global] Add to Cart Visit'!hit( @<ATC 세그> )      ⓑ 장바구니 담기
-      )                                                      ⟨4⟩
-      AND
-      'Order (All Products)'!hit( NOT orders event-exists )  ⓒ 이 방문엔 주문 없음
-    )                                                        ⟨3⟩
-    THEN
-    visit(                                                   ⟨5⟩ ── 이후 방문 ──
-      'Order (All Products)'!hit( orders event-exists )      ⓓ 주문 발생
-    )                                                        ⟨5⟩
-  )                                                          ⟨2⟩
-)                                                            ⟨1⟩
+[sequence-after] visitor(                                  ⟨1⟩ 방문자 시퀀스 (After Sequence)
+  visit(                                                   ⟨2⟩ ── 첫 방문 ──
+    '<Visit 세그 이름>'!visit(                             ⟨3⟩ = Visit 세그 조건 그대로
+      hit( @<메인 페이지 세그> AND ( <공통 조건 블록> ) )  ⓐ 콘텐츠 클릭
+      THEN
+      '[Global] Add to Cart Visit'!hit( @<ATC 세그> )      ⓑ 장바구니 담기
+    )                                                      ⟨3⟩
+    AND
+    'Order (All Products)'!hit( NOT orders event-exists )  ⓒ 이 방문엔 주문 없음
+  )                                                        ⟨2⟩
+  THEN
+  visit(                                                   ⟨4⟩ ── 이후 방문 ──
+    'Order (All Products)'!hit( orders event-exists )      ⓓ 주문 발생
+  )                                                        ⟨4⟩
+)                                                          ⟨1⟩
 ```
 
 읽는 순서: **ⓐ → ⓑ (같은 방문 안, `THEN`)** · 그 방문은 **ⓒ 주문 없음(`AND`)** · **→ ⓓ 나중 방문에서 주문(`THEN`)**.
 `[sequence-after]` 는 Adobe UI 의 "After Sequence" (raw `sequence-prefix`) 입니다.
 
-> **맨 바깥 `hit(` ⟨1⟩ 은 조건이 없습니다** — 읽을 때는 `⟨2⟩ [sequence-after] visitor(` 부터 보면 됩니다.
-> 그렇다고 **지워도 되는 건 아닙니다.** AA 가 이 유형을 저장하는 형태 자체가
-> `container{ context:"hits", pred:{ func:"sequence-prefix", context:"visitors", … } }` 라서,
-> 그 root container 가 DSL 에서 `hit(` 으로 나타납니다.
-> AA validator 룰이 그렇습니다 — full `sequence` 는 hit-scope 를 **거부**하고,
-> `sequence-prefix` 만 hit-scope 컨테이너 안에서 허용됩니다(자체 `context` 필수).
-> `aa_segment_lookup.py` 로 실제 세그를 역변환해도 이 `hit(` 이 그대로 나옵니다.
+> 위 예시는 **AA UI 에서 보이는 대로** 적었습니다. `aa_segment_lookup.py` 로 역변환하면
+> 맨 바깥에 조건 없는 `hit( … )` 한 겹이 더 붙어 나오는데, **읽을 때는 무시해도 됩니다** —
+> AA 가 이 유형을 `container{ context:"hits", pred:{ func:"sequence-prefix", … } }` 로 저장해서
+> 그 root container 가 DSL 로 풀린 것뿐입니다 (full `sequence` 는 hit-scope 가 거부되고
+> `sequence-prefix` 만 허용되는 validator 룰 때문). **입력으로 넣을 땐 그 껍데기가 있어야 합니다.**
 
 #### 한 눈에 비교
 
