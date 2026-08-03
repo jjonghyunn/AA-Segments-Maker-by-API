@@ -397,9 +397,25 @@ python aa_segment_lookup_from_pjt.py YOUR_PROJECT_ID --suffix pjt
 raw `seg_make_ref_*.csv` (사람이 손으로 작성한 segment 명세) → v2.4 가 받는 `segments_input_<ts>.csv` + `.dsl` + `_WARN.csv` 로 변환.
 
 ```bash
-python input_csv_maker.py                                # 폴더의 최신 seg_make_ref_*.csv 자동 pick
-python input_csv_maker.py --input seg_make_ref_X.csv     # 특정 파일 강제 지정
+python input_csv_maker.py --input seg_make_ref_X.csv     # 파일 지정 (권장)
+python input_csv_maker.py                                # 상단 SEG_MAKE_REF_CSV 값 사용
 ```
+
+입력 파일은 **`--input` → 상단 `SEG_MAKE_REF_CSV` → 자동 선택** 순으로 정해집니다.
+
+| 상황 | 동작 |
+|---|---|
+| `--input` 지정 | 그 파일 사용. 없으면 **에러 후 중단** |
+| `--input` 없고 `SEG_MAKE_REF_CSV` 에 값 있음 | 그 파일 사용. 없으면 **에러 후 중단** (자동 선택으로 안 넘어감) |
+| 둘 다 비어 있음 | 폴더에서 자동 선택 — **`seg_make_ref_<YYMMDD>_<HHMM>.csv` 패턴만** (파일명 사전순 최신 1개) |
+
+> ⚠ 자동 선택은 **숫자로 시작하는 timestamp 파일만** 후보로 봅니다.
+> `seg_make_ref_us_*.csv` / `_scenario_*.csv` / `_or_*.csv` 같은 파생과 `_tmp.` 이 붙은 건 **제외**됩니다.
+> (사전순 정렬을 쓰는 이유: OneDrive 동기화·복사로 mtime 이 어긋날 수 있어서)
+
+> ⚠ 현재 `SEG_MAKE_REF_CSV` 에는 **폴더에 없는 파일명이 박혀 있습니다.**
+> 그대로 `python input_csv_maker.py` 를 돌리면 `ERROR: input CSV 못 찾음` 으로 즉시 끝납니다.
+> `--input` 으로 지정하거나, 상수를 **빈 값으로 비워** 자동 선택을 쓰거나, 실제 파일명으로 고치세요.
 
 raw CSV 컬럼 패턴:
 
