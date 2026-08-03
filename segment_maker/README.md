@@ -1,7 +1,119 @@
 # segment_maker/  
-<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-03  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
+
+---
+
+## 0. 전체 흐름
+
+흐름이 **두 층**입니다. 캠페인 시작 때 한 번 하는 **최초 구축(0-2)** 과,
+세그를 만들거나 고칠 때마다 반복하는 **세그 제작 3단계(0-1)** 입니다.
+
+### 0-1. 세그 제작 3단계
+
+```bash
+# 1) 참조 세그 캐시 준비 — input maker 와 같은 단계
+python prewarm_seg_ref_cache.py --cache <name>    # 캠페인 폴더 도구 (본 repo 미포함)
+
+# 2) input maker — 글로벌 / US 각각
+python input_csv_maker.py        # → segments_input_<ts>.csv + .dsl + _WARN.csv
+python input_csv_maker_us.py     # → US 판 (RSID·ref 세그가 다름)
+
+# 3) 세그 생성 / 갱신
+python aa_create_segment_v2.4.py --input segments_input_<ts>.csv --apply            # 1차 = create
+python aa_create_segment_v2.4.py --input segments_input_<ts>.csv --update --apply   # 2차~ = update
+```
+
+| # | 단계 | 코드 | 산출물 |
+|---|---|---|---|
+| 1 | 참조 세그 캐시 준비 | `prewarm_seg_ref_cache.py` (repo 미포함) 또는 v2.4 dry-run | `segment_ref_cache_<name>.json` |
+| 2 | input maker (글로벌/US) | `input_csv_maker.py` / `input_csv_maker_us.py` | `segments_input_<ts>.csv` + `.dsl` + `_WARN.csv` |
+| 3 | 세그 생성/갱신 | `aa_create_segment_v2.4.py` | AA POST/PUT + `segment_v2.4_result_<ts>.csv` |
+
+#### 1단계 — 캐시 준비는 왜 input maker 와 같은 단계인가
+
+input maker 는 참조 세그를 **id 가 아니라 이름으로** 찾습니다.
+`REF_SEGMENT_NAME` / `ATC_REF_SEGMENT_NAME` 에 이름 조각을 박아두면
+`_lookup_seg_ref_by_name()` 이 **캐시의 `name` 필드**를 partial 매칭해 segment id 를 자동으로 채웁니다.
+
+그런데 **`aa_create_segment_v2.4.py` 가 자동으로 채운 캐시 항목은 `name` 이 빈 값**입니다
+(AA GET 으로 container 만 받아 `{"container": …, "name": ""}` 로 저장). 즉 **이름으로는 못 찾습니다.**
+`prewarm_seg_ref_cache.py` 만 `name` / `description` / `rsid` 메타까지 채워 넣습니다.
+
+> 그래서 캐시 준비는 "세그 생성 전 준비"가 아니라 **input maker 를 돌리기 위한 준비**입니다.
+> 캐시 없이 input maker 를 돌리면 `[ref lookup]` 매칭 실패로 참조 세그가 통째로 빠진 채 CSV 가 나옵니다.
+> 캐시 없이 가려면 `COMMON_SEGMENT_REF` / `ATC_VISIT_SEGMENT_REF` 에 segment id 를 직접 박으면 됩니다.
+
+캐시 파일 형식 — **`name` 이 채워져 있어야 이름 lookup 이 걸립니다**:
+
+```json
+{
+  "YOUR_SEGMENT_ID": {
+    "container": { "func": "container", "context": "hits", "pred": { "…": "…" } },
+    "name": "[Global] Add to Cart Visit",
+    "description": "",
+    "rsid": "YOUR_RSID"
+  }
+}
+```
+
+캠페인 하나에 보통 캐시가 **4개** 필요합니다 — (글로벌 / US) × (캠페인 메인 페이지 참조 / Add-to-Cart 참조).
+`delayed_purchase` scope 를 쓸 때만 Add-to-Cart 쪽이 필요합니다.
+
+3단계의 `aa_create_segment_v2.4.py` 는 상단 `CACHE_NAME` 에 **필요한 캐시를 콤마로 모두 박아** merge load 합니다.
+**첫 번째 파일이 save target** 이라, 실행 중 새로 fetch 한 항목은 전부 첫 캐시에 쌓입니다.
+
+#### 2단계 — 글로벌 / US 는 코드가 다릅니다
+
+| | 글로벌 | US |
+|---|---|---|
+| 코드 | `input_csv_maker.py` | `input_csv_maker_us.py` |
+| `REF_SEGMENT_NAME` | 캠페인에 따라 (안 쓰면 빈 값) | US 판 캠페인 메인 페이지 세그 |
+| `ATC_REF_SEGMENT_NAME` | `[Global] Add to Cart Visit` | `[US] Add to Cart Visit` |
+| `CACHE_NAME` | 글로벌 캐시 2개 | US 캐시 2개 |
+| RSID | 글로벌 suite | US suite |
+| `SCOPE_MODE` | `visit,hit,delayed_purchase` | 동일 |
+
+한 캠페인에서 **두 코드를 각각 돌려 input CSV 를 2개** 만듭니다.
+`SCOPE_MODE` 에 3개가 들어 있으면 그룹 1개당 세그가 **3개**(`(Visit)` / 접미사 없는 hit / `(Delayed Purchase)`) 나옵니다.
+
+#### 3단계 — 1차는 create, 2차부터는 update
+
+| 차수 | 명령 | CSV 필수 컬럼 | 동작 |
+|---|---|---|---|
+| **1차** | `--apply` | `name`, `structure` | POST (신규 생성) |
+| **2차~** | `--update --apply` | `segment_id`, `structure` | PUT (덮어쓰기) |
+| 섞임 | `--update-or-create --apply` | `name`, `structure` | id 있으면 PUT, 없으면 POST |
+
+> ⚠ 2차 update 전에 `aa_segment_lookup.py --search "…"` 로 `lookup/` csv 를 **최신화**해야 합니다.
+> `--lookup-by-name`(기본 켜짐)이 그 csv 에서 이름으로 `segment_id` 를 채우기 때문에,
+> csv 가 오래됐으면 엉뚱한 세그를 덮어씁니다.
+
+> ⚠ update 시 **owner 는 건드리지 않는 것이 기본**입니다. `OWNER_ID` 를 새로 박으면
+> 남의 소유 세그를 가져오는 셈이 되고, 보통 admin 권한이 없으면 조용히 무시됩니다.
+
+### 0-2. 최초 구축 7단계
+
+캠페인을 처음 세팅할 때의 순서입니다. **이 폴더가 담당하는 건 3~6단계**입니다.
+
+| # | 단계 | 방식 | 산출물 |
+|---|---|---|---|
+| 1 | 태깅 디버깅 | 거의 자동 (디버깅 툴) | 콘텐츠별 클릭 콜 목록 |
+| 2 | **디버깅 검수 + 누락 콜 추가** | **수기** | 보정된 콜 목록 |
+| 3 | input maker ref 제작 | 수기 → API 참조용 | `seg_make_ref*.csv` **← 이 폴더** |
+| 4 | 디폴트 세그 제작 | API | 기본 콘텐츠(CC_xx) 세그 **← 이 폴더** |
+| 5 | Visit / Delayed Order 세그 제작 | API (**eVar 필요**) | `(Visit)` / `(Delayed Purchase)` 세그 **← 이 폴더** |
+| 6 | **세그 검수** | **수기** | 확정 세그 **← 이 폴더** |
+| 7 | 데이터 추출·정제 | `data_extract/` | union CSV |
+
+- **3단계**는 사람이 손으로 쓰는 명세입니다. 여기서 정한 customlink·eVar 값이 그대로 세그 정의가 됩니다.
+- **4·5단계가 곧 위 0-1 의 3단계 루프**입니다 (캐시 준비 → input maker → v2.4).
+  5단계는 eVar suite 가 필요해서 `--to-evar` 로 prop → evar 변환을 거칩니다.
+- **6단계 검수를 건너뛰면 7단계 수치가 통째로 어긋납니다.** 반드시 거칠 것.
+- 7단계는 `data_extract/` 소관입니다.
+
+---
 
 ## 파일 목록
 
@@ -121,13 +233,20 @@ CSV 필수 칼럼:
 
 ### segment-ref 캐시
 
-- 위치: 같은 폴더 `segment_ref_cache.json` 또는 `segment_ref_cache_<name>.json` (`--cache <name>` 옵션)
-- 동작: 첫 실행 시 auth 로 GET → cache 저장. 이후 실행은 cache hit 이면 auth 없이도 DSL 변환
-- 강제 갱신: cache 파일 삭제 후 재실행
+- 위치: 같은 폴더 `segment_ref_cache_<name>.json` (`--cache <name>` 또는 상단 `CACHE_NAME`. 콤마로 다중 지정 → 모두 merge load, **첫 파일이 save target**)
+- 동작: **캐시 우선** — 캐시에 있으면 AA 조회 없이 그대로 쓰고, 없을 때만 GET → 캐시에 추가
+- 강제 갱신: 해당 항목 또는 cache 파일 삭제 후 재실행
+
+> ⚠ **매번 새로 조회하지 않습니다.** `@<segment_id>` 는 (a) 캐시에서 정의를 꺼내 (b) **inline 으로 펼쳐 박습니다**
+> (AA 가 POST 에서 `segment-ref` func 을 거부하므로 참조 링크가 아니라 정의 복사본이 들어감).
+> 결과적으로 **두 겹으로 굳습니다** —
+> 1. 캐시가 있으면 AA 에서 원본 세그를 고쳐도 **옛 정의**가 박힌다 → 원본이 바뀌었으면 캐시를 지울 것
+> 2. 이미 만들어진 세그는 원본 세그와 링크가 없어, 나중에 원본을 고쳐도 **자동으로 안 따라간다**
+>    → 파생 세그들을 `--update` 로 다시 돌려야 반영됨
 
 ### dry-run CSV
 
-`--apply` 안 줘도 자동 생성: `segment_v2.2_result_<ts>_dryrun.csv` (Name / Mode / ParseStatus / Error). 어떤 row 가 어떤 에러인지 한 눈에 식별.
+`--apply` 안 줘도 자동 생성: `segment_v2.4_result_<ts>_dryrun.csv` (Name / Mode / ParseStatus / Error). 어떤 row 가 어떤 에러인지 한 눈에 식별.
 
 ## aa_segment_lookup.py 사용법
 
@@ -196,7 +315,7 @@ raw CSV 컬럼 패턴:
 
 변환 룰 요약:
 - **그룹화**: 같은 `Segment Name` row 들의 customlink 블록을 OR 로 묶어 1 개 segment
-- **SCOPE_MODE = "both"**: 한 그룹당 `visit(...)` + `hit(...)` 2 개 segment 자동 생성 (이름 suffix `(Visit)` / 없음)
+- **SCOPE_MODE**: 콤마 구분 (`visit,hit,delayed_purchase`). 한 그룹당 모드 수만큼 segment 자동 생성 (이름 suffix `(Visit)` / 없음 / `(Delayed Purchase)`). 옛 표기 `"both"` = `visit,hit`
 - **공통 ref**: `@<COMMON_SEGMENT_REF>` 를 visit/visitor 모드에서 AND 로 묶음 (hit 모드는 안 묶음)
 - **LCS 자동 추출**: evar 값들 (줄바꿈 split) 의 공통 substring ≥ `MIN_LCS_LENGTH(4)` → `evar<N> contains '<lcs>'`. 미만이면 `contains-any-of [...]`
 
@@ -216,8 +335,8 @@ raw seg_make_ref_*.csv (사람 작성)
 segments_input_<ts>.csv  +  .dsl (시각 확인)  +  _WARN.csv (검수)
    ↓ (필요시 수동 편집 → segments.csv 등 이름 변경)
 aa_create_segment_v2.4.py --input segments.csv
-   ↓ dry-run → segment_v2.2_result_<ts>_dryrun.csv
-   ↓ --apply → AA POST/PUT + segment_v2.2_result_<ts>.csv (형식 예: segments_result_example.csv)
+   ↓ dry-run → segment_v2.4_result_<ts>_dryrun.csv
+   ↓ --apply → AA POST/PUT + segment_v2.4_result_<ts>.csv (형식 예: segments_result_example.csv)
 ```
 
 ## aa_delete_segment.py — 안전 삭제
@@ -238,6 +357,6 @@ python aa_delete_segment.py --yes
 
 `--from-csv` 생략 시 같은 폴더의 `result_*.csv` / `test_result_*.csv` 중 가장 최신 1 개 자동 선택.
 
-> ⚠ create 출력 파일(`segment_v2.2_result_*.csv`)은 `segment_` 로 시작해 이 자동 선택(`result_*` glob)에 **안 잡힌다** — create → delete 를 이어 돌릴 땐 `--from-csv` 로 파일을 직접 지정할 것.
+> ⚠ create 출력 파일(`segment_v2.4_result_*.csv`)은 `segment_` 로 시작해 이 자동 선택(`result_*` glob)에 **안 잡힌다** — create → delete 를 이어 돌릴 땐 `--from-csv` 로 파일을 직접 지정할 것.
 
 PowerShell 주의: `--yes` 는 따옴표 밖에 둘 것.
