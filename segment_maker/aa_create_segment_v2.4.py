@@ -167,7 +167,7 @@ EVAR_NAME_SUFFIX = "_Evar"
 # ════════════════════════════════════════════════════════════════════
 
 OUTPUT_DIR = Path(__file__).resolve().parent
-RESULT_CSV_PREFIX = "segment_v2_result_"
+RESULT_CSV_PREFIX = "segment_result_"   # 버전 무관 — 코드 버전 올려도 파일명 안 갈리게
 
 UI_URL_TEMPLATE = (
     "https://experience.adobe.com/#/@company_name/so:your_aa_company_id/"
@@ -1384,7 +1384,6 @@ def main_dsl() -> int:
 
 OUTPUT_DIR = Path(__file__).resolve().parent
 LOOKUP_DIR = OUTPUT_DIR / "lookup"          # aa_segment_lookup* 가 결과 csv/dsl 떨어뜨리는 폴더 — --lookup-by-name source
-RESULT_CSV_PREFIX = "segment_v2.2_result_"
 
 
 def _resolve_cache_paths(name: str) -> list[Path]:

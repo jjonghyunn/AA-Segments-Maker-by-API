@@ -42,7 +42,7 @@ from pathlib import Path
 # 사용자가 바꿔야 하는 부분
 # ════════════════════════════════════════════════════════════════════
 
-SEG_MAKE_REF_CSV = "seg_make_ref_260526_1121.csv"   # 빈 값이면 폴더 내 seg_make_ref_*.csv 파일명 사전순 최신 1개 자동 선택. 특정 파일 강제 지정 시 파일명 박기.
+SEG_MAKE_REF_CSV = ""   # 빈 값이면 폴더 내 seg_make_ref_*.csv 파일명 사전순 최신 1개 자동 선택. 특정 파일 강제 지정 시 파일명 박기.
 
 # 공통 컨테이너 segment ID (segment-ref 로 참조될 ID)
 # 두 가지 방법 (둘 다 동작, COMMON_SEGMENT_REF 가 우선):

@@ -29,7 +29,7 @@ python aa_create_segment_v2.4.py --input segments_input_<ts>.csv --update --appl
 |---|---|---|---|
 | 1 | 참조 세그 캐시 준비 | `prewarm_seg_ref_cache.py` (repo 미포함) 또는 v2.4 dry-run | `segment_ref_cache_<name>.json` |
 | 2 | input maker (글로벌/US) | `input_csv_maker.py` / `input_csv_maker_us.py` | `segments_input_<ts>.csv` + `.dsl` + `_WARN.csv` |
-| 3 | 세그 생성/갱신 | `aa_create_segment_v2.4.py` | AA POST/PUT + `segment_v2.2_result_<ts>.csv` |
+| 3 | 세그 생성/갱신 | `aa_create_segment_v2.4.py` | AA POST/PUT + `segment_result_<ts>.csv` |
 
 #### 1단계 — 캐시 준비는 왜 input maker 와 같은 단계인가
 
@@ -341,11 +341,10 @@ CSV 필수 칼럼:
 
 ### dry-run CSV
 
-`--apply` 안 줘도 자동 생성: `segment_v2.2_result_<ts>_dryrun.csv` (Name / Mode / ParseStatus / Error). 어떤 row 가 어떤 에러인지 한 눈에 식별.
+`--apply` 안 줘도 자동 생성: `segment_result_<ts>_dryrun.csv` (Name / Mode / ParseStatus / Error). 어떤 row 가 어떤 에러인지 한 눈에 식별.
 
-> ⚠ 파일명 접두가 **`segment_v2.2_result_`** 인 건 오타가 아닙니다 — 코드 상단
-> `RESULT_CSV_PREFIX` 값이 v2.2 시절 그대로입니다 (v2.4 도 이 접두로 씁니다).
-> 바꾸려면 그 상수만 고치면 되지만, 기존 출력물과 파일명이 갈립니다.
+> 접두는 코드 상단 `RESULT_CSV_PREFIX` 로 정합니다. **버전 번호를 뺀 `segment_result_`** 라
+> 코드 버전을 올려도 파일명이 갈리지 않습니다. (2026-08-03 이전 실행분은 `segment_v2.2_result_*` 이름)
 
 ## aa_segment_lookup.py 사용법
 
@@ -413,9 +412,8 @@ python input_csv_maker.py                                # 상단 SEG_MAKE_REF_C
 > `seg_make_ref_us_*.csv` / `_scenario_*.csv` / `_or_*.csv` 같은 파생과 `_tmp.` 이 붙은 건 **제외**됩니다.
 > (사전순 정렬을 쓰는 이유: OneDrive 동기화·복사로 mtime 이 어긋날 수 있어서)
 
-> ⚠ 현재 `SEG_MAKE_REF_CSV` 에는 **폴더에 없는 파일명이 박혀 있습니다.**
-> 그대로 `python input_csv_maker.py` 를 돌리면 `ERROR: input CSV 못 찾음` 으로 즉시 끝납니다.
-> `--input` 으로 지정하거나, 상수를 **빈 값으로 비워** 자동 선택을 쓰거나, 실제 파일명으로 고치세요.
+> `SEG_MAKE_REF_CSV` 기본값은 **빈 값**이라 그냥 돌리면 자동 선택으로 갑니다 (2026-08-03 변경).
+> 여기에 파일명을 박으면 그 파일이 없을 때 **자동 선택으로 안 넘어가고 에러로 끝납니다** — 주의.
 
 raw CSV 컬럼 패턴:
 
@@ -450,8 +448,8 @@ raw seg_make_ref_*.csv (사람 작성)
 segments_input_<ts>.csv  +  .dsl (시각 확인)  +  _WARN.csv (검수)
    ↓ (필요시 수동 편집 → segments.csv 등 이름 변경)
 aa_create_segment_v2.4.py --input segments.csv
-   ↓ dry-run → segment_v2.2_result_<ts>_dryrun.csv
-   ↓ --apply → AA POST/PUT + segment_v2.2_result_<ts>.csv (형식 예: segments_result_example.csv)
+   ↓ dry-run → segment_result_<ts>_dryrun.csv
+   ↓ --apply → AA POST/PUT + segment_result_<ts>.csv (형식 예: segments_result_example.csv)
 ```
 
 ## aa_delete_segment.py — 안전 삭제
@@ -472,6 +470,6 @@ python aa_delete_segment.py --yes
 
 `--from-csv` 생략 시 같은 폴더의 `result_*.csv` / `test_result_*.csv` 중 가장 최신 1 개 자동 선택.
 
-> ⚠ create 출력 파일(`segment_v2.2_result_*.csv`)은 `segment_` 로 시작해 이 자동 선택(`result_*` glob)에 **안 잡힌다** — create → delete 를 이어 돌릴 땐 `--from-csv` 로 파일을 직접 지정할 것.
+> ⚠ create 출력 파일(`segment_result_*.csv`)은 `segment_` 로 시작해 이 자동 선택(`result_*` glob)에 **안 잡힌다** — create → delete 를 이어 돌릴 땐 `--from-csv` 로 파일을 직접 지정할 것.
 
 PowerShell 주의: `--yes` 는 따옴표 밖에 둘 것.
