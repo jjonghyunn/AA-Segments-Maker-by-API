@@ -120,20 +120,23 @@ input maker 는 참조 세그를 **id 가 아니라 이름으로** 찾습니다.
 
 #### 공통 조건 블록 (= 접미사 없는 일반 세그 그 자체)
 
+> `⟨n⟩` 은 **짝이 맞는 괄호 쌍** 표시입니다 — 여는 줄과 닫는 줄에 같은 번호가 붙습니다.
+> (에디터에서 괄호를 색으로 보려면 이 예시를 `.dsl` 로 저장 — 맨 아래 VS Code fold 섹션 참고)
+
 ```
-hit(
-  'cc04 component'!hit(                        ← 컨테이너 라벨 = customlink 선두코드
-    hit(
-      'cc04 component'!hit( customlink starts-with 'cc04_<content>' )    ← ① 클릭 콜
+hit(                                                                      ⟨1⟩ scope = hit
+  'cc04 component'!hit(                                                   ⟨2⟩ 바깥 컨테이너 (라벨 = 선두코드)
+    hit(                                                                  ⟨3⟩ 조건 묶음 — ①~④ 전부 AND
+      'cc04 component'!hit( customlink starts-with 'cc04_<content>' )     ① 클릭 콜
       AND
-      'v26'!hit( event26 event-exists AND evar26 starts-with '<kw>' )    ← ② 배너 식별 (eVar)
+      'v26'!hit( event26 event-exists AND evar26 starts-with '<kw>' )     ② 배너 식별 (eVar)
       AND
-      'site'!hit( prop1 starts-with 'es' OR evar1 starts-with 'es' )     ← ③ site 포함
+      'site'!hit( prop1 starts-with 'es' OR evar1 starts-with 'es' )      ③ site 포함
       AND
-      not 'site'!hit( prop1 starts-with 'uk' OR evar1 starts-with 'uk' ) ← ④ site 제외
-    )
-  )
-)
+      not 'site'!hit( prop1 starts-with 'uk' OR evar1 starts-with 'uk' )  ④ site 제외
+    )                                                                     ⟨3⟩
+  )                                                                       ⟨2⟩
+)                                                                         ⟨1⟩
 ```
 
 - **scope = `hit`** — 적중 1건 안에서 ①~④ 가 **전부 AND**
@@ -143,13 +146,15 @@ hit(
 #### (Visit) — 위 블록을 `visit()` 로 감싸고 **캠페인 메인 페이지 참조를 AND**
 
 ```
-visit(
-  'page+content'!hit(
-    @<캠페인 메인 페이지 세그>        ← COMMON_SEGMENT_REF (프리웜 캐시에서 이름으로 찾음)
+visit(                          ⟨1⟩ scope = visit   ← 일반 세그와 다른 점 1
+  'page+content'!hit(           ⟨2⟩ 메인페이지 + 콘텐츠
+    @<캠페인 메인 페이지 세그>  ← 다른 점 2 (프리웜 캐시에서 이름으로 찾은 참조)
     AND
-    ( <공통 조건 블록> )
-  )
-)
+    (                           ⟨3⟩ ↓ 일반 세그의 ⟨2⟩ 블록을 그대로
+      <공통 조건 블록>
+    )                           ⟨3⟩
+  )                             ⟨2⟩
+)                               ⟨1⟩
 ```
 
 일반 세그와의 차이는 **딱 2개** — scope 가 `visit`, 메인 페이지 필터가 AND 로 추가.
@@ -158,21 +163,23 @@ visit(
 #### (Delayed Purchase) — 지연 전환. **THEN 두 번**으로 엮인 visitor 시퀀스
 
 ```
-hit(
-  [sequence-after] visitor(
-    visit(
-      '<Visit 세그 이름>'!visit(
-        hit( @<메인 페이지 세그> AND ( <공통 조건 블록> ) )      ← ⓐ 콘텐츠 클릭
+hit(                                                         ⟨1⟩ 바깥 scope
+  [sequence-after] visitor(                                  ⟨2⟩ 방문자 시퀀스 (After Sequence)
+    visit(                                                   ⟨3⟩ ── 첫 방문 ──
+      '<Visit 세그 이름>'!visit(                             ⟨4⟩ = Visit 세그 조건 그대로
+        hit( @<메인 페이지 세그> AND ( <공통 조건 블록> ) )  ⓐ 콘텐츠 클릭
         THEN
-        '[Global] Add to Cart Visit'!hit( @<ATC 세그> )         ← ⓑ 장바구니 담기
-      )
+        '[Global] Add to Cart Visit'!hit( @<ATC 세그> )      ⓑ 장바구니 담기
+      )                                                      ⟨4⟩
       AND
-      'Order (All Products)'!hit( NOT orders event-exists )     ← ⓒ 이 방문엔 주문 없음
-    )
+      'Order (All Products)'!hit( NOT orders event-exists )  ⓒ 이 방문엔 주문 없음
+    )                                                        ⟨3⟩
     THEN
-    visit( 'Order (All Products)'!hit( orders event-exists ) )  ← ⓓ 이후 방문에서 주문
-  )
-)
+    visit(                                                   ⟨5⟩ ── 이후 방문 ──
+      'Order (All Products)'!hit( orders event-exists )      ⓓ 주문 발생
+    )                                                        ⟨5⟩
+  )                                                          ⟨2⟩
+)                                                            ⟨1⟩
 ```
 
 읽는 순서: **ⓐ → ⓑ (같은 방문 안, `THEN`)** · 그 방문은 **ⓒ 주문 없음(`AND`)** · **→ ⓓ 나중 방문에서 주문(`THEN`)**.
