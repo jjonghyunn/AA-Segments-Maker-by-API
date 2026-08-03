@@ -13,10 +13,41 @@ python RESHAPE_contents_tier1_2_v2.0.py     # 2) 추출 CSV → union CSV 1개
 
 ---
 
-## 0. 전체 흐름 — 이 폴더는 마지막 단계입니다
+## 0. 전체 흐름
 
-콘텐츠 분석은 **태깅 디버깅 → 세그먼트 제작 → 데이터 추출** 순으로 갑니다.
-이 폴더가 담당하는 건 마지막 7단계뿐이고, 앞 단계가 끝나 있어야 돌릴 수 있습니다.
+흐름이 **두 층**입니다. 캠페인 시작 때 한 번 하는 **최초 구축(0-2)** 과,
+차수(cutoff)마다 반복하는 **업데이트 루프(0-1)** 입니다.
+
+### 0-1. 차수별 반복 흐름 (2차부터는 이 루프만)
+
+![AA-Segments-by-API 차수별 자동 업데이트 흐름](aa-seg-by-api-ref_img.png)
+
+차수 cutoff 가 오면 **"세그/조건이 바뀌었나"** 를 먼저 판단하고, 바뀐 것만 갱신한 뒤 추출로 갑니다.
+
+| 분기 | 조건 | 하는 일 |
+|---|---|---|
+| 세그/조건 **변경 O** | 신규 콘텐츠·키워드 추가 등 | `input_maker` → `aa_segments_maker` (create/update) |
+| ↳ Workspace 반영 필요 | 패널에 세그를 새로 꽂아야 함 | `panel_maker` 로 패널 갱신 |
+| ↳ 반영 불필요 | 기존 세그 정의만 수정 | 바로 추출로 |
+| 세그/조건 **변경 X** | 기간만 늘어난 차수 | **바로 추출** |
+
+그 다음은 매 차수 동일합니다.
+
+```
+extract_data (sites 병렬 추출)  →  RESHAPE  →  다음 차수 반복
+                                   참조: app_O_X · currency · contents_by_country
+```
+
+> **이 폴더가 담당하는 구간은 아래쪽 `extract_data → RESHAPE` 두 칸**입니다.
+> 위쪽 세그 제작·패널 갱신은 `segment_maker/` · `panel_maker/` 소관입니다.
+
+> ⚠ 차수가 바뀌면 **`currency.csv` 를 그 차수 환율로 갱신**해야 합니다.
+> 안 그러면 지난 차수 환율로 매출이 환산됩니다 (에러가 안 나서 발견이 늦습니다).
+
+### 0-2. 최초 구축 7단계
+
+캠페인을 처음 세팅할 때의 순서입니다. 이 폴더가 담당하는 건 마지막 7단계뿐이고,
+앞 단계가 끝나 있어야 돌릴 수 있습니다.
 
 | # | 단계 | 방식 | 산출물 |
 |---|---|---|---|
@@ -233,3 +264,4 @@ CSV 를 새로 뽑아 덮어쓰세요 (또는 `MATRIX_REFRESH_FROM_XLSX = True` 
 | `sites_input.csv` / `currency.csv` / `app_O_X.csv` | 입력 |
 | `currency_source.csv` | 환율 출처 기록 (site 별 차수) |
 | `contents_by_country.csv` | 콘텐츠×국가 매트릭스 (이 사본이 원천) |
+| `aa-seg-by-api-ref_img.png` | 차수별 반복 흐름도 (README 0-1) |
