@@ -1,5 +1,6 @@
 # aa_create_segment_v2.4.py
 # 2026-05-15  Jonghyun Park w/ Claude
+# updated: 2026-08-03 20:30  — 팀본 기준 재동기화: to-evar self-mapping(변환 제외 규약)·치환 리포트([to-evar]/[keep]+집계표) 반영, sanitize 재적용
 # updated: 2026-07-29 19:33  — 중복 main() 해소: DSL 러너를 main_dsl() 로 개명 (CSV 러너가 유일한 main)
 # updated: 2026-05-15  — v2.1 기반. --input 상대경로일 때 스크립트 폴더 기준 fallback 추가
 #                       (cwd 가 어디든 segment_maker 폴더의 segments.csv 자동 발견)
@@ -10,7 +11,10 @@
 # updated: 2026-05-22  — --lookup-by-name 의 source 위치를 같은 폴더의 lookup/ 하위로 변경 (segment_lookup_*.csv 가 lookup/ 로 이동됨)
 # updated: 2026-05-26  — v2.3: (1) DSL preprocess 추가 — [sequence-after] visitor( 같은 label+scope-keyword 토큰을 visit( 으로 strip → Delayed Purchase ParseError 해결. (2) v2.py 의존성 제거 — v2 의 parser/compiler/auth 코드 inline (self-contained). (3) OWNER_IMS_USER_ID + OWNER_LOGIN 빈 값 default (다른 사람 fork 시 자기 정보로 채움). OWNER_ID 는 유지.
 # updated: 2026-05-26  — _lift_inner_hit_into_visit_root 후처리 추가. visit/visitor scope segment 가 AA server-side simplification (outer-visit + 단일 inner-hit no_desc wrap → hit-scope 로 합침) 에 의해 hit scope 로 떨어지는 문제 fix. inner hit wrap 제거하고 outer.pred = inner.pred 직접 박아서 server 가 단일 wrap 패턴 simplify 못 하도록.
+# updated: 2026-06-17  — decompile 버그픽스: 반대 연산자의 중첩 and/or 그룹을 scope 블록(괄호)으로 보존 (desc 없는 컨테이너 collapse 시 'A AND (B OR C)' 가 'A AND B OR C' 로 평평해져 우선순위 깨지던 문제). aa_segment_lookup.py 와 동일 수정.
+# updated: 2026-07-08  — sequence dimension-restriction round-trip 지원: (1) 'WITHIN N <dim>' 토큰 + RestrictionNode + 파서/컴파일러 → AA dimension-restriction 노드 재생성. (2) sequence label strip 을 visitor 뿐 아니라 hit/visit scope 도 처리하도록 일반화 (visit-scope sequence 왕복 가능). lookup 의 'WITHIN 1 page' 를 되읽음.
 # updated: 2026-07-27  — v2.4: prop/page 디멘션 → evar 변환 옵션 (CONVERT_TO_EVAR / EVAR_SPECIAL_MAP / EVAR_DEFAULT_PROP_TO_EVAR / EVAR_TARGET_RSID + --to-evar). 정의 트리 attr name 을 variables/prop{N}·page → variables/evar{M} 로 remap (op·값·구조 보존). 특수 페어링(page→evar40, prop29→evar92)은 suite별 상단 상수.
+# updated: 2026-07-31  — EVAR_SPECIAL_MAP 에 self-mapping("prop70": "prop70") = 변환 제외 규약 추가 (기본 prop{N}→evar{N} fallback 보다 우선). + 치환 리포트 print: 세그별 [to-evar]/[keep] 한 줄 + 실행 끝에 전체 unique 집계표(어떤 prop 이 뭘로 대체됐는지 건수/세그수). metrics/* 이벤트도 [keep] 으로 집계.
 """
 CSV 입력 → AA 세그먼트 일괄 생성 또는 업데이트.
 
@@ -71,6 +75,8 @@ import csv
 import json
 import re
 import sys
+import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -144,9 +150,13 @@ LOOKUP_CSV = ""   # 예: "lookup/segment_lookup_260518_1327_CAMPAIGN NAME.csv" �
 CONVERT_TO_EVAR = False
 # 특수 페어링 — 번호가 안 맞거나 이름이 다른 것. ⚠ suite(회사)별로 다르니 여기서 확정할 것.
 #   왼/오 모두 짧은 이름(page/prop29/evar92) 또는 variables/ 풀네임 허용.
+#   ★ 좌우가 같으면(self-mapping) "변환하지 않고 원본 유지" — 아래 기본 fallback 보다 우선.
+#     eVar suite 에 evar{N} 이 존재해도 prop{N} 을 그대로 써야 하는 케이스가 있어
+#     (예: prop70 = app 트래픽 판별) 여기 명시 등재하는 것이 유일한 예외 지정 방법.
 EVAR_SPECIAL_MAP: dict[str, str] = {
     "page":   "evar40",   # pagename → evar40
     "prop29": "evar92",
+    "prop70": "prop70",   # 유지 — app 트래픽 판별용, eVar suite 에서도 prop70 그대로
 }
 # 특수맵에 없는 그 외 prop{N} → evar{N} (번호 유지) 자동 변환 여부.
 EVAR_DEFAULT_PROP_TO_EVAR = True
@@ -355,16 +365,16 @@ class SegmentRefNode:
 
 @dataclass
 class SequenceNode:
-    steps: list = field(default_factory=list)  # 각 step: ConditionNode | LogicalNode | ContainerNode
+    steps: list = field(default_factory=list)  # 각 step: ConditionNode | LogicalNode | ContainerNode | RestrictionNode
 
 
 @dataclass
 class RestrictionNode:
-    # sequence THEN-step "WITHIN N <dim>" restriction (AA dimension-restriction node).
-    # lookup renders 'WITHIN 1 page' -> rebuilt here into dimension-restriction.
+    """sequence THEN 스텝 사이의 "WITHIN N <dim>" 제약 (AA dimension-restriction 노드).
+    lookup 이 'WITHIN 1 page' 로 렌더 → 여기서 되읽어 dimension-restriction 재생성."""
     count: int
-    limit: str
-    attribute_name: str
+    limit: str              # "within" / "after"
+    attribute_name: str     # AA 풀네임, 예: "variables/page"
     line: int = 0
 
 
@@ -399,6 +409,7 @@ class Token:
 
 _RE_NAMED_SCOPE = re.compile(r"^'([^']+)'!(hit|visit|visitor)\(\s*$")
 _RE_SCOPE = re.compile(r"^(hit|visit|visitor)\(\s*$")
+# WITHIN N <dim> / AFTER N <dim> — sequence dimension-restriction 스텝 (lookup 'WITHIN 1 page')
 _RE_RESTRICTION = re.compile(r"^(WITHIN|AFTER)\s+(\d+)\s+(\S.*)$", re.IGNORECASE)
 
 
@@ -450,7 +461,8 @@ def _tokenize(text: str) -> list[Token]:
             i += 1
             continue
 
-        # WITHIN N <dim> / AFTER N <dim> -> sequence dimension-restriction step
+        # WITHIN N <dim> / AFTER N <dim> → sequence 스텝 사이 dimension-restriction
+        # (CONDITION 으로 떨어지기 전에 잡아야 함 — WITHIN 은 조건 연산자가 아님)
         if _RE_RESTRICTION.match(raw):
             tokens.append(Token("RESTRICTION", raw, line=lineno))
             i += 1
@@ -731,15 +743,16 @@ class _Parser:
             self._advance()
             return _parse_condition(t.value, t.line)
 
-        # WITHIN N <dim> -> sequence dimension-restriction step
+        # WITHIN N <dim> — sequence dimension-restriction 스텝
         if t.type == "RESTRICTION":
             self._advance()
             mr = _RE_RESTRICTION.match(t.value.strip())
-            limit = mr.group(1).lower()
+            limit = mr.group(1).lower()          # within / after
             count = int(mr.group(2))
             attr_raw = mr.group(3).strip()
-            full_var, _ = _resolve_variable(attr_raw)
-            return RestrictionNode(count=count, limit=limit, attribute_name=full_var, line=t.line)
+            full_var, _ = _resolve_variable(attr_raw)   # 'page' → 'variables/page'
+            return RestrictionNode(count=count, limit=limit,
+                                   attribute_name=full_var, line=t.line)
 
         raise DSLParseError(f"예상치 못한 토큰: '{t.value}'", line=t.line)
 
@@ -788,6 +801,7 @@ def _compile_condition(node: ConditionNode) -> dict:
 
 def _wrap_in_container(node: Any, parent_context: str) -> dict:
     """노드를 container로 감싸기 (AA 패턴 재현)."""
+    # dimension-restriction — sequence stream 안 스텝. container 로 감싸지 않고 raw 노드로.
     if isinstance(node, RestrictionNode):
         return {
             "count": node.count,
@@ -1460,6 +1474,7 @@ def _fetch_segment_container(seg_id: str, headers: dict, gcid: str) -> dict | No
 # 제거 후 sequence (THEN) 가 outer hit 의 직접 pred 가 되어 _patch_root_sequence_for_hit_scope 가
 # sequence → sequence-prefix + context=visitors 자동 변환. AA reference 룰 충족:
 #   container.context=hits → pred.func=sequence-prefix(context=visitors) → stream[i].context=visits
+# 2026-07-08: visitor 뿐 아니라 hit/visit scope 도 strip (visit-scope sequence + WITHIN round-trip 지원).
 _SEQUENCE_LABEL_SCOPE_RE = re.compile(r'\[sequence-(?:after|before|all)\]\s*(?:hit|visit|visitor)\(')
 
 
@@ -1541,7 +1556,10 @@ _RE_PROP_FULL = re.compile(r"^variables/prop(\d+)$")
 
 
 def _evar_target_name(full_name: str):
-    """variables/prop{N}·variables/page → 매핑된 variables/evar{M}. 대상 아니면 None."""
+    """variables/prop{N}·variables/page → 매핑된 variables/evar{M}. 대상 아니면 None.
+
+    EVAR_SPECIAL_MAP 이 self-mapping (예: "prop70": "prop70") 이면 입력과 같은 이름을
+    돌려준다 = "유지". 호출부는 반환값이 입력과 같으면 rewrite 하지 않는다."""
     short = full_name.split("/", 1)[1] if "/" in full_name else full_name
     if short in EVAR_SPECIAL_MAP:
         tgt = EVAR_SPECIAL_MAP[short]
@@ -1552,18 +1570,99 @@ def _evar_target_name(full_name: str):
     return None
 
 
-def _convert_dims_to_evar(node):
+def _evar_stats_new() -> dict:
+    """_convert_dims_to_evar 용 통계 컨테이너."""
+    return {"changed": Counter(), "kept": Counter(), "segref": 0}
+
+
+def _evar_label(full_name: str) -> str:
+    """리포트 표시용 짧은 이름. variables/ 는 떼고 metrics/ 는 남긴다 (출처 구분)."""
+    return full_name[len("variables/"):] if full_name.startswith("variables/") else full_name
+
+
+def _convert_dims_to_evar(node, stats: dict | None = None):
     """definition 트리 재귀 walk → attr 노드의 name(variables/prop{N}·page)을 evar 로 remap.
-    op·값·구조 보존. prop 키워드만 evar 로 바뀜 (v2.4)."""
+    op·값·구조 보존. prop 키워드만 evar 로 바뀜 (v2.4).
+
+    stats(_evar_stats_new()) 를 넘기면 치환 결과를 집계한다:
+      · changed[(old, new)] — 실제로 바뀐 디멘션
+      · kept[name]          — 유지된 것 (self-mapping / 원래 evar / metrics 이벤트)
+      · segref              — segment-ref 노드 수 (inline 은 이 함수 뒤에 일어나므로
+                              값이 0 보다 크면 리포트가 실제보다 적을 수 있다는 신호)
+    """
     if isinstance(node, dict):
-        if node.get("func") == "attr" and isinstance(node.get("name"), str):
-            tgt = _evar_target_name(node["name"])
-            if tgt:
+        func = node.get("func")
+        name = node.get("name")
+        if func == "attr" and isinstance(name, str):
+            tgt = _evar_target_name(name)
+            if tgt and tgt != name:
+                if stats is not None:
+                    stats["changed"][(_evar_label(name), _evar_label(tgt))] += 1
                 node = {**node, "name": tgt}
-        return {k: _convert_dims_to_evar(v) for k, v in node.items()}
+            elif stats is not None:
+                # tgt is None(대상 아님) 또는 tgt == name(self-mapping 유지) — 둘 다 원본 유지
+                stats["kept"][_evar_label(name)] += 1
+        elif func == "event" and isinstance(name, str):
+            # metrics/* 이벤트는 변환 대상이 아니지만 리포트에는 드러나야 한다
+            if stats is not None:
+                stats["kept"][_evar_label(name)] += 1
+        elif func == "segment-ref" and stats is not None:
+            stats["segref"] += 1
+        return {k: _convert_dims_to_evar(v, stats) for k, v in node.items()}
     if isinstance(node, list):
-        return [_convert_dims_to_evar(v) for v in node]
+        return [_convert_dims_to_evar(v, stats) for v in node]
     return node
+
+
+def _evar_stats_lines(stats: dict) -> list[str]:
+    """세그 1건의 치환 결과 → 콘솔 출력 줄들 (건수 내림차순, 빈 카운터는 생략)."""
+    lines: list[str] = []
+    if stats["changed"]:
+        body = " | ".join(f"{o}→{n} x{c}" for (o, n), c in stats["changed"].most_common())
+        lines.append(f"      [to-evar] {body}")
+    if stats["kept"]:
+        body = " | ".join(f"{k} x{c}" for k, c in stats["kept"].most_common())
+        lines.append(f"      [keep]    {body}")
+    if stats["segref"]:
+        lines.append(f"      [to-evar] ⚠ segment-ref {stats['segref']}건 — inline 은 변환 뒤에 일어나므로 "
+                     f"위 집계가 실제보다 적을 수 있음")
+    return lines
+
+
+def _disp_width(s: str) -> int:
+    """콘솔 표시 폭 — 한글/CJK 는 2칸으로 센다 (len() 으로 ljust 하면 표가 어긋남)."""
+    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in s)
+
+
+def _print_evar_summary(per_seg_stats: list[dict]) -> None:
+    """전체 세그 통합 unique 집계표. 어떤 prop 이 뭘로 대체됐는지 한눈에."""
+    if not per_seg_stats:
+        return
+    changed_hits, changed_segs = Counter(), Counter()
+    kept_hits, kept_segs = Counter(), Counter()
+    for st in per_seg_stats:
+        for key, cnt in st["changed"].items():
+            changed_hits[key] += cnt
+            changed_segs[key] += 1
+        for key, cnt in st["kept"].items():
+            kept_hits[key] += cnt
+            kept_segs[key] += 1
+
+    rows: list[tuple[str, int, int]] = []
+    for (old, new), cnt in changed_hits.most_common():
+        rows.append((f"{old} → {new}", cnt, changed_segs[(old, new)]))
+    for name, cnt in kept_hits.most_common():
+        rows.append((f"(유지) {name}", cnt, kept_segs[name]))
+    if not rows:
+        return
+
+    width = max(_disp_width(label) for label, _, _ in rows)
+    print(f"[to-evar summary] 전체 {len(per_seg_stats)}개 세그")
+    for label, cnt, segs in rows:
+        pad = " " * (width - _disp_width(label))
+        print(f"  {label}{pad}  {cnt:>4}건 / {segs:>3}세그")
+    print()
+
 
 
 def _patch_definition_for_aa(node, *, fetch_seg_pred=None):
@@ -1783,8 +1882,12 @@ def main() -> int:
     convert_to_evar = args.to_evar
     if convert_to_evar:
         _rsid_note = f" → rsid={EVAR_TARGET_RSID}" if EVAR_TARGET_RSID else ""
+        _pairs = ", ".join(f"{k}→{v}" for k, v in EVAR_SPECIAL_MAP.items() if k != v)
+        _keeps = ", ".join(k for k, v in EVAR_SPECIAL_MAP.items() if k == v)
+        _keep_note = f" / 유지: {_keeps}" if _keeps else ""
         print(f"[to-evar] prop/page → evar 변환 ON "
-              f"(special={EVAR_SPECIAL_MAP}, default prop→evar={EVAR_DEFAULT_PROP_TO_EVAR}){_rsid_note}")
+              f"(변환: {_pairs or '-'}{_keep_note}"
+              f" / 기본 prop{{N}}→evar{{N}}={EVAR_DEFAULT_PROP_TO_EVAR}){_rsid_note}")
     seg_ref_cache_paths = _resolve_cache_paths(args.cache)
     seg_ref_cache_path = seg_ref_cache_paths[0]   # save target = 첫 파일
     if len(seg_ref_cache_paths) == 1:
@@ -1965,15 +2068,18 @@ def main() -> int:
     # ── structure → DSL → JSON 변환 ──
     specs: list[dict] = []
     errors: list[tuple[int, str]] = []
+    evar_stats_all: list[dict] = []   # --to-evar 세그별 치환 통계 (summary 용)
 
     for i, row in enumerate(rows):
         dsl_text = _structure_to_dsl(row["structure"])
         dsl_text = _strip_sequence_label_tokens(dsl_text)
+        row_stats = _evar_stats_new() if convert_to_evar else None
         try:
             ast = parse_dsl(dsl_text)
             definition = compile_to_definition(ast)
             if convert_to_evar:
-                definition = _convert_dims_to_evar(definition)
+                definition = _convert_dims_to_evar(definition, row_stats)
+                evar_stats_all.append(row_stats)
                 if EVAR_TARGET_RSID:
                     row = {**row, "rsid": EVAR_TARGET_RSID}
                 if EVAR_NAME_SUFFIX and not row.get("name", "").endswith(EVAR_NAME_SUFFIX):
@@ -1982,6 +2088,9 @@ def main() -> int:
             definition = _lift_inner_hit_into_visit_root(definition)      # visit/visitor scope 보존 (server-side simplify 우회)
             definition = _patch_root_sequence_for_hit_scope(definition)   # Delayed Purchase: root sequence → sequence-prefix
             print(f"  [{i+1}] '{row['name']}' — 파싱 OK")
+            if row_stats is not None:
+                for line in _evar_stats_lines(row_stats):
+                    print(line)
             specs.append({**row, "definition": definition, "dsl": dsl_text})
         except DSLParseError as e:
             errors.append((i + 1, str(e)))
@@ -2000,6 +2109,10 @@ def main() -> int:
             return 1
 
     print()
+
+    # ── --to-evar 치환 결과 통합 집계 (dry-run/apply 분기 전이라 양쪽 다 출력됨) ──
+    if convert_to_evar:
+        _print_evar_summary(evar_stats_all)
 
     # Payload 미리보기 — 콘솔 출력 안 함 (너무 김). dryrun csv 에 ParseStatus / Mode 박힘.
 

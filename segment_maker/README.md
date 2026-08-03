@@ -296,6 +296,9 @@ python aa_create_segment_v2.4.py --input segments.csv --to-evar --apply         
 
 **(v2.4) prop/page → evar 변환** — `--to-evar` (또는 상단 `CONVERT_TO_EVAR=True`): 정의의 prop/page 디멘션을 evar 로 remap 후 생성/업데이트 (op·값·구조 보존, prop 키워드만 evar 로). 특수 페어링은 상단 `EVAR_SPECIAL_MAP`(예: `page→evar40`, `prop29→evar92`), 그 외 `prop{N}→evar{N}`(`EVAR_DEFAULT_PROP_TO_EVAR`). 변환 세그의 report suite 변경은 `EVAR_TARGET_RSID`, 변환 세그 이름 끝에 붙일 접미사는 `EVAR_NAME_SUFFIX`(기본 `"_Evar"`, 빈 값이면 미적용). ⚠ 페어링은 suite(회사)별로 다르니 상단 상수에서 확정할 것.
 
+- **변환 제외(self-mapping)**: `EVAR_SPECIAL_MAP` 에 좌우가 같은 항목(예: `"prop70": "prop70"`)을 넣으면 그 디멘션은 **변환하지 않고 원본 유지** — 기본 `prop{N}→evar{N}` fallback 보다 우선. eVar suite 에 evar{N} 이 있어도 prop 을 그대로 써야 하는 케이스의 유일한 예외 지정 방법.
+- **치환 리포트**: `--to-evar` 실행 시 세그별로 `[to-evar] old→new x건` / `[keep] name x건` 한 줄씩 출력하고, 실행 끝에 전체 unique 집계표(어떤 prop 이 뭘로 몇 건/몇 세그에서 대체·유지됐는지)를 print. `metrics/*` 이벤트도 `[keep]` 으로 집계. segment-ref 가 있으면 inline 이 변환 뒤에 일어나 집계가 실제보다 적을 수 있다는 ⚠ 표시가 붙음.
+
 > ⚠ **`--update` 는 owner 변경 시 대화형 확인을 받는다.** 기존 owner 와 `OWNER_ID` 가 다르면 세그마다 `owner {현재} -> {새값} 로 바뀝니다. 정말 진행? (Y/N)` 프롬프트가 뜨고, `y` 가 아니면 그 세그는 `SKIP(owner)` 로 건너뛴다 (남의 세그 owner 탈취 방지). **무인/스케줄 실행이면 stdin 에서 멈추므로**, owner 를 안 바꿀 거면 `OWNER_ID = None` 으로 두어 게이트 자체가 안 걸리게 할 것.
 
 CSV 필수 칼럼:
