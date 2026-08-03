@@ -13,6 +13,34 @@ python RESHAPE_contents_tier1_2_v2.0.py     # 2) 추출 CSV → union CSV 1개
 
 ---
 
+## 0. 전체 흐름 — 이 폴더는 마지막 단계입니다
+
+콘텐츠 분석은 **태깅 디버깅 → 세그먼트 제작 → 데이터 추출** 순으로 갑니다.
+이 폴더가 담당하는 건 마지막 7단계뿐이고, 앞 단계가 끝나 있어야 돌릴 수 있습니다.
+
+| # | 단계 | 방식 | 산출물 |
+|---|---|---|---|
+| 1 | 태깅 디버깅 | 거의 자동 (디버깅 툴) | 콘텐츠별 클릭 콜 목록 |
+| 2 | **디버깅 검수 + 누락 콜 추가** | **수기** | 보정된 콜 목록 |
+| 3 | input maker ref 제작 | 수기 → API 참조용 | `seg_make_ref*.csv` |
+| 4 | 디폴트 세그 제작 | API | 기본 CC_xx 세그 |
+| 5 | Visit / Delayed Order 세그 제작 | API (**eVar 필요**) | `(Visit)` / `(Delayed Purchase)` 세그 |
+| 6 | **세그 검수** | **수기** | 확정 세그 |
+| 7 | **데이터 추출·정제** | **← 이 폴더** | union CSV |
+
+**7단계에 들어가기 전 준비물** (tier 에 따라 다릅니다):
+
+| 대상 | 필요한 것 | 이 폴더에서 대응하는 것 |
+|---|---|---|
+| **Tier1** | site × 콘텐츠 영역별 **노출 여부(True/False)** | `contents_by_country.csv` |
+| **Tier2** | 남길 **value 번호** (= Workspace 테이블 컬럼 순서) | `TIER2_VALUE_N` |
+
+> 3~5단계 세그 제작 도구는 `segment_maker/` 에 있습니다
+> (`seg_make_ref*.csv` → `input_csv_maker*.py` → `aa_create_segment_v*.py`).
+> 6단계 검수를 건너뛰면 7단계 수치가 통째로 어긋나므로 반드시 거칠 것.
+
+---
+
 ## 1. 이 폴더가 푸는 문제
 
 예전에는 **같은 데이터를 두 번** 뽑았습니다.
@@ -109,9 +137,6 @@ AA Workspace 의 contents 테이블은 이렇게 생겼습니다.
 | `currency.csv` | 매출 환산 환율 | `site_code,currency_code,2026-08-03,2025-08-03` |
 | `app_O_X.csv` | 앱 론치 여부 | `site_code,App 론치 (O/X)` |
 
-> 이 repo 에는 형식만 보여주는 `*_example.csv` 가 들어 있습니다.
-> 실제로 돌릴 때는 `_example` 를 뗀 이름(`sites_input.csv` 등)으로 두세요.
-
 ### `sites_input.csv` — US 는 반드시 2행
 
 미국은 캠페인 도중 report suite 가 교체돼 RSID 가 둘로 갈립니다. **한 행으로 뽑으면
@@ -132,8 +157,8 @@ us,2026-05-19,2026-06-07         ← 신 suite
 날짜 전체를 코드에 박으면 폴더를 복사할 때 매칭이 깨져 **환산이 조용히 빠집니다**
 (현지통화 금액이 USD 인 척 나감). 그래서 연도 방식입니다.
 
-> 캠페인에 따라 **site 마다 데이터가 끝난 시점의 환율**을 써야 할 수 있습니다.
-> 그럴 땐 차수별 환율을 site 단위로 병합해 한 파일로 만드세요 (연도 헤더 방식이라 그대로 동작합니다).
+> 이 폴더의 `currency.csv` 는 **site 마다 다른 차수의 환율을 병합**한 것입니다.
+> 각 나라 데이터가 끝난 시점의 환율을 써야 해서입니다. 출처는 `currency_source.csv` 참고.
 
 ### `contents_by_country.csv` — 이 폴더의 사본이 원천
 
@@ -205,5 +230,6 @@ CSV 를 새로 뽑아 덮어쓰세요 (또는 `MATRIX_REFRESH_FROM_XLSX = True` 
 | `RESHAPE_contents_tier1_2_v2.0.md` | 정제코드 상세 문서 |
 | `site_registry.py` | site_code → 국가/법인 조회 |
 | `aa_segment_lookup.py` | 세그먼트 조회 (추출기가 import) |
-| `sites_input_example.csv` / `currency_example.csv` / `app_O_X_example.csv` | 입력 예시 — 실제 운영 시 `_example` 를 뗀 이름으로 두세요 |
-| `contents_by_country_example.csv` | 콘텐츠×국가 매트릭스 예시 (실제로는 `contents_by_country.csv`) |
+| `sites_input.csv` / `currency.csv` / `app_O_X.csv` | 입력 |
+| `currency_source.csv` | 환율 출처 기록 (site 별 차수) |
+| `contents_by_country.csv` | 콘텐츠×국가 매트릭스 (이 사본이 원천) |
