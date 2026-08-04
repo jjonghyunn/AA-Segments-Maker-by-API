@@ -14,7 +14,7 @@ Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
 
 ```bash
 # 1) 참조 세그 캐시 준비 — input maker 와 같은 단계
-python prewarm_seg_ref_cache.py --cache <name>    # 캠페인 폴더 도구 (본 repo 미포함)
+python prewarm_seg_ref_cache.py --all             # 참조 세그 캐시 준비 (그룹 전부)
 
 # 2) input maker — 글로벌 / US 각각
 python input_csv_maker.py        # → segments_input_<ts>.csv + .dsl + _WARN.csv
@@ -27,7 +27,7 @@ python aa_create_segment_v2.4.py --input segments_input_<ts>.csv --update --appl
 
 | # | 단계 | 코드 | 산출물 |
 |---|---|---|---|
-| 1 | 참조 세그 캐시 준비 | `prewarm_seg_ref_cache.py` (repo 미포함) 또는 v2.4 dry-run | `segment_ref_cache_<name>.json` |
+| 1 | 참조 세그 캐시 준비 | `prewarm_seg_ref_cache.py` 또는 v2.4 dry-run | `segment_ref_cache_<name>.json` |
 | 2 | input maker (글로벌/US) | `input_csv_maker.py` / `input_csv_maker_us.py` | `segments_input_<ts>.csv` + `.dsl` + `_WARN.csv` |
 | 3 | 세그 생성/갱신 | `aa_create_segment_v2.4.py` | AA POST/PUT + `segment_result_<ts>.csv` |
 
@@ -212,6 +212,7 @@ visit(                          ⟨1⟩ scope = visit   ← 일반 세그와 다
 | `aa_delete_segment.py` | result CSV 기반 안전 삭제 (3중 안전장치: CSV 강제, 이름 prefix 검증, `--yes` 필수) |
 | `input_csv_maker.py` | raw `seg_make_ref_*.csv` → v2.4 input CSV + `.dsl` + `_WARN.csv` 자동 변환. LCS 추출 / crystallize override / 양수·음수 site 필터 / 그룹화 |
 | `input_csv_maker_us.py` / `input_csv_maker_from_ref_batch.py` | `input_csv_maker.py` 의 variant — US 룰 / from_ref 일괄 변환 룰 차이 |
+| `prewarm_seg_ref_cache.py` | 참조 세그 캐시 사전 채움 (`name`/`description`/`rsid` 메타 포함) — 위 1단계. 상단 `SEGMENT_IDS_BY_CACHE` 에 캐시별 id 그룹을 두고 `--cache <key>` 로 그 그룹만, `--all` 로 전부, `--refresh` 로 원본 변경분 재조회 |
 
 ## 예시 파일 (형식 참고용)
 
@@ -336,12 +337,15 @@ CSV 필수 칼럼:
 
 **원본 세그가 바뀌었을 때 (중요)**
 
-1. 캐시에서 **그 항목(또는 캐시 파일)을 지운다**
-2. `prewarm_seg_ref_cache.py --cache <name>` **재실행** → 새 정의를 다시 받음
-3. 그 참조를 쓰는 **파생 세그들을 `--update` 로 다시 돌린다** (이미 만들어진 세그는 자동 반영 X)
+1. `prewarm_seg_ref_cache.py --all --refresh` → 캐시된 항목도 다시 받아 새 정의로 덮어씀
+2. 그 참조를 쓰는 **파생 세그들을 `--update` 로 다시 돌린다** (이미 만들어진 세그는 자동 반영 X)
 
-> ⚠ **1번을 건너뛰고 프리웜만 다시 돌리면 아무 일도 안 일어납니다** — 프리웜은
-> **이미 캐시에 있는 id 를 건너뜁니다**. 반드시 **먼저 지우고** 재실행할 것.
+> `--refresh` 는 정의가 **실제로 달라진 항목만** 실행 끝에 모아 보여줍니다 —
+> 2번에서 어떤 파생 세그를 다시 밀어야 하는지 그 목록으로 판단하면 됩니다.
+>
+> ⚠ **`--refresh` 없이 프리웜만 다시 돌리면 아무 일도 안 일어납니다** — 기본 동작은
+> **이미 캐시에 있는 id 를 건너뛰기** 때문입니다. (예전엔 캐시 항목을 손으로 지운 뒤
+> 재실행해야 했는데, `--refresh` 가 그 단계를 대신합니다.)
 
 ### dry-run CSV
 
