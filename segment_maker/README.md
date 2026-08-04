@@ -291,7 +291,8 @@ python aa_create_segment_v2.4.py --input segments.csv --update-or-create --apply
 python aa_create_segment_v2.4.py --input segments.csv --to-evar --apply             # (v2.4) prop/page → evar 변환 후 생성/업데이트
 ```
 
-`--input` 비우면 폴더의 최신 `segments_input_*.csv` 자동 pick.
+입력 CSV 결정 순서 — `--input <파일>` 지정 > 생략 시 상단 `INPUT_CSV`(기본 `segments_input_example.csv`) > `--input ""` 로 **빈 값**을 주면 폴더의 최신 `segments_input_*.csv` 자동 pick.
+(디폴트 파일명엔 `segments_input` 뒤에 `_` 가 없어 자동 pick 후보에는 안 잡힙니다.)
 `--lookup-by-name` (default True) — `--update-or-create` 모드에서 segment_id 빈 row 는 폴더의 `segment_lookup_*.csv` 에서 name 매칭으로 자동 채움.
 
 **(v2.4) prop/page → evar 변환** — `--to-evar` (또는 상단 `CONVERT_TO_EVAR=True`): 정의의 prop/page 디멘션을 evar 로 remap 후 생성/업데이트 (op·값·구조 보존, prop 키워드만 evar 로). 특수 페어링은 상단 `EVAR_SPECIAL_MAP`(예: `page→evar40`, `prop29→evar92`), 그 외 `prop{N}→evar{N}`(`EVAR_DEFAULT_PROP_TO_EVAR`). 변환 세그의 report suite 변경은 `EVAR_TARGET_RSID`, 변환 세그 이름 끝에 붙일 접미사는 `EVAR_NAME_SUFFIX`(기본 `"_Evar"`, 빈 값이면 미적용). ⚠ 페어링은 suite(회사)별로 다르니 상단 상수에서 확정할 것.

@@ -15,6 +15,7 @@
 # updated: 2026-07-08  — sequence dimension-restriction round-trip 지원: (1) 'WITHIN N <dim>' 토큰 + RestrictionNode + 파서/컴파일러 → AA dimension-restriction 노드 재생성. (2) sequence label strip 을 visitor 뿐 아니라 hit/visit scope 도 처리하도록 일반화 (visit-scope sequence 왕복 가능). lookup 의 'WITHIN 1 page' 를 되읽음.
 # updated: 2026-07-27  — v2.4: prop/page 디멘션 → evar 변환 옵션 (CONVERT_TO_EVAR / EVAR_SPECIAL_MAP / EVAR_DEFAULT_PROP_TO_EVAR / EVAR_TARGET_RSID + --to-evar). 정의 트리 attr name 을 variables/prop{N}·page → variables/evar{M} 로 remap (op·값·구조 보존). 특수 페어링(page→evar40, prop29→evar92)은 suite별 상단 상수.
 # updated: 2026-07-31  — EVAR_SPECIAL_MAP 에 self-mapping("prop70": "prop70") = 변환 제외 규약 추가 (기본 prop{N}→evar{N} fallback 보다 우선). + 치환 리포트 print: 세그별 [to-evar]/[keep] 한 줄 + 실행 끝에 전체 unique 집계표(어떤 prop 이 뭘로 대체됐는지 건수/세그수). metrics/* 이벤트도 [keep] 으로 집계.
+# updated: 2026-08-04  — 배너/사용법 문자열에 남아있던 v2.2 잔재를 v2.4 로 정정. INPUT_CSV 기본값을 실재하는 디폴트 파일로 교체 (4곳 모두 없는 파일을 가리켜 --input 없이 실행하면 즉시 에러였음).
 """
 CSV 입력 → AA 세그먼트 일괄 생성 또는 업데이트.
 
@@ -26,14 +27,14 @@ v2.2 변경점 (vs v2.1):
     어디서 실행하든 segments.csv 가 segment_maker/ 안에 있으면 자동 인식.
 
 사용법 (--input 비우면 폴더의 최신 segments_input_*.csv 자동 pick):
-  python aa_create_segment_v2.2.py --input segments.csv                     # dry-run (CREATE)
-  python aa_create_segment_v2.2.py --input segments.csv --apply             # 실제 POST (CREATE)
-  python aa_create_segment_v2.2.py --update --apply                         # 실제 PUT (모두 update, segment_id 컬럼 모두 박혀야)
-  python aa_create_segment_v2.2.py --update-or-create --apply               # mixed: id 있으면 PUT, 없으면 POST
+  python aa_create_segment_v2.4.py --input segments.csv                     # dry-run (CREATE)
+  python aa_create_segment_v2.4.py --input segments.csv --apply             # 실제 POST (CREATE)
+  python aa_create_segment_v2.4.py --update --apply                         # 실제 PUT (모두 update, segment_id 컬럼 모두 박혀야)
+  python aa_create_segment_v2.4.py --update-or-create --apply               # mixed: id 있으면 PUT, 없으면 POST
        # ↑ --lookup-by-name 이 default True 라 segment_id 빈 row 는
        #   폴더의 segment_lookup_*.csv 에서 name 매칭으로 자동 채움.
        #   매칭되면 PUT (update), 없으면 POST (create). 가장 일반 운영 흐름.
-  python aa_create_segment_v2.2.py --update-or-create --no-lookup-by-name --apply
+  python aa_create_segment_v2.4.py --update-or-create --no-lookup-by-name --apply
        # ↑ lookup csv 무시하고 강제 POST. lookup csv 에 동일 name 있으면 경고만 출력.
 
   # (v2.4) prop/page → evar 변환:
@@ -118,7 +119,8 @@ INPUT_FILE = "segments.dsl"
 
 # ─── 입력 / 캐시 / lookup (v2.2 사용자 설정) ───
 
-INPUT_CSV = "segments_input_260526_1653.csv" #global
+INPUT_CSV = "segments_input_example.csv"   # 디폴트 입력. 다른 파일을 쓰려면 --input 으로 지정.
+# INPUT_CSV = "segments_input_260526_1653.csv" #global
 # INPUT_CSV = "segments_input_260526_1313_us.csv"
 # INPUT_CSV = "segments_input_260526_1657_scenario.csv"
 # INPUT_CSV = "segments_from_ref_260519_1945_recomm15.csv"
@@ -2018,7 +2020,7 @@ def main() -> int:
             return 1
 
     action_label = f"{mode_label} / {'APPLY' if args.apply else 'DRY-RUN'}"
-    print(f"[{requested_at}] AA segment maker v2.2 (CSV) — {action_label}")
+    print(f"[{requested_at}] AA segment maker v2.4 (CSV) — {action_label}")
     print(f"  Company : {COMPANY_ID}")
     print(f"  Input   : {input_path}")
     print(f"  Segments: {len(rows)}개")
