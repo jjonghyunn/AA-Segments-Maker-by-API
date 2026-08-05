@@ -1,5 +1,5 @@
 # data_extract/extract_data.md  
-<sub>2026-07-31  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-05  Jonghyun Park w/ Claude</sub>  
 
 Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트릭 이름 + 실제 데이터 값을 동시다발적으로 추출.
 
@@ -12,7 +12,7 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 | `site_registry.py` | `site_code → (subsidiary, country, rsid)` 매핑. `lookup_site()` 함수 제공 |
 | `table_data_extract_example.csv` / `stack_data_extract_example.csv` | 출력 2종(가로형 table / 세로형 stack) 형식 예시 (placeholder 값) |
 | `app_O_X_example.csv` / `currency_example.csv` / `product_category_example.yaml` | **입력 참조 파일 형식 예시.** 실제 파일(`app_O_X.csv` / `currency.csv` / `product_category.yaml`)은 운영 데이터라 repo 미포함 — `_example` 을 뗀 이름으로 본인 데이터를 채워 같은 폴더에 저장할 것 |
-| `_contents/` (하위폴더) | **캠페인 콘텐츠(콘텐츠 배너·시나리오) 분석 전용** 변형. contents 프로젝트의 site × device 5종(pc/mobile/app/android/ios) payload 분기 + `RESHAPE_contents` 후처리(환율·Delayed 합산·SITE CODE 정규화)가 묶인 도구 세트. generic `extract_data_v4.3.py` 와 별개 — 콘텐츠 캠페인 추출은 여기 사용. 추출: `_contents/extract_data_v3.2_contents.py`, 정제 상세: `_contents/RESHAPE_contents_v1.1.md` |
+| `_contents_tier1_2_uni/` (하위폴더) | **캠페인 콘텐츠(콘텐츠 배너·시나리오) 분석 전용** 변형. contents 프로젝트의 site × device payload 분기 + Tier1+Tier2 통합 추출 + `RESHAPE_contents_tier1_2` 후처리(환율·Delayed 합산·SITE CODE 정규화)가 묶인 도구 세트. generic `extract_data_v4.3.py` 와 별개 — 콘텐츠 캠페인 추출은 여기 사용. 추출: `_contents_tier1_2_uni/extract_data_v4.3_contents.py`, 정제 상세: `_contents_tier1_2_uni/RESHAPE_contents_tier1_2_v2.0.md` |
 
 ## v4.3 신규 기능 (2026-07-29)
 

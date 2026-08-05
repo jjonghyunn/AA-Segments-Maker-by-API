@@ -1,5 +1,5 @@
 # AA-Segments-Maker-by-API  
-<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-05  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
@@ -14,6 +14,7 @@ AA-Segments-Maker-by-API/
 │   ├── aa_segment_lookup.py        (ID/이름 검색 → CSV + .dsl 역변환)
 │   ├── aa_segment_lookup_from_pjt.py (project 안 panel 의 segment 들 일괄 lookup)
 │   ├── aa_delete_segment.py        (안전 삭제, 3중 안전장치)
+│   ├── prewarm_seg_ref_cache.py    (참조 세그 캐시 사전 채움 — 캐시별 id 그룹 / --all / --refresh)
 │   ├── input_csv_maker.py          (raw seg_make_ref → input CSV 자동 변환)
 │   └── input_csv_maker_us.py / _from_ref_batch.py  (us / from_ref 일괄 variant)
 ├── utils/                  # 유틸리티
@@ -48,15 +49,18 @@ AA-Segments-Maker-by-API/
 cd segment_maker
 python input_csv_maker.py                  # → segments_input_<ts>.csv  (형식: segments_input_example.csv)
 
-# 2) dry-run 으로 파싱 검증 → 문제 없으면 실제 생성
+# 2) 참조 세그 캐시 준비 (선택 — v2.4 dry-run 이 자동으로 채우기도 함)
+python prewarm_seg_ref_cache.py --all      # → segment_ref_cache_<name>.json
+
+# 3) dry-run 으로 파싱 검증 → 문제 없으면 실제 생성
 python aa_create_segment_v2.4.py --input segments_input_<ts>.csv                     # dry-run
 python aa_create_segment_v2.4.py --input segments_input_<ts>.csv --update-or-create --apply
-#   → segment_v2.2_result_<ts>.csv  (형식: segments_result_example.csv)
+#   → segment_result_<ts>.csv  (형식: segments_result_example.csv)
 
-# 3) 만든 세그먼트 이름으로 재조회 (id/structure 확인)
+# 4) 만든 세그먼트 이름으로 재조회 (id/structure 확인)
 python aa_segment_lookup.py --search "[CAMPAIGN NAME]"     # → lookup/segment_lookup_<ts>.csv
 
-# 4) Workspace 프로젝트 패널 데이터 추출
+# 5) Workspace 프로젝트 패널 데이터 추출
 cd ../data_extract
 python extract_data_v4.3.py                # sites_input.csv 의 site 별로 추출
 #   → stack_data_extract_<site>_<ts>.csv  (형식: stack_data_extract_example.csv)
@@ -77,6 +81,7 @@ python RESHAPE_standard_v1.7.py            # union 정제
 | `aa_segment_lookup.py` | ID 또는 이름 키워드로 검색 → CSV (owner 이름/이메일 + structure 포함) + `.dsl` 역변환. 결과는 `lookup/` 하위. `--search` 는 모든 키워드(첫 키워드 포함)를 이름 **연속 substring** 으로 AND (v1.2), owner 보강은 AA `GET /users` (v1.1). `SEARCH_RESULT_LIMIT` 상수로 상한 조정. `--modified-after/before YYYY-MM-DD` 로 수정일 필터(AA 가 생성일 미제공 → `modified` 기준, both inclusive) |
 | `aa_segment_lookup_from_pjt.py` | project 의 panel 들이 참조하는 segment 목록 일괄 lookup (출력 포맷 동일, `lookup/` 하위) |
 | `aa_delete_segment.py` | result CSV 기반 안전 삭제 (3중 안전장치: CSV 강제 / 이름 prefix / `--yes`) |
+| `prewarm_seg_ref_cache.py` | 참조 세그 캐시(`segment_ref_cache_<name>.json`) 사전 채움 — `SEGMENT_IDS_BY_CACHE` 캐시별 id 그룹, `--cache <key>` / `--all` / `--refresh` |
 
 ### utils/ — 유틸리티
 

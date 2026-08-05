@@ -1,5 +1,5 @@
 # RESHAPE_contents_tier1_2_v2.0.py — 정제코드 가이드  
-<sub>2026-08-03  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-05  Jonghyun Park w/ Claude</sub>  
 
 추출 CSV 를 읽어 보고서용 **union CSV 1개**로 만듭니다.
 Tier1(넓은 범위)과 Tier2(좁은 범위)를 한 번에 처리합니다.
@@ -163,7 +163,7 @@ rate = currency.get((site.lower(), year)) or currency.get((site, year))
 ### 이 폴더 `currency.csv` 의 특이점
 
 site 마다 **데이터가 끝난 시점의 차수 환율**을 써야 해서, 여러 차수 스냅샷을 **병합**했습니다.
-출처는 `currency_source.csv` 에 site 별로 기록돼 있습니다.
+출처는 `currency_source.csv` 에 site 별로 기록돼 있습니다. (repo 미포함 — 운영 파일)
 
 | 차수 | 적용 site 예 |
 |---|---|

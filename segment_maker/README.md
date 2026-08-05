@@ -1,5 +1,5 @@
 # segment_maker/  
-<sub>2026-08-03  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-04  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
 

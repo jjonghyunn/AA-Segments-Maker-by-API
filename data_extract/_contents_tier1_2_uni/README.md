@@ -1,5 +1,5 @@
 # contents Tier1 + Tier2 통합 추출·정제 (`_contents_tier1_2_uni`)  
-<sub>2026-08-03  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-05  Jonghyun Park w/ Claude</sub>  
 
 캠페인 메인 페이지의 **콘텐츠(CC_xx) 블록별 성과**(노출·클릭·주문·매출)를
 Adobe Analytics 에서 뽑아 보고서용 CSV 한 장으로 만드는 폴더입니다.
@@ -162,6 +162,8 @@ AA Workspace 의 contents 테이블은 이렇게 생겼습니다.
 
 ## 5. 입력 파일 3종
 
+> **repo 미포함(운영 데이터)** — 이 폴더에는 `*_example` 판만 들어 있다. `sites_input_example.csv` 등으로 형식을 확인하고 `_example` 을 뗀 이름으로 본인 데이터를 채워 같은 폴더에 저장해야 실행된다.
+
 | 파일 | 역할 | 형식 |
 |---|---|---|
 | `sites_input.csv` | 뽑을 나라와 기간 | `site_code,start_date,end_date` |
@@ -261,7 +263,7 @@ CSV 를 새로 뽑아 덮어쓰세요 (또는 `MATRIX_REFRESH_FROM_XLSX = True` 
 | `RESHAPE_contents_tier1_2_v2.0.md` | 정제코드 상세 문서 |
 | `site_registry.py` | site_code → 국가/법인 조회 |
 | `aa_segment_lookup.py` | 세그먼트 조회 (추출기가 import) |
-| `sites_input.csv` / `currency.csv` / `app_O_X.csv` | 입력 |
-| `currency_source.csv` | 환율 출처 기록 (site 별 차수) |
-| `contents_by_country.csv` | 콘텐츠×국가 매트릭스 (이 사본이 원천) |
+| `sites_input.csv` / `currency.csv` / `app_O_X.csv` | 입력 — **repo 미포함(운영 데이터)**, `*_example` 판으로 형식 확인 후 직접 채울 것 |
+| `currency_source.csv` | 환율 출처 기록 (site 별 차수) — repo 미포함(운영 데이터) |
+| `contents_by_country.csv` | 콘텐츠×국가 매트릭스 (이 사본이 원천) — repo 미포함, `contents_by_country_example.csv` 참조 |
 | `aa-seg-by-api-ref_img.png` | 차수별 반복 흐름도 (README 0-1) |
