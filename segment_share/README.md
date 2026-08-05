@@ -40,7 +40,7 @@ repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_s
 | user7@company_name.com | YOUR_LOGIN_ID | User 7 |
 | user8@... | YOUR_LOGIN_ID | User 8 |
 
-ID lookup 은 상위 폴더의 `company_name_aa_id_*.csv` 자동 pick (`AA_USER_CSV` — 가장 최신 timestamp). **이 CSV 는 repo 에 포함되지 않는다** (회사 인원 목록이라 미업로드) — `../utils/find_user_id.py --all --csv company_name_aa_id_<ts>.csv` 로 직접 생성해 repo 루트 상위에 두면 된다. 없으면 `AA_USER_CSV = None` 으로 두고 owner 이름 enrich 없이 동작.
+ID lookup 은 상위 폴더의 `company_name_aa_id_*.csv` 자동 pick (`AA_USER_CSV` — 가장 최신 timestamp). **이 CSV 는 repo 에 포함되지 않는다** (회사 인원 목록이라 미업로드) — `../utils/find_user_id.py --all --csv company_name_aa_id_<ts>.csv` 로 직접 생성해 repo 루트에 두면 된다. 없으면 `AA_USER_CSV = None` 으로 두고 owner 이름 enrich 없이 동작.
 
 ## 실행
 
