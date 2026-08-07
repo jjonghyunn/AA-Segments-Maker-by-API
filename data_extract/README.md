@@ -1,5 +1,5 @@
 # data_extract  
-<sub>2026-07-28  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-03  Jonghyun Park w/ Claude</sub>  
 
 Adobe Workspace project 의 panel × reportlet 에서 세그먼트/메트릭 이름 + 실제 데이터 값을 동시다발적으로 추출하고, 그 결과를 정제하는 도구 모음.
 

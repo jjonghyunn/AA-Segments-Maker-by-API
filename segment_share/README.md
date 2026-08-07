@@ -1,5 +1,5 @@
 # segment_share/ — segment 키워드 매칭 → 일괄 share 추가 (운영 사본)  
-<sub>2026-07-30  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-05  Jonghyun Park w/ Claude</sub>  
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_share
 
