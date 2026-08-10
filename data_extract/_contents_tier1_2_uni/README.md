@@ -1,5 +1,5 @@
 # contents Tier1 + Tier2 통합 추출·정제 (`_contents_tier1_2_uni`)  
-<sub>2026-08-05  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-10  Jonghyun Park w/ Claude</sub>  
 
 캠페인 메인 페이지의 **콘텐츠(CC_xx) 블록별 성과**(노출·클릭·주문·매출)를
 Adobe Analytics 에서 뽑아 보고서용 CSV 한 장으로 만드는 폴더입니다.
@@ -160,7 +160,7 @@ AA Workspace 의 contents 테이블은 이렇게 생겼습니다.
 
 ---
 
-## 5. 입력 파일 3종
+## 5. 입력 파일 4종
 
 > **repo 미포함(운영 데이터)** — 이 폴더에는 `*_example` 판만 들어 있다. `sites_input_example.csv` 등으로 형식을 확인하고 `_example` 을 뗀 이름으로 본인 데이터를 채워 같은 폴더에 저장해야 실행된다.
 
@@ -169,6 +169,7 @@ AA Workspace 의 contents 테이블은 이렇게 생겼습니다.
 | `sites_input.csv` | 뽑을 나라와 기간 | `site_code,start_date,end_date` |
 | `currency.csv` | 매출 환산 환율 | `site_code,currency_code,2026-08-03,2025-08-03` |
 | `app_O_X.csv` | 앱 론치 여부 | `site_code,App 론치 (O/X)` |
+| `contents_by_country.csv` | 나라별 콘텐츠 노출 매핑 | 아래 전용 섹션 참조 |
 
 ### `sites_input.csv` — US 는 반드시 2행
 

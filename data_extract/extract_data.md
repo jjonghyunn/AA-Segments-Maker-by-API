@@ -1,5 +1,5 @@
 # data_extract/extract_data.md  
-<sub>2026-08-05  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-10  Jonghyun Park w/ Claude</sub>  
 
 Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트릭 이름 + 실제 데이터 값을 동시다발적으로 추출.
 
@@ -337,8 +337,8 @@ data_extract/
 
 ```
 output/
-├── stack_data_extract_au_260610_1030          ← au site long unpivot (RESHAPE 입력)
-├── table_data_extract_au_260610_1030        ← au site AA 테이블 모양 가로형 (1행=item)
+├── stack_data_extract_au_260610_1030.csv      ← au site long unpivot (RESHAPE 입력)
+├── table_data_extract_au_260610_1030.csv      ← au site AA 테이블 모양 가로형 (1행=item)
 ├── stack_data_extract_uk_260610_1030.csv
 ├── table_data_extract_uk_260610_1030.csv
 └── ...

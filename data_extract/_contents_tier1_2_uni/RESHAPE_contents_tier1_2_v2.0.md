@@ -1,5 +1,5 @@
 # RESHAPE_contents_tier1_2_v2.0.py — 정제코드 가이드  
-<sub>2026-08-05  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-10  Jonghyun Park w/ Claude</sub>  
 
 추출 CSV 를 읽어 보고서용 **union CSV 1개**로 만듭니다.
 Tier1(넓은 범위)과 Tier2(좁은 범위)를 한 번에 처리합니다.
@@ -198,7 +198,7 @@ site 마다 **데이터가 끝난 시점의 차수 환율**을 써야 해서, �
 | 파일 | 출처 |
 |---|---|
 | `stack_data_extract_<site>_<ts>.csv` | 현행 `extract_data_v4.3_contents.py` |
-| `column_mapping_<site>_<ts>.csv` | 구버전 `extract_data_v3.2_contents.py` |
+| `column_mapping_<site>_<ts>.csv` | 구버전 추출기 (v3.2 계열, repo 미포함) |
 
 - **site 별 최신 ts 1개씩**만 씁니다 (site 마다 추출 시각이 달라도 됨)
 - 같은 site 에 두 형식이 다 있으면 ts 가 더 최신인 쪽

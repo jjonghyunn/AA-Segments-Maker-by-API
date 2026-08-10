@@ -1,5 +1,5 @@
 # extract_data_v4.3_contents.py — 추출기 가이드  
-<sub>2026-08-03  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-10  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics Workspace 프로젝트의 패널/테이블을 그대로 읽어 `/reports` API 로 재현하고,
 결과를 CSV 2개로 떨구는 도구입니다. 범용판 `extract_data_v4.3.py` 의 **contents 전용 분기본**입니다.
@@ -125,7 +125,7 @@ metric_origin, metric, segments, device, value1 [, bd*_...]
 
 ### 구버전 `column_mapping_*` 과의 관계
 
-옛 `extract_data_v3.2_contents.py` 는 `column_mapping_<site>_<ts>.csv` 를 떨궜습니다.
+구버전 추출기(v3.2 계열, repo 미포함)는 `column_mapping_<site>_<ts>.csv` 를 떨궜습니다.
 컬럼이 1:1 대응하므로 정제코드는 **둘 다 인식**합니다.
 
 | 구 `column_mapping` | 신 `stack` |
