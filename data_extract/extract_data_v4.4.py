@@ -1,5 +1,19 @@
-# extract_data_v4.3.py
-# 2026-07-29  Jonghyun Park w/ Claude
+# extract_data_v4.4.py
+# 2026-08-14  Jonghyun Park w/ Claude
+# v4.4 (2026-08-14): sites_input.csv 에 **시각(time) 컷** 컬럼 2개 추가 —
+#   start_time / end_time (HH:MM). 채우면 그 site 는 "시작일 SH시 → 종료일 EH시" **연속 구간 1개**만
+#   추출한다 (중간 밤·새벽 포함. 매일 반복되는 시간대가 아님).
+#     · end_time 는 **inclusive** — 그 분의 59초까지. 배타적 끝 = end_time + 1분.
+#       → `00:00`~`23:59` 은 **시각 미지정과 dateRange 문자열까지 완전히 같은 결과**가 된다.
+#       (0~12 / 12~24 로 쪼개 합하면 full-day 와 정확히 일치 — 경계 중복·누락 없음)
+#     · 컬럼이 없거나 둘 다 비면 달력일 기준 = **v4.3 과 100% 동일 출력**(컬럼도 안 늘어남).
+#       한쪽만 채우면 경고 후 달력일로 fallback.
+#     · 시각 컷이면 출력 CSV 에 start_time/end_time 컬럼 2개 추가 + 파일명에 `_t0000-1159` 태그
+#       (같은 site 를 시간대만 바꿔 여러 번 돌릴 때 앞 run 을 덮어쓰는 사고 방지 — 아래
+#        GROUP_TAG_IN_FILENAME 주석의 2026-07-31 유실 사례와 같은 구조).
+#     · MONTHLY 병용 시 첫 조각에만 SH, 마지막 조각에만 EH 적용 (중간 달은 온전한 달력일).
+#     · CLI --times HH:MM-HH:MM (전 site 강제) / --no-times (sites_input 의 시각 컬럼 무시).
+#   ※ 그 외 추출 로직은 v4.3 과 동일.
 # v4.3 (2026-07-29): site ↔ 패널 매칭 2종 추가. 전 사본 공통 코드이며, 동작 여부는 상단 상수로만 갈린다.
 #   ① 패널 분류(group) 분기 — 패널을 이름 키워드로 분류하고(PANEL_GROUP_RULES),
 #      sites_input 의 분류 컬럼으로 site 마다 어느 분류의 패널을 돌지 정한다.
@@ -9,7 +23,7 @@
 #      **기본 미사용** — 상수가 전부 비어 있어, 설정하기 전에는 모든 패널을 그대로 추출한다
 #   ② SITE_PANEL_SITES — 패널명에 **site_code 가 토큰으로** 들어있으면 그 site 전용 패널로 보고,
 #      등록 site 는 전용 패널만 / 미등록 site 는 공용 패널만 돈다 (기존 US·Global 접두 룰 대체).
-#      토큰 경계(SITE_PANEL_BOUNDARY)로 짧은 site_code(예: 'in')가 'inside'/'main' 에 걸리는 오탐을 막는다.
+#      토큰 경계(SITE_PANEL_BOUNDARY)로 'hq' 가 'second'/'section' 에 걸리는 오탐을 막는다.
 #      비어 있으면([]) 기존 접두 룰이 그대로 쓰인다. SITE_PANEL_ALIAS 로 패널 키워드 지정 가능.
 #   하위호환 3중 안전장치 — 다른 폴더에 그대로 복사해도 조용히 데이터가 빠지지 않게:
 #      · PANEL_GROUP_COLUMN 이 비었거나 sites_input 에 그 컬럼이 없으면 → 분류 필터 미적용
@@ -233,6 +247,24 @@ MONTHLY: bool = False
 #   → 연도별 폴더 사본(y25/y26)을 만들지 않고 폴더 1개로 두 연도를 뽑기 위한 옵션.
 YEAR_OFFSETS: list[int] = [0]
 
+# ─── 시각(time) 컷 (v4.4) ───────────────────────────────────────────
+# sites_input.csv 에 아래 두 컬럼을 추가하면 그 site 는 지정 **시각 구간**만 추출한다.
+#   site_code,start_date,end_date,start_time,end_time
+#   in,2026-06-01,2026-06-03,09:00,18:00
+#     → dateRange '2026-06-01T09:00:00.000/2026-06-03T18:01:00.000'
+#       = 6/1 09시부터 6/3 18:59:59 까지 **통으로 한 구간** (6/1 밤·6/2 새벽도 포함).
+#       "매일 09~18시만" 같은 반복 시간대가 아니다 — 그건 dateRange 하나로 표현할 수 없다.
+#
+# 경계 규칙: end_time 는 **inclusive** (그 분의 59초까지) → 배타적 끝 = end_time + 1분.
+#   · `00:00`~`23:59` = 시각 미지정과 **완전히 같은 결과** (문자열까지 동일).
+#   · `00:00~11:59` + `12:00~23:59` 를 합하면 full-day 와 정확히 일치 (중복·누락 없음).
+#
+# 하위호환: 컬럼이 없거나 둘 다 비면 달력일 기준 = v4.3 과 100% 동일 (출력 컬럼도 안 늘어남).
+#   한쪽만 채우면 경고 후 달력일로 fallback (조용히 틀린 기간을 뽑지 않게).
+# 컬럼명을 바꿔 쓰고 싶으면 아래 두 상수만 고치면 된다.
+TIME_COLUMN_START = "start_time"
+TIME_COLUMN_END   = "end_time"
+
 # ─── N단계 breakdown (행 차원 재귀 분해) ────────────────────────────
 # dim1(행 = dimensionSettings[0]) 의 각 item 을 하위 차원으로 분해해서 추출.
 #   BREAKDOWN_ENABLED  : False 면 v3.4 동작(분해 안 함, dim1 만).
@@ -349,13 +381,13 @@ INCLUDE_GLOBAL_FOR_US = False  # CLI --include-global-for-us 로 override
 # 아래 목록에 site_code 를 넣으면 **패널명에 그 site_code 가 들어간 패널에서만** 그 site 를 뽑는다.
 #
 #   SITE_PANEL_SITES = []                 → 미사용. 위 US/Global 접두 룰만 적용된다.
-#   SITE_PANEL_SITES = ["us_old","in"]    → 접두 룰 **대신** 아래 규칙 적용:
+#   SITE_PANEL_SITES = ["us_old","sec"]   → 접두 룰 **대신** 아래 규칙 적용:
 #       · 패널명에 등록 site_code 가 든 패널 = 그 site 전용 → 그 site 에서만 RUN
 #       · 어느 등록 site_code 도 없는 패널 = 공용 → **미등록 site 에서만** RUN
 #         (등록 site 는 전용 패널만 봄. INCLUDE_GLOBAL_FOR_US=True 면 공용 패널도 같이 RUN)
 #
 # 매칭은 **토큰 경계** 기준(대소문자 무시) — 영숫자·언더바가 아닌 문자(또는 문자열 끝)로 둘러싸여야 한다.
-#   'in'     → 'IN B2B' ✓ / '[IN]' ✓ / 'IN - B2B' ✓ / 'inside' ✗ 'main' ✗ 'point' ✗
+#   'hq'    → 'HQ B2B' ✓ / '[HQ]' ✓ / 'HQ - B2B' ✓ / 'second' ✗ 'insect' ✗ 'section' ✗
 #   'us_old' → 'US_old B2B (Y25용)' ✓ / 'US B2B' ✗ (us 뒤가 언더바라 'us' 토큰도 아님)
 # 패널명이 site_code 와 다르게 적혀 있으면 SITE_PANEL_ALIAS 로 키워드를 따로 지정한다.
 SITE_PANEL_SITES: list[str] = []
@@ -383,7 +415,7 @@ SITE_PANEL_BOUNDARY = r"(?<![0-9A-Za-z_]){kw}(?![0-9A-Za-z_])"
 #   site 마다 "이 site 는 어느 분류의 패널에서 뽑을지" 를 정한다.
 #   분류가 안 맞는 패널은 그 site 에서 skip 된다.
 #
-# 설정 예 (한 캠페인을 B2B / B2C 로 나눈 사례 — **어디까지나 예시**다):
+# 설정 예 (CAMPAIGN NAME 캠페인의 B2B / B2C 분리 — **어디까지나 예시**다):
 #     PANEL_GROUP_COLUMN        = "B2B_B2C"
 #     PANEL_GROUP_RULES         = [("B2B", "B2B"), ("B2C", "B2C")]
 #     PANEL_GROUP_SITE_DEFAULT  = "B2B"
@@ -410,8 +442,7 @@ PANEL_GROUP_OFF           = ""   # 미사용 sentinel — 이 값이면 분류 �
 # 여기 등록된 분류는 전역 YEAR_OFFSETS 대신 이 offset 목록만 돈다 (미등록 분류 = YEAR_OFFSETS).
 # 기본 미사용({}). 특정 분류만 연도 확장을 막고 싶을 때 쓴다.
 #   예) {"B2C": [0]} — 그 분류 site 는 올해만. 다른 연도는 sites_input 에 행을 따로 넣는다.
-#       (사례: 그 분류가 신 report suite 에만 있어 연도 -1 이 빈 run 이 되는 경우. 이전 연도는
-#        구 suite site 행을 sites_input 에 따로 넣어 뽑는다)
+#       (CAMPAIGN NAME 사례: B2C 는 us 신 suite 뿐이라 연도 -1 이 빈 run 이 됨. 2025 는 us_old 행으로 별도 추출)
 PANEL_GROUP_YEAR_OFFSETS: dict[str, list[int]] = {}
 
 # ─── site↔패널 룰 면제 분류 ─────────────────────────────────────────
@@ -424,7 +455,7 @@ PANEL_GROUP_SKIP_SITE_PANEL_RULE: list[str] = []
 # ─── 추가 세그먼트 (이름 검색 → globalFilter 적용) ─────────────────
 # 비어있으면 v2 와 동일 동작. 항목 하나 = 추가 segment 1개.
 # 항목은 segment_id (직접 지정) 또는 name_keywords (이름 검색) 둘 중 하나 사용.
-#   segment_id    : 세그먼트 ID 직접 지정 — "세그먼트_아이디_넘버"
+#   segment_id    : 세그먼트 ID 직접 지정 — "s200001591_69829951bd7205268da08767"
 #                   검색 단계 생략, 바로 globalFilter 에 추가. lookup CSV/DSL 도 생성 안 함.
 #                   (이미 lookup 으로 ID 확정한 경우 이게 가장 빠름)
 #   name_keywords : 세그먼트 이름 검색. 두 가지 형식 지원:
@@ -822,15 +853,58 @@ def _slugify(name: str) -> str:
     return s.strip("_")
 
 
+# ─── 시각(time) 정규화 (v4.4) ──────────────────────────────────────
+def _format_time(h) -> str:
+    """시:분 값을 항상 'HH:MM' 두 자리로 보정. 비어있거나 해석 불가면 '' 반환.
+    CSV 손입력('9', '9:0', ' 09:00 ')과 엑셀 시간셀(datetime.time)을 모두 받는다.
+      '9' → '09:00' / '9:5' → '09:05' / time(5,59) → '05:59' / '' · 'nan' → ''
+    시:분만 쓰고 초는 무시한다 (AA dateRange 를 분 단위로만 끊기 때문)."""
+    if h is None:
+        return ""
+    from datetime import time as _time, datetime as _dt
+    if isinstance(h, (_time, _dt)):
+        return f"{h.hour:02d}:{h.minute:02d}"
+    s = str(h).strip()
+    if not s or s.lower() == "nan":
+        return ""
+    parts = s.split(":")
+    try:
+        hour = int(parts[0].strip())
+        minute = int(parts[1].strip()) if len(parts) > 1 and parts[1].strip() else 0
+    except ValueError:
+        print(f"  ⚠ 시각 형식 해석 불가: {h!r} — 무시하고 달력일 기준으로 처리")
+        return ""
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        print(f"  ⚠ 시각 범위 초과: {h!r} (00:00~23:59 만 허용) — 무시하고 달력일 기준으로 처리")
+        return ""
+    return f"{hour:02d}:{minute:02d}"
+
+
 # ─── dateRange override 형식 ───────────────────────────────────────
-def _build_date_range_definition(start_date: str, end_date: str) -> str:
-    """ISO YYYY-MM-DD 두 개 → AA dateRange definition 형식.
-    예: '2026-05-11', '2026-05-17' → '2026-05-11T00:00:00.000/2026-05-18T00:00:00.000'
-    (end 는 다음날 00:00:00 — v1 의 _convert_date_range 와 동일 컨벤션)"""
-    from datetime import datetime as _dt, timedelta
-    start_dt = _dt.strptime(start_date, "%Y-%m-%d")
-    end_dt = _dt.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
-    return f"{start_dt:%Y-%m-%dT}00:00:00.000/{end_dt:%Y-%m-%dT}00:00:00.000"
+def _build_date_range_definition(start_date: str, end_date: str,
+                                 start_time: str = "", end_time: str = "") -> str:
+    """ISO YYYY-MM-DD 두 개 (+ v4.4: 선택 HH:MM 두 개) → AA dateRange definition 형식.
+
+    시각 미지정 (기존 동작):
+      '2026-05-11', '2026-05-17' → '2026-05-11T00:00:00.000/2026-05-18T00:00:00.000'
+      (end 는 다음날 00:00:00 — v1 의 _convert_date_range 와 동일 컨벤션)
+
+    시각 지정 (v4.4): end_time 는 **inclusive**(그 분의 59초까지) → 배타적 끝 = +1분.
+      '2026-05-11','2026-05-17','09:00','18:00'
+        → '2026-05-11T09:00:00.000/2026-05-17T18:01:00.000'
+      '00:00'~'23:59' 이면 23:59+1분 = 익일 00:00 이라 **미지정 결과와 문자열까지 동일**해진다.
+      (그래서 00:00~11:59 + 12:00~23:59 를 합하면 full-day 와 정확히 일치한다)
+    """
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    if start_time and end_time:
+        sh, sm = (int(v) for v in start_time.split(":"))
+        eh, em = (int(v) for v in end_time.split(":"))
+        start_dt = start_dt.replace(hour=sh, minute=sm)
+        end_dt = end_dt.replace(hour=eh, minute=em) + timedelta(minutes=1)
+    else:
+        end_dt = end_dt + timedelta(days=1)
+    return f"{start_dt:%Y-%m-%dT%H:%M:%S}.000/{end_dt:%Y-%m-%dT%H:%M:%S}.000"
 
 
 # ─── 연도 shift / 월 분할 (v4.2) ───────────────────────────────────
@@ -951,7 +1025,7 @@ def _resolve_extra_segment(spec: dict, headers: dict, gcid: str, ts_str: str, pa
     if sid_raw:
         sid = str(sid_raw).strip()
         if not SEG_ID_RE.match(sid):
-            raise SystemExit(f"EXTRA_SEGMENTS segment_id 형식 오류: {sid!r} (예: 세그먼트_아이디_넘버)")
+            raise SystemExit(f"EXTRA_SEGMENTS segment_id 형식 오류: {sid!r} (예: s200001591_69829951bd7205268da08767)")
         # 이름 fetch — 캐시에 박아 _build_global_filters 의 segment_names 에 활용
         name = _fetch_segment_name(headers, gcid, sid)
         print(f"\n[segment by id] {sid}  '{name or '(name 조회 실패)'}'")
@@ -1657,19 +1731,25 @@ def _extract_one(task: dict, headers: dict, gcid: str) -> dict:
 
 
 # ─── sites_input.csv 로드 ──────────────────────────────────────────
-def _load_sites_input(path: Path) -> list[tuple[str, str, str, str]]:
-    """sites_input.csv 읽음 — site_code, start_date, end_date, site_group(B2B/B2C).
+def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str]]:
+    """sites_input.csv 읽음 — site_code, start_date, end_date, site_group(B2B/B2C),
+    start_time, end_time (v4.4).
 
     - 빈 줄 / # 시작 주석 라인 무시.
     - site_code/start/end 중 하나라도 비면 skip → 앞에 빈칸(`,,,`)을 넣어 컬럼을 오른쪽으로
       민 행은 자동으로 **비활성 행**이 된다 (기존 관행 유지).
+      ※ 시각은 이 가드에 넣지 않는다 — 빈 시각 = 달력일 추출이 정상 동작이기 때문.
     - kind(4번째 값):
         · PANEL_GROUP_COLUMN 이 비었거나 헤더에 그 컬럼이 없으면 **전 행 PANEL_GROUP_OFF("")**
           → 분류 필터를 적용하지 않고 모든 패널을 추출한다.
         · 컬럼은 있는데 셀이 비면 PANEL_GROUP_SITE_DEFAULT.
         · 등록 안 된 값이면 경고 후 PANEL_GROUP_SITE_DEFAULT.
+    - start_time/end_time (v4.4, 5·6번째 값):
+        · TIME_COLUMN_* 컬럼이 헤더에 없으면 전 행 ("","") → 달력일 기준 (구 CSV 하위호환).
+        · 둘 다 채워야 적용. **한쪽만 채우면 경고 후 둘 다 버린다** — 조용히 의도와 다른
+          기간(예: 종료시각 없이 09시부터 끝까지)을 뽑는 사고를 막기 위함.
     """
-    rows: list[tuple[str, str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str, str]] = []
     if not path.exists():
         return rows
     with open(path, encoding="utf-8-sig") as f:
@@ -1679,6 +1759,9 @@ def _load_sites_input(path: Path) -> list[tuple[str, str, str, str]]:
     reader = csv.DictReader(lines)
     # 컬럼명이 비어 있으면(기본값) 기능 자체를 쓰지 않는다
     has_group_col = bool(PANEL_GROUP_COLUMN) and PANEL_GROUP_COLUMN in (reader.fieldnames or [])
+    # v4.4: 시각 컬럼도 같은 방식 — 헤더에 없으면 기능 미사용 (구 sites_input.csv 그대로 동작)
+    _fields = reader.fieldnames or []
+    has_time_col = TIME_COLUMN_START in _fields or TIME_COLUMN_END in _fields
     for r in reader:
         site = (r.get("site_code") or "").strip()
         s = (r.get("start_date") or "").strip()
@@ -1691,8 +1774,18 @@ def _load_sites_input(path: Path) -> list[tuple[str, str, str, str]]:
                 kind = PANEL_GROUP_SITE_DEFAULT
         else:
             kind = PANEL_GROUP_OFF   # 분류 컬럼 미설정/미존재 → 필터 없이 전 패널 대상
+        if has_time_col:
+            sh = _format_time(r.get(TIME_COLUMN_START))
+            eh = _format_time(r.get(TIME_COLUMN_END))
+            if bool(sh) != bool(eh):
+                print(f"  ⚠ sites_input '{site}': {TIME_COLUMN_START}='{sh or ''}' / "
+                      f"{TIME_COLUMN_END}='{eh or ''}' — 한쪽만 채워져 있음. "
+                      f"시각 컷을 쓰려면 둘 다 채워야 한다 → 이 site 는 달력일 기준으로 처리")
+                sh = eh = ""
+        else:
+            sh = eh = ""
         if site and s and e:
-            rows.append((site, s, e, kind))
+            rows.append((site, s, e, kind, sh, eh))
     return rows
 
 
@@ -1756,7 +1849,7 @@ def _site_panel_keywords(site_code: str) -> list[str]:
 
 def _panel_owner_sites(panel_name: str) -> list[str]:
     """패널명에 **토큰 경계**로 들어있는 등록 site_code 목록 (없으면 [] = 공용 패널).
-    짧은 site_code(예: 'in')가 'inside'/'main' 에 우연히 걸리지 않도록 경계 정규식을 쓴다."""
+    'hq' 가 'second'/'section' 에 우연히 걸리지 않도록 경계 정규식을 쓴다."""
     pn = panel_name or ""
     out = []
     for sc in SITE_PANEL_SITES:
@@ -1843,19 +1936,28 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                   resolved_extras: list[tuple[str, object]] | None = None,
                   app_ox: dict[str, str] | None = None,
                   file_tag: str = "",
-                  site_group: str = PANEL_GROUP_SITE_DEFAULT) -> dict:
+                  site_group: str = PANEL_GROUP_SITE_DEFAULT,
+                  start_time: str = "", end_time: str = "") -> dict:
     """한 site 의 모든 panel × reportlet 추출 + CSV 저장.
     resolved_extras: [(segment_id, panel_scope), ...] — v3 신규.
     app_ox: app_O_X.csv 로드 결과 (v3.8 DEVICE_CASES 케이스 선택용, None=csv 없음=전 site O).
     file_tag: 출력 파일명 site 뒤에 붙는 태그 (v4.2 YEAR_OFFSETS 의 '_y2025' 등, ""=없음).
-    site_group: sites_input 의 B2B_B2C 값 — 그 종류의 패널만 돈다."""
+    site_group: sites_input 의 B2B_B2C 값 — 그 종류의 패널만 돈다.
+    start_time/end_time: v4.4 시각 컷 'HH:MM' (둘 다 있어야 적용, ""=달력일 기준)."""
+    time_mode = bool(start_time and end_time)   # v4.4
     # v4.2: MONTHLY 면 총기간을 달력 월 조각으로 분할 (False 면 조각 1개 = 총기간)
     periods = _split_months(start_date, end_date)
+    _range_str = (f"{start_date} {start_time} ~ {end_date} {end_time}" if time_mode
+                  else f"{start_date} ~ {end_date}")
     print(f"\n{'═'*78}\nSITE: {site.site_code}{file_tag}  →  rsid={site.rsid}  "
-          f"({start_date} ~ {end_date})  [{site_group}]\n{'═'*78}")
+          f"({_range_str})  [{site_group}]\n{'═'*78}")
+    if time_mode:
+        print(f"  시각 컷(v4.4): {start_time} ~ {end_time} (종료 시각의 59초까지 포함) — "
+              f"연속 구간 1개")
     if MONTHLY:
         print(f"  기간 분할(MONTHLY): {len(periods)}개  "
-              f"[{periods[0][2]} ~ {periods[-1][2]}]")
+              f"[{periods[0][2]} ~ {periods[-1][2]}]"
+              + ("  ※ 첫 조각에만 시작시각, 마지막 조각에만 종료시각 적용" if time_mode else ""))
     if resolved_extras:
         print(f"  extra segments ({len(resolved_extras)}):")
         for sid, scope in resolved_extras:
@@ -1915,11 +2017,21 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                 # site 별 세그 치환 적용 (DEVICE_CASE_SITE_OVERRIDES — us_old 류)
                 case_seg_ids = [site_seg_override.get(s, s) for s in case["segment_ids"]] if case else []
                 # 기간조각(MONTHLY)별 task 1개씩 (MONTHLY=False 면 조각이 1개 = 총기간 1회)
-                for pd_start, pd_end, pd_label in periods:
+                for _pi, (pd_start, pd_end, pd_label) in enumerate(periods):
+                    # v4.4 시각 컷: 총기간의 **첫 조각에만 시작시각, 마지막 조각에만 종료시각**.
+                    #   MONTHLY=False 면 조각이 1개라 둘 다 그 조각에 걸린다(일반 케이스).
+                    #   MONTHLY=True 의 중간 달 조각은 00:00~23:59 = 온전한 달력일이 되어
+                    #   "매달 SH~EH 시만" 으로 의미가 뒤바뀌지 않는다.
+                    if time_mode:
+                        sh_i = start_time if _pi == 0 else "00:00"
+                        eh_i = end_time if _pi == len(periods) - 1 else "23:59"
+                    else:
+                        sh_i = eh_i = ""
                     payload, seg_names_per_metric, metric_names, panel_seg_names, dim_id, dim_name = \
                         _build_report_payload(project, panel, rep,
                                               override_rsid=site.rsid,
-                                              override_date_range=_build_date_range_definition(pd_start, pd_end),
+                                              override_date_range=_build_date_range_definition(
+                                                  pd_start, pd_end, sh_i, eh_i),
                                               extra_segment_ids=extra_ids_for_panel + case_seg_ids)
                     payload["settings"]["limit"] = min(limit, 100000) if limit > 0 else PAGE_SIZE_UNCAPPED
                     if case:
@@ -1937,6 +2049,8 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                         "period_start": pd_start,     # v4.2: 이 task 의 실제 추출 기간
                         "period_end": pd_end,
                         "period_label": pd_label,     # MONTHLY 일 때만 'Jul 2025', 아니면 ""
+                        "period_start_time": sh_i,    # v4.4: 시각 컷일 때만 'HH:MM', 아니면 ""
+                        "period_end_time": eh_i,
                         "payload": payload,
                         "max_rows": limit,   # v3.7: dim1(1st level) 행 cap (0=무제한)
                         "seg_names_per_metric": seg_names_per_metric,
@@ -1959,7 +2073,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
         return {"site": site, "tasks": tasks, "n_ok": 0, "n_fail": 0}
 
     print(f"  /reports 호출 (workers={workers}) ...")
-    start_time = datetime.now()
+    _req_start = datetime.now()
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = {ex.submit(_extract_one, t, headers, gcid): t for t in tasks}
         done_count = 0
@@ -1971,7 +2085,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             pd_tag = f" [{result['period_label']}]" if result.get("period_label") else ""   # v4.2
             print(f"    [{done_count}/{len(tasks)}] {result['tb_name']}{dev_tag}{pd_tag}: "
                   f"{len(result['rows'])} rows — {status}")
-    elapsed = datetime.now() - start_time
+    elapsed = datetime.now() - _req_start
     print(f"  소요: {elapsed}")
 
     tasks.sort(key=lambda t: t["order"])
@@ -2032,9 +2146,13 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
     bd_blank = [""] * (3 * max_bd_depth)
     # v4.2: MONTHLY 일 때만 end_date 뒤에 period 컬럼 추가 (False 면 컬럼 자체가 없어 v4.1 출력과 동일)
     period_header = ["period"] if MONTHLY else []
+    # v4.4: 시각 컷일 때만 start_time/end_time 컬럼 추가.
+    #   start_date/end_date 는 **날짜 그대로 둔다** — 'YYYY-MM-DD HH:MM' 로 바꾸면
+    #   그 컬럼을 날짜로 파싱하는 RESHAPE_standard_v1.7.py 가 깨진다.
+    time_header = [TIME_COLUMN_START, TIME_COLUMN_END] if time_mode else []
     with open(stack_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        header = ["site_code", "rsid", "start_date", "end_date"] + period_header + [
+        header = ["site_code", "rsid", "start_date", "end_date"] + time_header + period_header + [
                   "panel", "table", "reportlet", "dimension", "dimension_name",
                   "itemId", dim_short,
                   "value_n", "metric_origin", "metric", "segments", "device",
@@ -2051,6 +2169,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             seg_names_per_metric = t.get("seg_names_per_metric") or []
             # v4.2: 기간은 site 총기간이 아니라 이 task 의 기간조각 (MONTHLY=False 면 총기간과 동일)
             base_cols = ([site.site_code, site.rsid, t["period_start"], t["period_end"]]
+                         + ([t["period_start_time"], t["period_end_time"]] if time_mode else [])
                          + ([t["period_label"]] if MONTHLY else [])
                          + [t["panel_name"], t["tb_name"], t["reportlet_name"], dim_id, dim_name])
             # v4.1: INCLUDE_PARENT_ROWS=False 면 dim1 총계(부모) 행을 skip (breakdown 행만 출력)
@@ -2141,7 +2260,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
 
     with open(table_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        header = ["site_code", "rsid", "start_date", "end_date"] + period_header + [
+        header = ["site_code", "rsid", "start_date", "end_date"] + time_header + period_header + [
                   "panel", "table", "reportlet", "dimension", "dimension_name",
                   "device",   # v3.8: 같은 테이블이 device 케이스 수만큼 반복 — 행 구분용
                   "itemId", dim_short]
@@ -2153,8 +2272,9 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
         for t in tasks:
             if not t["ok"]:
                 continue
-            # v4.2: 기간 = 이 task 의 기간조각 (+ MONTHLY 면 period 라벨)
+            # v4.2: 기간 = 이 task 의 기간조각 (+ MONTHLY 면 period 라벨, + v4.4 시각 컷이면 시각)
             base_cols = ([site.site_code, site.rsid, t["period_start"], t["period_end"]]
+                         + ([t["period_start_time"], t["period_end_time"]] if time_mode else [])
                          + ([t["period_label"]] if MONTHLY else [])
                          + [t["panel_name"], t["tb_name"], t["reportlet_name"],
                             t.get("dimension_id", ""), t.get("dimension_name", ""),
@@ -2283,6 +2403,12 @@ def main() -> int:
     parser.add_argument("--year-offsets", type=str, default=None, metavar="0,-1",
                         help="(v4.2) sites_input 날짜 연도를 shift 해 추출 (YEAR_OFFSETS override). "
                              "예: '0,-1' = 올해+작년 동기간. offset≠0 은 파일명에 _y{연도} 태그")
+    parser.add_argument("--times", type=str, default=None, metavar="HH:MM-HH:MM",
+                        help="(v4.4) 전 site 에 이 시각 구간을 강제 (sites_input 의 start_time/end_time 컬럼 무시). "
+                             "예: '09:00-18:00' = 시작일 09시 ~ 종료일 18:59:59 연속 1구간. "
+                             "'00:00-23:59' 는 시각 미지정과 완전히 동일한 결과")
+    parser.add_argument("--no-times", action="store_true",
+                        help="(v4.4) sites_input 의 start_time/end_time 를 무시하고 달력일 기준으로 추출")
     parser.add_argument("--site-workers", type=int, default=SITE_WORKERS, metavar="N",
                         help=f"site 단위 병렬 워커 수 (default {SITE_WORKERS}, 1=순차). "
                              f"동시 API 요청 ≈ N × --workers — 429 뜨면 줄이기")
@@ -2308,6 +2434,19 @@ def main() -> int:
         if not _offs:
             raise SystemExit("❌ --year-offsets 가 비었음 (예: --year-offsets 0,-1)")
         globals()["YEAR_OFFSETS"] = _offs
+    # v4.4: 시각 컷 override — 여기선 형식 검증만 하고(fail fast), 실제 적용은
+    #   sites_rows 를 읽은 뒤 (행 단위 값이라 globals() 로 못 덮는다).
+    if args.times is not None and args.no_times:
+        raise SystemExit("❌ --times 와 --no-times 는 같이 못 씀")
+    cli_times: tuple[str, str] | None = None
+    if args.times is not None:
+        _parts = args.times.split("-")
+        if len(_parts) != 2:
+            raise SystemExit(f"❌ --times 형식 오류 (HH:MM-HH:MM): {args.times!r}")
+        _csh, _ceh = _format_time(_parts[0]), _format_time(_parts[1])
+        if not (_csh and _ceh):
+            raise SystemExit(f"❌ --times 형식 오류 (HH:MM-HH:MM): {args.times!r}")
+        cli_times = (_csh, _ceh)
     # v3.7: breakdown limit 은 _run_breakdowns 가 module 전역을 참조 → CLI 값으로 갱신
     globals()["LIMIT_BD"] = args.limit_bd
     globals()["LIMIT_BD2"] = args.limit_bd2
@@ -2353,12 +2492,22 @@ def main() -> int:
     # v4.2: 기간 분할 / 연도 shift
     print(f"  MONTHLY       : {'ON (총기간을 달력 월로 분할 — period 컬럼 추가)' if MONTHLY else 'OFF (총기간 1회)'}")
     print(f"  YEAR_OFFSETS  : {YEAR_OFFSETS}  ({'sites_input 그대로' if YEAR_OFFSETS == [0] else 'site 당 ' + str(len(YEAR_OFFSETS)) + ' run — offset≠0 은 파일명 _y{연도} 태그'})")
+    # v4.4: 시각 컷
+    if cli_times:
+        print(f"  TIME CUT      : ON  {cli_times[0]} ~ {cli_times[1]}  (--times — 전 site 강제, "
+              f"sites_input 의 시각 컬럼 무시)")
+    elif args.no_times:
+        print(f"  TIME CUT      : OFF (--no-times — sites_input 의 시각 컬럼 무시하고 달력일)")
+    else:
+        print(f"  TIME CUT      : sites_input 의 {TIME_COLUMN_START}/{TIME_COLUMN_END} 컬럼을 따름 "
+              f"(컬럼 없거나 비면 달력일)")
 
     # sites_input.csv 로드
     sites_rows = _load_sites_input(SITES_INPUT_CSV)
     if not sites_rows:
         print(f"\n❌ {SITES_INPUT_CSV} 에 site 정보 없음 (header 빼고 #-comment 외 데이터 라인 0)")
-        print(f"   샘플 형식: site_code,start_date,end_date")
+        print(f"   샘플 형식: site_code,start_date,end_date[,{TIME_COLUMN_START},{TIME_COLUMN_END}]")
+        print(f"            (시각 컬럼은 선택 — 없거나 비우면 달력일 기준)")
         return 1
 
     if args.site:
@@ -2368,6 +2517,13 @@ def main() -> int:
             print(f"\n❌ --site {args.site} 매칭되는 row 없음")
             return 1
 
+    # v4.4: --times / --no-times 는 sites_input 의 행별 시각 값을 통째로 덮는다.
+    #   (globals() 로는 못 덮는 행 단위 값이라 여기서 처리 — 위 CLI 블록에서 형식 검증은 끝났다)
+    if cli_times:
+        sites_rows = [(r[0], r[1], r[2], r[3], cli_times[0], cli_times[1]) for r in sites_rows]
+    elif args.no_times:
+        sites_rows = [(r[0], r[1], r[2], r[3], "", "") for r in sites_rows]
+
     # v4.2: YEAR_OFFSETS 만큼 run 확장 — (site_code, start, end, file_tag, site_group)
     #   offset 0 → tag "" (v4.1 과 동일한 파일명). offset≠0 → "_y{shift 된 연도}"
     #   kind 가 PANEL_GROUP_YEAR_OFFSETS 에 등록돼 있으면 그 kind 는 전역 YEAR_OFFSETS 대신 그 목록을 쓴다
@@ -2375,22 +2531,27 @@ def main() -> int:
     # 2026-07-31: 같은 site_code 가 group 별로 2행 이상이면 파일명에 _{group} 태그를 붙인다.
     #   (안 붙이면 offset 0 출력 경로가 같아져 나중 run 이 앞 run 을 덮어써 데이터가 유실된다.
     #    GROUP_TAG_IN_FILENAME 주석 참고.)  group 이 1개뿐인 site 는 기존 파일명 그대로.
+    # 2026-08-14 (v4.4): 시각 컷을 쓰면 파일명에 `_t{SH}{SM}-{EH}{EM}` 태그를 붙인다.
+    #   같은 site 를 시간대만 바꿔 두 번 돌리면 출력 경로가 완전히 같아져 **나중 run 이 앞 run 을
+    #   덮어쓴다** — 위 GROUP_TAG_IN_FILENAME 주석의 2026-07-31 B2B 유실과 똑같은 구조.
     _grp_by_site: dict[str, set] = {}
-    for _sc, _s, _e, _g in sites_rows:
+    for _sc, _s, _e, _g, _sh, _eh in sites_rows:
         _grp_by_site.setdefault(_sc, set()).add(_g)
     _multi_group_sites = {sc for sc, gs in _grp_by_site.items() if len(gs) > 1 and any(gs)}
 
-    runs: list[tuple[str, str, str, str, str]] = []
+    runs: list[tuple[str, str, str, str, str, str, str]] = []
     kind_off_used: dict[str, list[int]] = {}
-    for site_code, s_date, e_date, s_grp in sites_rows:
+    for site_code, s_date, e_date, s_grp, s_time, e_time in sites_rows:
         offs = PANEL_GROUP_YEAR_OFFSETS.get(s_grp, YEAR_OFFSETS)
         kind_off_used[s_grp] = offs
         g_tag = (f"_{s_grp}" if GROUP_TAG_IN_FILENAME and site_code in _multi_group_sites
                  and s_grp else "")
+        t_tag = (f"_t{s_time.replace(':', '')}-{e_time.replace(':', '')}"
+                 if (s_time and e_time) else "")
         for off in offs:
             s2, e2 = _shift_year(s_date, off), _shift_year(e_date, off)
             y_tag = "" if off == 0 else f"_y{s2[:4]}"
-            runs.append((site_code, s2, e2, f"{g_tag}{y_tag}", s_grp))
+            runs.append((site_code, s2, e2, f"{g_tag}{y_tag}{t_tag}", s_grp, s_time, e_time))
 
     _group_cnt: dict[str, int] = {}
     for r in sites_rows:
@@ -2476,7 +2637,8 @@ def main() -> int:
 
     # 사이트별 처리 — v3.6: SITE_WORKERS>1 이면 site 단위 병렬 (_contents 시리즈 포팅)
     def _run_one(item):
-        site_code, start_date, end_date, file_tag, site_group = item   # v4.2: file_tag / site_group
+        # v4.2: file_tag / site_group,  v4.4: start_time / end_time
+        site_code, start_date, end_date, file_tag, site_group, s_time, e_time = item
         site_info = lookup_site(site_code)
         _t0 = datetime.now()
         res = _process_site(headers, gcid, project, panels,
@@ -2487,7 +2649,8 @@ def main() -> int:
                             resolved_extras=resolved_extras,
                             app_ox=app_ox,
                             file_tag=file_tag,
-                            site_group=site_group)
+                            site_group=site_group,
+                            start_time=s_time, end_time=e_time)
         res["file_tag"] = file_tag
         res["elapsed_sec"] = (datetime.now() - _t0).total_seconds()
         return res

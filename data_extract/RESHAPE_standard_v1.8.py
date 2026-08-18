@@ -1,5 +1,14 @@
-# RESHAPE_standard_v1.7.py
-# 2026-07-24  Jonghyun Park w/ Claude
+# RESHAPE_standard_v1.8.py
+# 2026-08-14  Jonghyun Park w/ Claude
+# v1.8 (2026-08-14): extract_data_v4.4 (시각 컷) 출력 대응 —
+#                    · 'start_time' / 'end_time' 컬럼을 PASSTHROUGH_COLUMNS 에 추가.
+#                      v4.4 는 시각 컷을 걸면 stack/table CSV 에 이 두 컬럼을 붙이는데,
+#                      passthrough 화이트리스트에 없으면 **에러 없이 조용히 유실**된다
+#                      (v1.6 이 'period' 를 빠뜨려 월 라벨을 날린 것과 같은 구조).
+#                    · 입력에 없는 이름은 무시되므로 시각 컷을 안 쓴 기존 추출물은 무영향
+#                      (출력 컬럼도 안 늘어남) → v1.7 출력과 동일.
+#                    · v4.4 는 start_date/end_date 를 순수 날짜로 유지하므로 환율 조회
+#                      (end_date[:4] 연도 매칭)는 그대로 동작한다. 별도 수정 불필요.
 # v1.7 (2026-07-24): extract_data_v4.2 출력 대응 —
 #                    · MONTHLY 추출물의 'period' 컬럼(월 라벨 'Jul 2026')을 출력에 passthrough
 #                      (device / bd{k}_* 와 동일 취급). 없으면 그대로 무시 → v1.6 출력과 동일.
@@ -46,7 +55,7 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
             table_data_extract_*.csv 가로형 아님 — 디멘션 항목별 값은 stack(long) 에 들어있음)
   · site 별 최신 ts 파일 1개씩만 골라 세로로 union
   · ITEM 컬럼 = segments 의 ';' split 제일 우측 토큰 (양끝 공백 trim)
-        예) 'Landing Page; Email' → 'Email'
+        예) '[26 SW] Campaign Main Page_Entry; push' → 'push'
   · VALUE = value1 값. revenue metric 이면 currency.csv 환율 적용, 그 외 원본 그대로
         (환율 적용된 batch 면 VALUE=환산값 + 'VALUE (원본)' 컬럼 추가)
   · (v1.4) category : panel/table/reportlet 에 product 키워드 있으면 dim_value 를
@@ -122,8 +131,8 @@ OUTPUT_BASENAME = "_union_standard"
 # ─── ITEM = segments 의 ';' split 제일 우측 토큰 (trim) ──────────────
 # segments 컬럼이 'A; B; push' 처럼 구분자로 묶여 있을 때, 제일 우측 값을 ITEM 으로.
 # 양끝 공백은 strip 으로 제거.
-#   예: 'Landing Page; Email'       → 'Email'
-#       'Landing Page; Paid Search' → 'Paid Search'
+#   예: '[26 SW] Campaign Main Page_Entry; push'        → 'push'
+#       '[26 SW] Campaign Main Page_Entry; owned others' → 'owned others'
 SEG_SPLIT_CHAR = ";"
 
 # ─── 디멘션 컬럼 ────────────────────────────────────────────────────
@@ -219,13 +228,17 @@ EXCLUDE_OUTPUT_COLUMNS: list[str] = []
 # v3.4 이하 출력(bd 컬럼 없음)이면 모드 무관 전체 처리.
 BREAKDOWN_ROWS_MODE = "include"
 
-# ─── 그대로 넘길(passthrough) 입력 컬럼 (v1.7) ──────────────────────
+# ─── 그대로 넘길(passthrough) 입력 컬럼 (v1.8) ──────────────────────
 # 입력 stack CSV 에 있으면 출력에도 같은 이름으로 실어 보내는 컬럼들.
-#   device : extract_data v3.5+ 의 device 케이스 라벨
-#   period : extract_data v4.2 MONTHLY 의 월 라벨 ('Jul 2026')
+#   device                 : extract_data v3.5+ 의 device 케이스 라벨
+#   period                 : extract_data v4.2 MONTHLY 의 월 라벨 ('Jul 2026')
+#   start_time / end_time  : extract_data v4.4 시각 컷의 'HH:MM' (v1.8 추가)
 # 여기 없는 컬럼이라도 `bd{k}_*` 형태(breakdown)는 정규식으로 자동 passthrough.
 # 입력에 없는 이름은 그냥 무시되므로, 새 컬럼이 생기면 이 리스트에 한 줄 추가하면 된다.
-PASSTHROUGH_COLUMNS: list[str] = ["device", "period"]
+# ⚠ 이 리스트는 **화이트리스트**다 — 빠뜨린 컬럼은 에러 없이 조용히 사라진다.
+#    extract_data 에 출력 컬럼을 추가했으면 여기에도 반드시 등록할 것
+#    (v1.6 이 'period' 를, 그 뒤 v1.7 이 시각 컬럼을 빠뜨린 전례가 있다).
+PASSTHROUGH_COLUMNS: list[str] = ["device", "period", "start_time", "end_time"]
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -303,7 +316,7 @@ def item_from_segments(segments: str) -> str:
 # ─── product category 분류 (v1.4) ──────────────────────────────────
 def load_category_rules(path: Path):
     """product_category.yaml → [(category_name, [include_re], [exclude_re]), …].
-    divisions·categories 의 파일 순서를 보존 (예: ServiceApp 이 ACC 보다 먼저 매칭돼야 함).
+    divisions·categories 의 파일 순서를 보존 (예: Smartthings 가 ACC 보다 먼저 매칭돼야 함).
     division 명(ETC 등)은 출력 라벨이 아니라 그룹일 뿐 — leaf category 명만 사용."""
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
@@ -390,8 +403,9 @@ def find_latest_per_site(input_dir: Path) -> tuple[list[Path], dict[str, str]]:
 
 
 # ────────────────────────────────────────────────────────────────
-# ─── metric 정규화 (v1.5) ─ metric_origin → 정제 metric ──────
-# extract_data v3.9 와 동일 규칙. stack 의 metric 을 신뢰하지 않고 metric_origin 에서 직접 정제.
+# ─── metric 정규화 (v1.5) — metric_origin → 정제 metric ──────────────
+# extract_data v3.9 와 동일 규칙. stack 의 metric 을 신뢰하지 않고 metric_origin 에서 직접 정제 →
+# v3.8(미정제) stack 이 섞여도 wide 열이 일관됨. 별칭은 extract_data 와 동기화할 것.
 METRIC_ALIASES = {
     "appbounce": "Bounces",
 }
@@ -403,7 +417,7 @@ _METRIC_PAREN_RE = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
 
 
 def _normalize_metric(name):
-    """metric_origin -> normalized metric (alias first + trailing paren cleanup)."""
+    """metric_origin → 정제 metric (별칭 우선 + 끝 괄호 정리)."""
     if not name or not isinstance(name, str):
         return name
     s = name.strip()
@@ -674,26 +688,26 @@ def process() -> int:
     if DROP_ZERO_VALUE:
         print(f"  VALUE==0 제외: {n_zero_dropped} rows")
 
-    # v1.5: wide union (normalized metric as columns)
+    # v1.5: 정제 metric 을 열로 올린 wide union 추가 출력
     _write_wide(out_rows, out_headers, OUTPUT_DIR, ts)
     return 0
 
 
 def _write_wide(out_rows, out_headers, out_dir, ts):
-    """Wide union with normalized metric as column headers.
-    index = all out_headers except metric_origin/metric/value_n/VALUE/value_origin
-    (keeps dim value, segments, device, panel, variable -> per-dimension rows). Same index+metric summed.
+    """정제 metric 을 열 헤더로 올린 wide union.
+    index = out_headers 에서 metric_origin/metric/value_n/VALUE/value_origin 제외 전부
+    (디멘션값·segments·device·panel·variable 등 포함 → 디멘션별 행 보존). 같은 index+metric 충돌 시 합산.
 
-    v1.6: revenue-class metric (name contains CURRENCY_METRIC_KEYWORD, when value_origin exists)
-          is split into '<metric>_org' (original = value_origin) + '<metric>' (fx = VALUE).
-          e.g. Revenue -> 'Revenue_org' (original) + 'Revenue' (fx). Other metrics stay single (VALUE)."""
+    v1.6: revenue 계열 metric(CURRENCY_METRIC_KEYWORD 포함, value_origin 있을 때)은
+          '<metric>_org'(원본=value_origin) + '<metric>'(fx=VALUE) 두 열로 분리.
+          예) revenue → 'revenue_org'(원본) + 'revenue'(환율 적용값). 그 외 metric 은 단일 열(VALUE)."""
     metric_value_cols = {"metric_origin", "metric", "value_n", "VALUE", "value_origin"}
     index_cols = [c for c in out_headers if c not in metric_value_cols]
-    has_origin = "value_origin" in out_headers   # was apply_fx in v1.5
+    has_origin = "value_origin" in out_headers   # v1.5 의 apply_fx 였는지
     ORG_SUFFIX = "_org"
     groups = {}
     metric_order = []
-    org_metrics = set()   # revenue-class metrics needing an _org pair
+    org_metrics = set()   # _org 짝이 필요한 revenue 계열 metric
     collisions = 0
     for r in out_rows:
         m = (r.get("metric") or "").strip()
@@ -710,7 +724,7 @@ def _write_wide(out_rows, out_headers, out_dir, ts):
         org_col = m + ORG_SUFFIX
         if is_rev:
             org_metrics.add(m)
-        if m in g:   # collision -> sum
+        if m in g:   # 충돌 → 합산
             try:
                 g[m] = float(g[m]) + float(r.get("VALUE") or 0)
             except (TypeError, ValueError):
@@ -735,7 +749,7 @@ def _write_wide(out_rows, out_headers, out_dir, ts):
             return v
         return int(fv) if fv == int(fv) else round(fv, 2)
 
-    # header: revenue-class emits <metric>_org (original) first, then <metric> (fx)
+    # 헤더: revenue 계열은 <metric>_org(원본) 먼저, 그다음 <metric>(fx)
     wide_headers = list(index_cols)
     for m in metric_order:
         if m in org_metrics:
@@ -753,10 +767,10 @@ def _write_wide(out_rows, out_headers, out_dir, ts):
                 row[m] = _fmt(g.get(m, ""))
             w.writerow(row)
     print(f"[save] {out_path}")
-    print(f"  wide rows : {len(groups)} / metric cols {len(metric_order)}"
-          + (f" (revenue-class {len(org_metrics)} split into _org)" if org_metrics else ""))
+    print(f"  wide rows : {len(groups)} / metric 열 {len(metric_order)}개"
+          + (f" (revenue 계열 {len(org_metrics)}개 _org 분리)" if org_metrics else ""))
     if collisions:
-        print(f"  warn: index+metric collisions {collisions} summed")
+        print(f"  주의: 같은 index+metric 충돌 {collisions}건 합산 — index 기준 재검토 필요할 수 있음")
 
 
 if __name__ == "__main__":

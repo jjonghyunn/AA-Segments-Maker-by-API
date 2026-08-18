@@ -1,4 +1,4 @@
-# RESHAPE_standard_v1.7.py  
+# RESHAPE_standard_v1.8.py  
 <sub>2026-07-31  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
@@ -77,7 +77,7 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
   - `"exclude"`: dim1 총계만 (v1.0 semantics)
   - `"only"`: breakdown 행만
 - **passthrough 컬럼** — 입력에 `device` / `period` / `bd{k}_dimension/itemId/value` 컬럼이 있으면 출력에 그대로 따라옴 (`PASSTHROUGH_COLUMNS` 상수 + `bd{k}_*` 정규식). v3.4 이하 출력(bd 컬럼 없음)은 모드 무관 전체 처리.
-  - **(v1.7) `period`** — `extract_data_v4.3` 를 `MONTHLY=True` 로 뽑으면 월 라벨(`Jul 2026`)이 `period` 컬럼에 들어온다. v1.6 은 이걸 안 넘겨서 월 라벨이 유실됐다(행은 `start_date`/`end_date` 로 분리 유지). long·wide 양쪽에 실린다.
+  - **(v1.7) `period`** — `extract_data_v4.4` 를 `MONTHLY=True` 로 뽑으면 월 라벨(`Jul 2026`)이 `period` 컬럼에 들어온다. v1.6 은 이걸 안 넘겨서 월 라벨이 유실됐다(행은 `start_date`/`end_date` 로 분리 유지). long·wide 양쪽에 실린다.
 
 ### 출력 컬럼 추가 (v1.2)
 
@@ -159,7 +159,7 @@ rsid, start_date, end_date, value_n, metric_origin, metric, [variable], <디멘�
 ## 실행
 
 ```bash
-python RESHAPE_standard_v1.7.py
+python RESHAPE_standard_v1.8.py
 ```
 - 같은 폴더에 `site_registry.py` 필요 (site_code → 국가/rsid)
 - `ADD_CATEGORY_COLUMN=True` 면 같은 폴더에 `product_category.yaml` 필요 (없고 키워드 매칭 행 있으면 경고 후 분류 skip)
@@ -175,3 +175,18 @@ python RESHAPE_standard_v1.7.py
 ## 의존성
 
 표준 라이브러리(csv, re, pathlib 등) + `pyyaml`(category 분류용) + 같은 폴더 `site_registry.py`.
+
+## v1.8 (2026-08-18) — 시각 컷 컬럼 passthrough
+
+`PASSTHROUGH_COLUMNS` 에 `start_time` / `end_time` 추가.
+extract_data v4.4 의 시각 컷 산출물에 붙는 두 컬럼을 정제 출력까지 그대로 실어 보낸다.
+
+```python
+PASSTHROUGH_COLUMNS: list[str] = ["device", "period", "start_time", "end_time"]
+```
+
+⚠ 이 리스트는 **화이트리스트**다 — 빠뜨린 컬럼은 에러 없이 조용히 사라진다.
+(v1.6 이 `period` 를, v1.7 이 시각 컬럼을 빠뜨린 전례가 있다.)
+
+⚠ passthrough 대상은 **첫 입력 파일의 헤더**로 정해진다. 시각 컷 산출물과 달력일 산출물을
+같은 `output/` 에 섞어두면 첫 파일에 시각 컬럼이 없을 때 전체에서 빠진다.
