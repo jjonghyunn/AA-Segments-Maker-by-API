@@ -1,5 +1,5 @@
 # panel_collapse/ — AA Workspace panel 내 subPanel 일괄 collapse (운영 사본)  
-<sub>2026-07-29  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-19  Jonghyun Park w/ Claude</sub>  
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/panel_collapse
 

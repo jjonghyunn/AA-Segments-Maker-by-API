@@ -1,5 +1,5 @@
 # segment_share/ — segment 키워드 매칭 → 일괄 share 추가 (운영 사본)  
-<sub>2026-08-05  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-19  Jonghyun Park w/ Claude</sub>  
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_share
 
@@ -25,7 +25,7 @@ repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_s
 | `OWNER_ID_FILTER` | `[]` (비어있으면 미사용) |
 | `OWNER_FULLNAME_INCLUDES` | `[]` (비어있으면 미사용) |
 | `TARGET_SEGMENT_IDS` | 코드 안 `TARGET_SEGMENT_IDS_RAW` 에 한 줄에 하나씩 박기. **기본값이 비어있지 않다** — placeholder id 가 여러 줄 들어있으므로, 매칭 전체를 대상으로 하려면 블록을 비우거나 각 줄 앞에 `#` 를 붙일 것 |
-| `SHARE_USER_IDS` | `[]` — 주석 예시를 참고해 numeric loginId 를 채울 것 (비어 있으면 실행 시 안내 후 종료). 운영에선 본인 + 7명 (총 8명) |
+| `SHARE_USER_IDS` | `[]` — 주석 예시를 참고해 numeric loginId 를 채울 것 (비어 있으면 실행 시 안내 후 종료). 운영에선 본인 + 공유 대상 팀원 |
 
 ### SHARE_USER_IDS 멤버
 
@@ -33,12 +33,7 @@ repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_s
 |---|---|---|
 | user1@company_name.com | YOUR_LOGIN_ID | User 1 |
 | user2@company_name.com | YOUR_LOGIN_ID | User 2 |
-| user3@company_name.com | YOUR_LOGIN_ID | User 3 |
-| user4@company_name.com | YOUR_LOGIN_ID | User 4 |
-| user5@company_name.com | YOUR_LOGIN_ID | User 5 |
-| user6@company_name.com | YOUR_LOGIN_ID | User 6 |
-| user7@company_name.com | YOUR_LOGIN_ID | User 7 |
-| user8@... | YOUR_LOGIN_ID | User 8 |
+| … | … | … |
 
 ID lookup 은 상위 폴더의 `company_name_aa_id_*.csv` 자동 pick (`AA_USER_CSV` — 가장 최신 timestamp). **이 CSV 는 repo 에 포함되지 않는다** (회사 인원 목록이라 미업로드) — `../utils/find_user_id.py --all --csv company_name_aa_id_<ts>.csv` 로 직접 생성해 repo 루트에 두면 된다. 없으면 `AA_USER_CSV = None` 으로 두고 owner 이름 enrich 없이 동작.
 
