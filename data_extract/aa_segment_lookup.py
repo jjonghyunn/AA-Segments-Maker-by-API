@@ -2,7 +2,7 @@
 # 2026-05-15  Jonghyun Park w/ Claude
 # ── 변경 이력 (git 히스토리 스크럽됨 — 아래 changelog 가 변경 기록) ──
 # updated: 2026-06-15       — --search 결과에 날짜 필터 추가: --modified-after / --modified-before (YYYY-MM-DD).
-#                            ⚠ AA 세그먼트 API 는 생성일(created)을 제공하지 않음 → 마지막 수정일(modified) 기준.
+#                            (2026-08-21 정정: 생성일은 expansion=createdDate 로 제공된다. 아래 참조)
 #                            after 만=이후, before 만=이전, 둘 다=두 날짜 사이(both inclusive). CSV 에 modified 컬럼 추가.
 # updated: 2026-06-05  v1.2 — --search 전 키워드를 연속 substring AND (첫 키워드 토큰화 버그 수정) + SEARCH_RESULT_LIMIT 등 상단 상수화 + 초과 시 경고
 # updated: 2026-06-05  v1.1 — owner_email 컬럼 추가 + owner 이름/이메일을 GET /users 직접 조회로 보강 (외부 user-id CSV 의존 제거)
@@ -30,10 +30,17 @@
   python segment_lookup.py --search "[us] p" "visit"      # 이름에 "[us] p" 와 "visit" 둘 다
   python segment_lookup.py --search "[CAMPAIGN NAME]" "US_CC" --limit 2000
 
-  # 날짜 필터 (수정일 modified 기준 — AA 가 생성일 미제공. YYYY-MM-DD)
+  # 날짜 필터 (YYYY-MM-DD, both inclusive) — 4종 지원. 서로 다른 필드끼리는 AND
+  #   --created-*             생성일 (createDate)
+  #   --modified-*            최종 수정일 (이름/설명 변경 포함)
+  #   --definition-modified-* 정의(로직) 마지막 변경 — 이름만 고친 건 안 잡힘
+  #   --accessed-*            최근 사용 시각 — 미사용 세그 정리용
   python segment_lookup.py --search "campaign" --modified-after 2025-01-01      # 이후
   python segment_lookup.py --search "campaign" --modified-before 2025-07-01     # 이전
   python segment_lookup.py --search "campaign" --modified-after 2025-01-01 --modified-before 2025-07-01  # 사이
+
+  # 예) 이번 달 생성 + 최근 3개월간 안 쓴 세그
+  #   python aa_segment_lookup.py --search "campaign" --created-after 2026-08-01 --accessed-before 2026-05-21
 
   주의: --search 키워드 list 는 **공백 구분** (콤마 박지 말 것).
         PowerShell 에서 콤마 (`,`) 는 array operator 라 native exe 전달 시 처리 불일치 가능.
@@ -53,6 +60,7 @@ import csv
 import json
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -73,12 +81,27 @@ SEARCH_RESULT_LIMIT = 1000          # --search 결과 최대 건수 (--limit 로
 SEARCH_MATCH_IN_DESCRIPTION = True  # 키워드를 이름+description 에서 찾을지 (False=이름만)
 SEARCH_PREFILTER_MIN_WORD = 2       # server-side name prefetch 에 쓸 "완전단어" 최소 길이
 
+# ─── 콘솔 출력 설정 ────────────────────────────────────────────────
+PROGRESS_EVERY = 100                # 진행률을 몇 건마다 찍을지 (CSV/DSL 작성, 세그 GET)
+DETAIL_PRINT_MAX = 20               # 결과가 이 건수 이하일 때만 건별 상세(구조/이름) 출력
+LIST_RESULT_NAMES = False           # 검색 직후 'id  name' 나열 여부 (대량 조회 시 수만 줄 → 기본 off)
+
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
 # ════════════════════════════════════════════════════════════════════
 
 OUTPUT_DIR = Path(__file__).resolve().parent
 LOOKUP_DIR = OUTPUT_DIR / "lookup"          # 결과 CSV/DSL 출력 위치 — 코드 폴더 어지럽지 않게 분리
+# AA 응답의 날짜 키 ↔ CSV/필터에서 쓰는 이름.
+# ⚠ 생성일은 제공된다 — 요청 expansion 이름은 createdDate, 응답 키는 createDate 로 다르다.
+#    (segment id 24-hex 는 Mongo ObjectId 라 앞 8자리 = 생성 유닉스 시각. createDate 와 초 단위 일치)
+DATE_FIELDS: dict[str, str] = {
+    "created": "createDate",                        # 생성일
+    "modified": "modified",                         # 최종 수정일(이름/설명 변경 포함)
+    "definition_modified": "definitionLastModified",  # 정의(로직) 마지막 변경 — 없으면 빈값
+    "accessed": "recentRecordedAccess",             # 최근 사용 시각 (미사용 세그 정리용)
+}
+
 RESULT_PREFIX = "segment_lookup_"
 
 # ─── 변수 단축어 (decompile용) ────────────────────────────────────
@@ -529,7 +552,8 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
     url = f"https://analytics.adobe.io/api/{gcid}/segments/{seg_id}"
     r = requests.get(
         url, headers=headers,
-        params={"expansion": "definition,name,description,owner,tags,reportSuiteName,modified"},
+        params={"expansion": "definition,name,description,owner,tags,reportSuiteName,modified,"
+                     "createdDate,definitionLastModified,recentRecordedAccess"},
         timeout=60,
     )
     if r.status_code != 200:
@@ -540,7 +564,11 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
             "owner_name": "",
             "owner_email": "",
             "rsid": "",
+            "created": "",
             "modified": "",
+            "definition_last_modified": "",
+            "recent_access": "",
+            "modified_by_id": "",
             "description": "",
             "tags": "",
             "definition": None,
@@ -560,7 +588,11 @@ def _lookup_segment(headers: dict, gcid: str, seg_id: str) -> dict:
         "owner_name": owner.get("name", "") if isinstance(owner, dict) else "",
         "owner_email": "",
         "rsid": data.get("rsid", ""),
+        "created": data.get("createDate", ""),
         "modified": data.get("modified", ""),
+        "definition_last_modified": data.get("definitionLastModified", "") or "",
+        "recent_access": data.get("recentRecordedAccess", "") or "",
+        "modified_by_id": data.get("modifiedById", "") or "",
         "description": data.get("description", ""),
         "tags": tag_names,
         "definition": data.get("definition"),
@@ -581,7 +613,7 @@ def _pick_prefilter_word(kw_list: list[str]) -> str:
 
 def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
                      rsid: str = "", limit: int = SEARCH_RESULT_LIMIT,
-                     modified_after: str = "", modified_before: str = "") -> list[dict]:
+                     date_filters: dict[str, tuple[str, str]] | None = None) -> list[dict]:
     """GET /segments — 이름 키워드 검색. 결과를 _lookup_segment 포맷으로 반환.
 
     매칭: keywords 의 **모든** 키워드(첫 키워드 포함)를 case-insensitive **연속 substring** 으로
@@ -600,7 +632,8 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
     match_kws = [k.lower() for k in kw_list]          # 첫 키워드 포함 전부 substring 매칭
     url = f"https://analytics.adobe.io/api/{gcid}/segments"
     base_params: dict[str, Any] = {
-        "expansion": "definition,name,description,owner,tags,reportSuiteName,modified",
+        "expansion": "definition,name,description,owner,tags,reportSuiteName,modified,"
+                     "createdDate,definitionLastModified,recentRecordedAccess",
         "includeType": "all",
     }
     prefilter = _pick_prefilter_word(kw_list)         # 서버 volume 축소용 (매칭 수단 아님)
@@ -635,25 +668,31 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
         return s.lower()
     matched = [it for it in items if all(kw in _hay(it) for kw in match_kws)]
 
-    # 날짜 필터 (modified 기준 — AA 생성일 미제공). date 부분(YYYY-MM-DD)만 비교, both inclusive.
-    # ⚠ 속도 최적화 아님: AA 가 modified 를 서버측 필터 파라미터로 안 받아, 일단 키워드 후보를
-    #    전부 받아온 뒤(=병목: 서버 페이징 + /users 유저맵 로드) 클라이언트에서 거르는 구조다.
+    # 날짜 필터 — DATE_FIELDS 의 4종(created/modified/definition_modified/accessed) 전부 지원.
+    # date 부분(YYYY-MM-DD)만 비교, both inclusive. 여러 필드를 같이 주면 AND.
+    # ⚠ 속도 최적화 아님: AA 는 날짜를 서버측 필터 파라미터로 안 받는다(모르는 파라미터는 조용히 무시).
+    #    일단 후보를 전부 받아온 뒤(=병목: 서버 페이징 + /users 유저맵 로드) 클라이언트에서 거르는 구조다.
     #    → 날짜 범위를 좁혀도 전체 속도는 거의 그대로(후처리 decompile/CSV 만 약간 절약).
     #    실제 속도는 --search 키워드를 더 구체적으로 / --rsid 로 줄일 것.
-    if modified_after or modified_before:
+    for _fld, (_aft, _bef) in (date_filters or {}).items():
+        if not (_aft or _bef):
+            continue
+        raw_key = DATE_FIELDS.get(_fld, _fld)
         before_n = len(matched)
-        def _date_ok(it: dict) -> bool:
-            d = (it.get("modified") or "")[:10]      # 'YYYY-MM-DD'
+
+        def _date_ok(it: dict, _k=raw_key, _a=_aft, _b=_bef) -> bool:
+            d = (it.get(_k) or "")[:10]              # 'YYYY-MM-DD'
             if not d:
-                return False                          # modified 없으면 필터 시 제외
-            if modified_after and d < modified_after:
+                return False                          # 값 없으면 필터 시 제외
+            if _a and d < _a:
                 return False
-            if modified_before and d > modified_before:
+            if _b and d > _b:
                 return False
             return True
+
         matched = [it for it in matched if _date_ok(it)]
-        rng = f"{modified_after or '…'} ~ {modified_before or '…'}"
-        print(f"  📅 modified 필터({rng}): {before_n} → {len(matched)}건")
+        rng = f"{_aft or '…'} ~ {_bef or '…'}"
+        print(f"  📅 {_fld} 필터({rng}): {before_n:,} → {len(matched):,}건")
 
     # 조용한 절단 방지 — 초과 시 경고 후 자름
     total = len(matched)
@@ -675,7 +714,11 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
             "owner_name": owner.get("name", "") if isinstance(owner, dict) else "",
             "owner_email": "",
             "rsid": item.get("rsid", ""),
+            "created": item.get("createDate", ""),
             "modified": item.get("modified", ""),
+            "definition_last_modified": item.get("definitionLastModified", "") or "",
+            "recent_access": item.get("recentRecordedAccess", "") or "",
+            "modified_by_id": item.get("modifiedById", "") or "",
             "description": item.get("description", ""),
             "tags": tag_names,
             "definition": item.get("definition"),
@@ -687,6 +730,33 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str,
 # ═══════════════════════════════════════════════════════════════════
 # Runner
 # ═══════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════
+# 진행률 출력 (대량 조회 시 GET/CSV/DSL 이 오래 걸려 체감용)
+# ═══════════════════════════════════════════════════════════════════
+
+def _fmt_dur(sec: float) -> str:
+    """초 → '1h02m' / '3m20s' / '12s'"""
+    sec = int(max(sec, 0))
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h{m:02d}m"
+    if m:
+        return f"{m}m{s:02d}s"
+    return f"{s}s"
+
+
+def _progress(label: str, done: int, total: int, t0: float) -> None:
+    """'CSV 1,200/50,000 (2.4%) — 경과 12s / 남은 예상 8m20s' 형태 한 줄."""
+    if total <= 0:
+        return
+    elapsed = time.time() - t0
+    rate = done / elapsed if elapsed > 0 else 0.0
+    eta = (total - done) / rate if rate > 0 else 0.0
+    print(f"    {label} {done:,}/{total:,} ({done / total * 100:.1f}%) — "
+          f"경과 {_fmt_dur(elapsed)} / 남은 예상 {_fmt_dur(eta)}", flush=True)
+
 
 def main() -> int:
     # Windows cp949 콘솔에서도 em dash / 한글 안 깨지게
@@ -707,16 +777,36 @@ def main() -> int:
     parser.add_argument("--rsid", default="", help="검색 시 RSID 필터 (선택)")
     parser.add_argument("--limit", type=int, default=SEARCH_RESULT_LIMIT,
                         help=f"검색 결과 최대 건수 (기본 SEARCH_RESULT_LIMIT={SEARCH_RESULT_LIMIT})")
+    # ─── 날짜 필터 (검색 결과에만 적용 — ID 직접 지정 모드는 필터 안 함) ───
+    #     after 만=이후(>=), before 만=이전(<=), 둘 다=두 날짜 사이. 서로 다른 필드끼리는 AND.
+    parser.add_argument("--created-after", default="", metavar="YYYY-MM-DD",
+                        help="이 날짜 이후(>=) **생성**된 세그만 (createDate 기준)")
+    parser.add_argument("--created-before", default="", metavar="YYYY-MM-DD",
+                        help="이 날짜 이전(<=) 생성된 세그만")
     parser.add_argument("--modified-after", default="", metavar="YYYY-MM-DD",
-                        help="이 날짜 이후(>=) 수정된 세그만 (--search 한정). "
-                             "AA 가 생성일 미제공 → 마지막 수정일 modified 기준")
+                        help="이 날짜 이후(>=) 수정된 세그만 (modified — 이름/설명 변경도 포함)")
     parser.add_argument("--modified-before", default="", metavar="YYYY-MM-DD",
-                        help="이 날짜 이전(<=) 수정된 세그만. --modified-after 와 같이 주면 두 날짜 사이")
+                        help="이 날짜 이전(<=) 수정된 세그만")
+    parser.add_argument("--definition-modified-after", default="", metavar="YYYY-MM-DD",
+                        help="이 날짜 이후(>=) **정의(로직)** 가 바뀐 세그만 (definitionLastModified). "
+                             "이름/설명만 고친 건 안 잡힘. 값 없는 옛 세그는 제외됨")
+    parser.add_argument("--definition-modified-before", default="", metavar="YYYY-MM-DD",
+                        help="이 날짜 이전(<=) 정의가 바뀐 세그만")
+    parser.add_argument("--accessed-after", default="", metavar="YYYY-MM-DD",
+                        help="이 날짜 이후(>=) **사용**된 세그만 (recentRecordedAccess)")
+    parser.add_argument("--accessed-before", default="", metavar="YYYY-MM-DD",
+                        help="이 날짜 이전(<=) 사용된 세그만 — 미사용 세그 정리에 유용")
     args = parser.parse_args()
 
     # 날짜 옵션 형식 검증 (YYYY-MM-DD)
-    for label, val in (("--modified-after", args.modified_after),
-                       ("--modified-before", args.modified_before)):
+    for label, val in (("--created-after", args.created_after),
+                       ("--created-before", args.created_before),
+                       ("--modified-after", args.modified_after),
+                       ("--modified-before", args.modified_before),
+                       ("--definition-modified-after", args.definition_modified_after),
+                       ("--definition-modified-before", args.definition_modified_before),
+                       ("--accessed-after", args.accessed_after),
+                       ("--accessed-before", args.accessed_before)):
         if val:
             try:
                 datetime.strptime(val, "%Y-%m-%d")
@@ -765,25 +855,40 @@ def main() -> int:
     _set_daterange_auth(headers, gcid)   # decompile 시 datetime-interval-ref → Date Range name fetch
     print()
 
+    # 날짜 필터 묶음 (DATE_FIELDS 키 기준) — 값이 다 비면 필터 미적용
+    date_filters = {
+        "created": (args.created_after, args.created_before),
+        "modified": (args.modified_after, args.modified_before),
+        "definition_modified": (args.definition_modified_after, args.definition_modified_before),
+        "accessed": (args.accessed_after, args.accessed_before),
+    }
+
     # 조회
     results: list[dict] = []
     if search_mode:
         results = _search_segments(headers, gcid, args.search,
                                    rsid=args.rsid, limit=args.limit,
-                                   modified_after=args.modified_after,
-                                   modified_before=args.modified_before)
+                                   date_filters=date_filters)
         print(f"  검색 결과: {len(results)}건")
-        for r in results:
-            print(f"    {r['segment_id']}  {r['name']}")
+        if LIST_RESULT_NAMES:
+            for r in results:
+                print(f"    {r['segment_id']}  {r['name']}")
     else:
-        for i, seg_id in enumerate(seg_ids):
-            print(f"  [{i+1}/{len(seg_ids)}] {seg_id} ...", end=" ")
+        n_ids = len(seg_ids)
+        verbose_ids = n_ids <= DETAIL_PRINT_MAX      # 소량일 때만 건별 한 줄
+        t_get = time.time()
+        for i, seg_id in enumerate(seg_ids, 1):
+            if verbose_ids:
+                print(f"  [{i}/{n_ids}] {seg_id} ...", end=" ")
             info = _lookup_segment(headers, gcid, seg_id)
             results.append(info)
-            if info["error"]:
-                print(f"FAIL — {info['error'][:60]}")
+            if verbose_ids:
+                print(f"FAIL — {info['error'][:60]}" if info["error"] else f"OK — {info['name']}")
             else:
-                print(f"OK — {info['name']}")
+                if info["error"]:                     # 실패는 건수 무관 항상 노출
+                    print(f"  FAIL {seg_id} — {info['error'][:60]}")
+                if i % PROGRESS_EVERY == 0 or i == n_ids:
+                    _progress("GET", i, n_ids, t_get)
 
     print()
 
@@ -797,11 +902,17 @@ def main() -> int:
     # CSV 출력 — lookup/ 하위
     LOOKUP_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.csv"
+    total_n = len(results)
+    print(f"CSV 작성 — {total_n:,}건 (진행률 {PROGRESS_EVERY}건 단위)")
+    t_csv = time.time()
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["segment_id", "name", "owner_id", "owner_name", "owner_email", "rsid",
-                     "modified", "description", "tags", "structure", "error"])
-        for r in results:
+                     "created", "modified", "definition_last_modified", "recent_access",
+                     "modified_by_id", "description", "tags", "structure", "error"])
+        for i, r in enumerate(results, 1):
+            if i % PROGRESS_EVERY == 0 or i == total_n:
+                _progress("CSV", i, total_n, t_csv)
             # structure: decompiled DSL을 한 줄로
             structure = ""
             if r["definition"]:
@@ -813,15 +924,21 @@ def main() -> int:
                     structure = "(decompile error)"
             w.writerow([
                 r["segment_id"], r["name"], r["owner_id"], r["owner_name"],
-                r["owner_email"], r["rsid"], r.get("modified", ""), r["description"],
+                r["owner_email"], r["rsid"], r.get("created", ""), r.get("modified", ""),
+                r.get("definition_last_modified", ""), r.get("recent_access", ""),
+                r.get("modified_by_id", ""), r["description"],
                 r["tags"], structure, r["error"],
             ])
-    print(f"CSV: {csv_path}")
+    print(f"CSV: {csv_path}  ({_fmt_dur(time.time() - t_csv)})")
 
     # DSL 출력 — lookup/ 하위
     dsl_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.dsl"
+    print(f"DSL 작성 — {total_n:,}건 (진행률 {PROGRESS_EVERY}건 단위)")
+    t_dsl = time.time()
     dsl_blocks: list[str] = []
-    for r in results:
+    for i, r in enumerate(results, 1):
+        if i % PROGRESS_EVERY == 0 or i == total_n:
+            _progress("DSL", i, total_n, t_dsl)
         if r["definition"] is None:
             continue
         try:
@@ -839,7 +956,7 @@ def main() -> int:
 
     if dsl_blocks:
         dsl_path.write_text("\n\n".join(dsl_blocks) + "\n", encoding="utf-8")
-        print(f"DSL 구조: {dsl_path}")
+        print(f"DSL 구조: {dsl_path}  ({_fmt_dur(time.time() - t_dsl)}, {len(dsl_blocks):,} block)")
         print(f"  → aa_create_segment_v2.py --input {dsl_path.name} 으로 재사용 가능")
     else:
         print("DSL 구조: (유효한 definition 없음, 파일 미생성)")
@@ -849,22 +966,26 @@ def main() -> int:
     fail = sum(1 for r in results if r["error"])
     print(f"\n[summary] 성공: {ok}, 실패: {fail}")
 
-    # 성공한 것들 콘솔 출력
-    for r in results:
-        if r["error"]:
-            continue
-        print(f"\n{'─' * 50}")
-        print(f"  ID: {r['segment_id']}")
-        print(f"  Name: {r['name']}")
-        print(f"  Owner: {r['owner_name']} <{r['owner_email']}> ({r['owner_id']})")
-        print(f"  RSID: {r['rsid']}")
-        if r["tags"]:
-            print(f"  Tags: {r['tags']}")
-        if r["definition"]:
-            print(f"  구조:")
-            dsl = decompile_definition(r["definition"])
-            for line in dsl.splitlines():
-                print(f"    {line}")
+    # 성공한 것들 콘솔 출력 — 대량 조회 시 수만 줄이 되므로 소량일 때만
+    if ok > DETAIL_PRINT_MAX:
+        print(f"  (상세 구조 출력 생략 — {ok:,}건 > DETAIL_PRINT_MAX={DETAIL_PRINT_MAX}. "
+              f"위 CSV/DSL 파일을 보세요)")
+    else:
+        for r in results:
+            if r["error"]:
+                continue
+            print(f"\n{'─' * 50}")
+            print(f"  ID: {r['segment_id']}")
+            print(f"  Name: {r['name']}")
+            print(f"  Owner: {r['owner_name']} <{r['owner_email']}> ({r['owner_id']})")
+            print(f"  RSID: {r['rsid']}")
+            if r["tags"]:
+                print(f"  Tags: {r['tags']}")
+            if r["definition"]:
+                print(f"  구조:")
+                dsl = decompile_definition(r["definition"])
+                for line in dsl.splitlines():
+                    print(f"    {line}")
 
     return 0
 

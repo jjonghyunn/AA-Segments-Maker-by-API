@@ -370,18 +370,39 @@ python aa_segment_lookup.py --search "campaign" --rsid sscompany_name4mstglobal
 python aa_segment_lookup.py --search "[us] p" "visit"      # 이름에 "[us] p" 와 "visit" 둘 다
 python aa_segment_lookup.py --search "[campaign name]" "US_CC" --limit 2000
 
-# 날짜 필터 (수정일 modified 기준 — AA 가 생성일 미제공. YYYY-MM-DD)
-python aa_segment_lookup.py --search "campaign" --modified-after 2025-01-01 --modified-before 2025-07-01
+# 날짜 필터 (YYYY-MM-DD, both inclusive) — 생성일 / 수정일 / 정의변경일 / 사용일
+python aa_segment_lookup.py --search "campaign" --created-after 2025-01-01 --created-before 2025-07-01
+python aa_segment_lookup.py --search "campaign" --modified-after 2025-01-01
+python aa_segment_lookup.py --search "campaign" --definition-modified-after 2025-01-01
+python aa_segment_lookup.py --search "campaign" --accessed-before 2025-01-01      # 오래 안 쓴 세그
 ```
 
 검색 동작:
 - 각 키워드(**첫 키워드 포함**)를 이름(+설명)에 **연속 substring** 으로 AND 매칭 (대소문자 무시).
   → `"[us] p"` 는 공백까지 통째로 한 substring (Adobe 토큰 필터처럼 단어로 안 쪼갬).
 - 상단 상수 `SEARCH_RESULT_LIMIT`(기본 1000, `--limit` 로 덮어씀). 결과가 limit 초과 시 **경고 출력**(조용한 절단 없음).
-- ⚠ AA 세그먼트 API 가 **생성일(created)을 제공하지 않아 마지막 수정일(`modified`) 기준** 으로 날짜 필터.
+날짜 필터 (`--search` / `--owner` 검색 한정 — ID 직접 지정 모드는 필터 안 함):
+
+| 옵션 | 기준 필드 | 의미 |
+|---|---|---|
+| `--created-after` / `--created-before` | `createDate` | **생성일** |
+| `--modified-after` / `--modified-before` | `modified` | 최종 수정일 (이름·설명만 고쳐도 갱신됨) |
+| `--definition-modified-after` / `-before` | `definitionLastModified` | **정의(로직)** 마지막 변경 — 이름만 고친 건 안 잡힘. 값 없는 옛 세그는 제외됨 |
+| `--accessed-after` / `--accessed-before` | `recentRecordedAccess` | 최근 **사용** 시각 — 미사용 세그 정리용 |
+
+- 각 필드마다 after 만=이후(>=), before 만=이전(<=), 둘 다=두 날짜 **사이**(both inclusive).
+  서로 다른 필드를 같이 주면 **AND**. 예) 이번 달 생성 + 3개월간 미사용:
+  `--created-after 2026-08-01 --accessed-before 2026-05-21`
+- ⚠ **2026-08-21 정정**: "AA 가 생성일(created)을 제공하지 않는다"던 이전 설명은 **틀렸습니다.**
+  `expansion=createdDate` 로 제공됩니다 (요청 파라미터명 `createdDate` ↔ 응답 키 `createDate` 로 이름이 다름).
+  덤으로 segment id 의 24-hex 는 Mongo ObjectId 라 **앞 8자리 = 생성 유닉스 시각** — `createDate` 와 초 단위까지 일치합니다.
+- ⚠ **속도 최적화 아님** — AA 는 날짜를 **서버측 필터 파라미터로 안 받습니다** (모르는 파라미터는 조용히 무시되고
+  전체 건수가 그대로 나옴). 후보를 다 받아온 뒤 클라이언트에서 거르는 구조라, 속도는 키워드 구체화 / `--rsid` 로.
+- 참고: 서버측 정렬(`sortProperty`)도 `name` / `id` 만 허용됩니다 (`createDate`·`modified` 는 400).
+  단 **`id` 정렬 = 사실상 생성일 정렬**(ObjectId 특성)이라 최신순이 필요하면 이걸 쓰면 됩니다.
 
 출력 (코드 폴더의 `lookup/` 하위에 생성):
-- `lookup/segment_lookup_<ts>.csv` — `segment_id, name, owner_id, owner_name, owner_email, rsid, modified, description, tags, structure`
+- `lookup/segment_lookup_<ts>.csv` — `segment_id, name, owner_id, owner_name, owner_email, rsid, created, modified, definition_last_modified, recent_access, modified_by_id, description, tags, structure`
 - `lookup/segment_lookup_<ts>.dsl` — 역변환된 DSL 멀티라인 (v2.4 입력으로 재사용 가능)
 
 > **sequence dimension-restriction round-trip (2026-07-08)**: sequence THEN 스텝 사이 "within N \<dim\>" 제약(AA `dimension-restriction`)을 DSL `WITHIN N <dim>` 스텝으로 표기 (예: `WITHIN 1 page`). `aa_create_segment_v2.4` 이 되읽어 재생성 → lookup↔maker 왕복. 차원은 조건문과 같은 short var(`page`) 표기. (sequence label strip 도 `hit`/`visit`/`visitor` scope 전부 처리하도록 일반화.)
@@ -432,6 +453,8 @@ owner 해석 순서:
 
 출력 (코드 폴더의 `lookup/` 하위):
 - `lookup/segment_lookup_owner_<ts>.csv` / `.dsl` — 컬럼·DSL 문법은 `aa_segment_lookup.py` 와 동일
+  (날짜 컬럼 `created` / `modified` / `definition_last_modified` / `recent_access` / `modified_by_id` 포함,
+   `--created-after` 등 날짜 필터도 `--owner` 와 조합 가능)
 
 ## aa_segment_lookup_from_pjt.py 사용법
 

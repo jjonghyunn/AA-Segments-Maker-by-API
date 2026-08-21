@@ -24,6 +24,7 @@ import argparse
 import csv
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -57,6 +58,11 @@ PROJECT_ID = "YOUR_PROJECT_ID" # [part_name] 2026 CAMPAIGN NAME | Contents Click
 # ════════════════════════════════════════════════════════════════════
 
 RESULT_PREFIX = "segment_lookup_pjt_"
+
+# ─── 콘솔 출력 설정 ────────────────────────────────────────────────
+PROGRESS_EVERY = 100                # 진행률을 몇 건마다 찍을지 (CSV/DSL 작성, 세그 GET)
+DETAIL_PRINT_MAX = 20               # 결과가 이 건수 이하일 때만 건별 상세(구조/이름) 출력
+LIST_RESULT_NAMES = False           # 검색 직후 'id  name' 나열 여부 (대량 조회 시 수만 줄 → 기본 off)
 SEG_ID_REGEX = re.compile(r"s\d{9}_[0-9a-f]{24}")
 
 
@@ -143,6 +149,33 @@ def _fetch_project_segment_ids(headers: dict, gcid: str, project_id: str,
     return uniq
 
 
+# ═══════════════════════════════════════════════════════════════════
+# 진행률 출력 (대량 조회 시 GET/CSV/DSL 이 오래 걸려 체감용)
+# ═══════════════════════════════════════════════════════════════════
+
+def _fmt_dur(sec: float) -> str:
+    """초 → '1h02m' / '3m20s' / '12s'"""
+    sec = int(max(sec, 0))
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h{m:02d}m"
+    if m:
+        return f"{m}m{s:02d}s"
+    return f"{s}s"
+
+
+def _progress(label: str, done: int, total: int, t0: float) -> None:
+    """'CSV 1,200/50,000 (2.4%) — 경과 12s / 남은 예상 8m20s' 형태 한 줄."""
+    if total <= 0:
+        return
+    elapsed = time.time() - t0
+    rate = done / elapsed if elapsed > 0 else 0.0
+    eta = (total - done) / rate if rate > 0 else 0.0
+    print(f"    {label} {done:,}/{total:,} ({done / total * 100:.1f}%) — "
+          f"경과 {_fmt_dur(elapsed)} / 남은 예상 {_fmt_dur(eta)}", flush=True)
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -196,14 +229,21 @@ def main() -> int:
 
     # 일괄 GET
     results: list[dict] = []
-    for i, seg_id in enumerate(seg_ids):
-        print(f"  [{i+1}/{len(seg_ids)}] {seg_id} ...", end=" ")
+    n_ids = len(seg_ids)
+    verbose_ids = n_ids <= DETAIL_PRINT_MAX          # 소량일 때만 건별 한 줄
+    t_get = time.time()
+    for i, seg_id in enumerate(seg_ids, 1):
+        if verbose_ids:
+            print(f"  [{i}/{n_ids}] {seg_id} ...", end=" ")
         info = _lookup_segment(headers, gcid, seg_id)
         results.append(info)
-        if info["error"]:
-            print(f"FAIL — {info['error'][:60]}")
+        if verbose_ids:
+            print(f"FAIL — {info['error'][:60]}" if info["error"] else f"OK — {info['name']}")
         else:
-            print(f"OK — {info['name']}")
+            if info["error"]:                         # 실패는 건수 무관 항상 노출
+                print(f"  FAIL {seg_id} — {info['error'][:60]}")
+            if i % PROGRESS_EVERY == 0 or i == n_ids:
+                _progress("GET", i, n_ids, t_get)
     print()
 
     # owner 이름/이메일 보강 — GET /users 직접 조회
@@ -221,11 +261,17 @@ def main() -> int:
     dsl_path = LOOKUP_DIR / f"{base_name}.dsl"
 
     # CSV
+    total_n = len(results)
+    print(f"CSV 작성 — {total_n:,}건 (진행률 {PROGRESS_EVERY}건 단위)")
+    t_csv = time.time()
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["segment_id", "name", "owner_id", "owner_name", "owner_email", "rsid",
-                     "description", "tags", "structure", "error"])
-        for r in results:
+                     "created", "modified", "definition_last_modified", "recent_access",
+                     "modified_by_id", "description", "tags", "structure", "error"])
+        for i, r in enumerate(results, 1):
+            if i % PROGRESS_EVERY == 0 or i == total_n:
+                _progress("CSV", i, total_n, t_csv)
             structure = ""
             if r["definition"]:
                 try:
@@ -235,13 +281,19 @@ def main() -> int:
                     structure = "(decompile error)"
             w.writerow([
                 r["segment_id"], r["name"], r["owner_id"], r["owner_name"],
-                r["owner_email"], r["rsid"], r["description"], r["tags"], structure, r["error"],
+                r["owner_email"], r["rsid"], r.get("created", ""), r.get("modified", ""),
+                r.get("definition_last_modified", ""), r.get("recent_access", ""),
+                r.get("modified_by_id", ""), r["description"], r["tags"], structure, r["error"],
             ])
-    print(f"CSV: {csv_path}")
+    print(f"CSV: {csv_path}  ({_fmt_dur(time.time() - t_csv)})")
 
     # DSL
+    print(f"DSL 작성 — {total_n:,}건 (진행률 {PROGRESS_EVERY}건 단위)")
+    t_dsl = time.time()
     dsl_blocks: list[str] = []
-    for r in results:
+    for i, r in enumerate(results, 1):
+        if i % PROGRESS_EVERY == 0 or i == total_n:
+            _progress("DSL", i, total_n, t_dsl)
         if r["definition"] is None:
             continue
         try:
@@ -256,7 +308,7 @@ def main() -> int:
 
     if dsl_blocks:
         dsl_path.write_text("\n\n".join(dsl_blocks) + "\n", encoding="utf-8")
-        print(f"DSL 구조: {dsl_path}")
+        print(f"DSL 구조: {dsl_path}  ({_fmt_dur(time.time() - t_dsl)}, {len(dsl_blocks):,} block)")
 
     ok = sum(1 for r in results if not r["error"])
     fail = sum(1 for r in results if r["error"])

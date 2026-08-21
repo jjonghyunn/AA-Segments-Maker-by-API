@@ -79,7 +79,7 @@ python RESHAPE_standard_v1.8.py            # union 정제
 |---|---|
 | **`aa_create_segment_v*.py` (CSV) — 권장** | CSV 입력 (structure 칼럼) → 생성(POST) / 업데이트(PUT). dry-run CSV 자동, AA validator patch (event-exists / segment-ref auto-fetch + cache / NOT container) |
 | `input_csv_maker(_*).py` | raw `seg_make_ref_*.csv` → input CSV + `.dsl` + `_WARN.csv` 자동 변환. variant: us / from_ref_batch 룰 차이 |
-| `aa_segment_lookup.py` | ID 또는 이름 키워드로 검색 → CSV (owner 이름/이메일 + structure 포함) + `.dsl` 역변환. 결과는 `lookup/` 하위. `--search` 는 모든 키워드(첫 키워드 포함)를 이름 **연속 substring** 으로 AND (v1.2), owner 보강은 AA `GET /users` (v1.1). `SEARCH_RESULT_LIMIT` 상수로 상한 조정. `--modified-after/before YYYY-MM-DD` 로 수정일 필터(AA 가 생성일 미제공 → `modified` 기준, both inclusive) |
+| `aa_segment_lookup.py` | ID 또는 이름 키워드로 검색 → CSV (owner 이름/이메일 + structure 포함) + `.dsl` 역변환. 결과는 `lookup/` 하위. `--search` 는 모든 키워드(첫 키워드 포함)를 이름 **연속 substring** 으로 AND (v1.2), owner 보강은 AA `GET /users` (v1.1). `SEARCH_RESULT_LIMIT` 상수로 상한 조정. 날짜 필터는 생성일·수정일·정의변경일·사용일 4종 (`--created-after/before`, `--modified-*`, `--definition-modified-*`, `--accessed-*`, both inclusive) |
 | `aa_segment_lookup_by_owner.py` | 위 lookup 의 사본 + **`--owner` 검색** — numeric loginId / 이메일 / 이름 부분일치(여러 개면 OR)로 그 사람 소유 세그만. `--search` 와 같이 주면 AND, 단독 사용도 가능. AA 가 ownerId 서버 필터를 미지원해 **클라이언트측 필터** — owner 단독 스캔은 전체 페이징(병렬 fetch)이라 `--rsid` 병행 권장. 결과는 `lookup/segment_lookup_owner_<ts>.*` |
 | `aa_segment_lookup_from_pjt.py` | project 의 panel 들이 참조하는 segment 목록 일괄 lookup (출력 포맷 동일, `lookup/` 하위) |
 | `aa_delete_segment.py` | result CSV 기반 안전 삭제 (3중 안전장치: CSV 강제 / 이름 prefix / `--yes`) |
