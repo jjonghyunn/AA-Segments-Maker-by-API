@@ -77,6 +77,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -101,6 +102,11 @@ SEARCH_PREFILTER_MIN_WORD = 2       # server-side name prefetch 에 쓸 "완전�
 SEARCH_MAX_PAGES = 50               # --search 키워드 검색 시 페이지 순회 상한 (1page=1000건)
 OWNER_SCAN_MAX_PAGES = 300          # --owner 단독(키워드 없음) 스캔 시 상한 — 회사 전체라 크게
 OWNER_SCAN_WORKERS = 6              # owner 단독 스캔 병렬 페이지 fetch 워커 수 (1 = 순차)
+
+# ─── 콘솔 출력 설정 ────────────────────────────────────────────────
+PROGRESS_EVERY = 100                # CSV/DSL 작성 진행률을 몇 건마다 찍을지
+DETAIL_PRINT_MAX = 20               # 결과가 이 건수 이하일 때만 마지막에 구조(DSL) 상세 덤프
+LIST_RESULT_NAMES = False           # 검색 직후 'id  name' 나열 여부 (대량 조회 시 수만 줄 → 기본 off)
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -811,6 +817,33 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str | None,
 
 
 # ═══════════════════════════════════════════════════════════════════
+# 진행률 출력 (대량 조회 시 CSV/DSL 작성이 오래 걸려 체감용)
+# ═══════════════════════════════════════════════════════════════════
+
+def _fmt_dur(sec: float) -> str:
+    """초 → '1h02m' / '3m20s' / '12s'"""
+    sec = int(max(sec, 0))
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h{m:02d}m"
+    if m:
+        return f"{m}m{s:02d}s"
+    return f"{s}s"
+
+
+def _progress(label: str, done: int, total: int, t0: float) -> None:
+    """'CSV 1,200/50,000 (2.4%) — 경과 12s / 남은 예상 8m20s' 형태 한 줄."""
+    if total <= 0:
+        return
+    elapsed = time.time() - t0
+    rate = done / elapsed if elapsed > 0 else 0.0
+    eta = (total - done) / rate if rate > 0 else 0.0
+    print(f"    {label} {done:,}/{total:,} ({done / total * 100:.1f}%) — "
+          f"경과 {_fmt_dur(elapsed)} / 남은 예상 {_fmt_dur(eta)}", flush=True)
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Runner
 # ═══════════════════════════════════════════════════════════════════
 
@@ -922,9 +955,10 @@ def main() -> int:
                                    modified_after=args.modified_after,
                                    modified_before=args.modified_before,
                                    owner_ids=owner_ids)
-        print(f"  검색 결과: {len(results)}건")
-        for r in results:
-            print(f"    {r['segment_id']}  {r['name']}")
+        print(f"  검색 결과: {len(results):,}건")
+        if LIST_RESULT_NAMES:
+            for r in results:
+                print(f"    {r['segment_id']}  {r['name']}")
     else:
         for i, seg_id in enumerate(seg_ids):
             print(f"  [{i+1}/{len(seg_ids)}] {seg_id} ...", end=" ")
@@ -947,11 +981,16 @@ def main() -> int:
     # CSV 출력 — lookup/ 하위
     LOOKUP_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.csv"
+    total_n = len(results)
+    print(f"CSV 작성 — {total_n:,}건 (진행률 {PROGRESS_EVERY}건 단위)")
+    t_csv = time.time()
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["segment_id", "name", "owner_id", "owner_name", "owner_email", "rsid",
                      "modified", "description", "tags", "structure", "error"])
-        for r in results:
+        for i, r in enumerate(results, 1):
+            if i % PROGRESS_EVERY == 0 or i == total_n:
+                _progress("CSV", i, total_n, t_csv)
             # structure: decompiled DSL을 한 줄로
             structure = ""
             if r["definition"]:
@@ -966,12 +1005,16 @@ def main() -> int:
                 r["owner_email"], r["rsid"], r.get("modified", ""), r["description"],
                 r["tags"], structure, r["error"],
             ])
-    print(f"CSV: {csv_path}")
+    print(f"CSV: {csv_path}  ({_fmt_dur(time.time() - t_csv)})")
 
     # DSL 출력 — lookup/ 하위
     dsl_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.dsl"
+    print(f"DSL 작성 — {total_n:,}건 (진행률 {PROGRESS_EVERY}건 단위)")
+    t_dsl = time.time()
     dsl_blocks: list[str] = []
-    for r in results:
+    for i, r in enumerate(results, 1):
+        if i % PROGRESS_EVERY == 0 or i == total_n:
+            _progress("DSL", i, total_n, t_dsl)
         if r["definition"] is None:
             continue
         try:
@@ -989,7 +1032,7 @@ def main() -> int:
 
     if dsl_blocks:
         dsl_path.write_text("\n\n".join(dsl_blocks) + "\n", encoding="utf-8")
-        print(f"DSL 구조: {dsl_path}")
+        print(f"DSL 구조: {dsl_path}  ({_fmt_dur(time.time() - t_dsl)}, {len(dsl_blocks):,} block)")
         print(f"  → aa_create_segment_v2.py --input {dsl_path.name} 으로 재사용 가능")
     else:
         print("DSL 구조: (유효한 definition 없음, 파일 미생성)")
@@ -999,22 +1042,26 @@ def main() -> int:
     fail = sum(1 for r in results if r["error"])
     print(f"\n[summary] 성공: {ok}, 실패: {fail}")
 
-    # 성공한 것들 콘솔 출력
-    for r in results:
-        if r["error"]:
-            continue
-        print(f"\n{'─' * 50}")
-        print(f"  ID: {r['segment_id']}")
-        print(f"  Name: {r['name']}")
-        print(f"  Owner: {r['owner_name']} <{r['owner_email']}> ({r['owner_id']})")
-        print(f"  RSID: {r['rsid']}")
-        if r["tags"]:
-            print(f"  Tags: {r['tags']}")
-        if r["definition"]:
-            print(f"  구조:")
-            dsl = decompile_definition(r["definition"])
-            for line in dsl.splitlines():
-                print(f"    {line}")
+    # 성공한 것들 콘솔 출력 — 대량 조회 시 수만 줄이 되므로 소량일 때만
+    if ok > DETAIL_PRINT_MAX:
+        print(f"  (상세 구조 출력 생략 — {ok:,}건 > DETAIL_PRINT_MAX={DETAIL_PRINT_MAX}. "
+              f"위 CSV/DSL 파일을 보세요)")
+    else:
+        for r in results:
+            if r["error"]:
+                continue
+            print(f"\n{'─' * 50}")
+            print(f"  ID: {r['segment_id']}")
+            print(f"  Name: {r['name']}")
+            print(f"  Owner: {r['owner_name']} <{r['owner_email']}> ({r['owner_id']})")
+            print(f"  RSID: {r['rsid']}")
+            if r["tags"]:
+                print(f"  Tags: {r['tags']}")
+            if r["definition"]:
+                print(f"  구조:")
+                dsl = decompile_definition(r["definition"])
+                for line in dsl.splitlines():
+                    print(f"    {line}")
 
     return 0
 

@@ -423,6 +423,13 @@ owner 해석 순서:
 - 결과가 `SEARCH_RESULT_LIMIT`(`--limit`) 를 넘으면 원본과 동일하게 경고 후 상위 N 건만 출력합니다.
   세그를 많이 가진 owner 는 수만 건이 나올 수 있으니 `--limit` 을 의식적으로 지정하세요.
 
+콘솔 출력 (대량 조회 대응 — 상단 상수로 조정):
+- 검색 직후 `id  name` 나열은 **기본 off** (`LIST_RESULT_NAMES = False`). 수만 건이면 그만큼 줄이 쏟아집니다.
+- CSV / DSL 작성은 시작할 때 총 건수를 찍고, `PROGRESS_EVERY`(기본 100)건마다
+  `CSV 1,200/32,701 (3.7%) — 경과 12s / 남은 예상 5m20s` 형태로 진행률·예상시간을 출력합니다.
+- 마지막 구조(DSL) 상세 덤프는 결과가 `DETAIL_PRINT_MAX`(기본 20)건 이하일 때만.
+  초과하면 생략 — 이 덤프는 definition 을 한 번 더 decompile 하므로 대량일 때 작업량이 두 배가 됩니다.
+
 출력 (코드 폴더의 `lookup/` 하위):
 - `lookup/segment_lookup_owner_<ts>.csv` / `.dsl` — 컬럼·DSL 문법은 `aa_segment_lookup.py` 와 동일
 
