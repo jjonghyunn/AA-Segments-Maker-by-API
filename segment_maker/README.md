@@ -1,5 +1,5 @@
 # segment_maker/  
-<sub>2026-08-04  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-21  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
 
@@ -208,6 +208,7 @@ visit(                          ⟨1⟩ scope = visit   ← 일반 세그와 다
 |---|---|
 | `aa_create_segment_v2.4.py` | **권장** — CSV 입력 + AA validator 호환 patch 자동화. CREATE / UPDATE / mixed (`--update-or-create`) 지원 |
 | `aa_segment_lookup.py` | 세그먼트 ID 또는 이름 키워드 검색 → CSV (기본 정보 + owner 이름/이메일 + structure 칼럼) + `.dsl` (DSL 역변환). v2.4 가 받는 입력 형식과 동일. 결과는 `lookup/` 하위 |
+| `aa_segment_lookup_by_owner.py` | 위 lookup 의 **사본 + `--owner` 검색** — owner(loginId / 이메일 / 이름 부분일치) 기준 필터. 출력 포맷 동일, 결과 prefix 만 `segment_lookup_owner_` |
 | `aa_segment_lookup_from_pjt.py` | project 안 panel·reportlet 이 참조하는 segment 들을 일괄 lookup → CSV + DSL (`lookup/` 하위) |
 | `aa_delete_segment.py` | result CSV 기반 안전 삭제 (3중 안전장치: CSV 강제, 이름 prefix 검증, `--yes` 필수) |
 | `input_csv_maker.py` | raw `seg_make_ref_*.csv` → v2.4 input CSV + `.dsl` + `_WARN.csv` 자동 변환. LCS 추출 / crystallize override / 양수·음수 site 필터 / 그룹화 |
@@ -386,6 +387,44 @@ python aa_segment_lookup.py --search "campaign" --modified-after 2025-01-01 --mo
 > **sequence dimension-restriction round-trip (2026-07-08)**: sequence THEN 스텝 사이 "within N \<dim\>" 제약(AA `dimension-restriction`)을 DSL `WITHIN N <dim>` 스텝으로 표기 (예: `WITHIN 1 page`). `aa_create_segment_v2.4` 이 되읽어 재생성 → lookup↔maker 왕복. 차원은 조건문과 같은 short var(`page`) 표기. (sequence label strip 도 `hit`/`visit`/`visitor` scope 전부 처리하도록 일반화.)
 >
 > **AA native 부정(not-*) func 패밀리 (2026-07-08)**: AA 네이티브 부정 func 을 읽기 쉬운 DSL 로 표기하고 maker 가 네이티브 func 그대로 되읽음(`without` 래핑 아님): `not-streq`→`not-equals`, `not-streq-in`→`not-equal-any-of`/`not-in`, `not-contains`, `not-contains-any-of`, `not-starts-with`, `not-ends-with`, `not-exists`. 예: `evar73 not-equal-any-of ["0","NA",...]`, `page not-starts-with "in:"`, `evar40 not-exists`. (별개 미처리 gap: `event-exists`, `eq`.)
+
+## aa_segment_lookup_by_owner.py 사용법
+
+`aa_segment_lookup.py` 의 **사본** — 옵션·출력 포맷이 전부 같고 **`--owner` 검색만 추가**됐습니다.
+(원본을 안 건드리려고 사본으로 분리. 결과 파일 prefix 도 `segment_lookup_owner_` 로 갈라 둡니다.)
+
+```bash
+# owner 기준 검색 — numeric loginId
+python aa_segment_lookup_by_owner.py --owner YOUR_LOGIN_ID
+
+# 이메일로도 가능 (이름 부분일치도 됨)
+python aa_segment_lookup_by_owner.py --owner someone@example.com
+python aa_segment_lookup_by_owner.py --owner "jane" "john"        # 두 명 중 아무나 (OR)
+
+# 범위를 좁혀 쓰는 걸 권장 (owner 단독은 회사 전체 스캔)
+python aa_segment_lookup_by_owner.py --owner YOUR_LOGIN_ID --rsid your_rsid
+python aa_segment_lookup_by_owner.py --owner YOUR_LOGIN_ID --search "campaign"   # owner AND 키워드
+python aa_segment_lookup_by_owner.py --owner YOUR_LOGIN_ID --limit 40000         # 결과 상한 올리기
+```
+
+owner 해석 순서:
+1. **전부 숫자** → numeric loginId 그대로
+2. 그 외 → `GET /users` 로 받은 회사 사용자 목록에서 **email · 이름에 case-insensitive substring** 매칭.
+   여러 명 매칭되면 전부 대상(OR). 실행 시 해석된 사람 목록(`loginId  이름 <email>`)을 콘솔에 출력하므로,
+   의도한 사람이 맞는지 눈으로 확인한 뒤 결과를 쓰면 됩니다. 아무도 매칭 안 되면 스캔 전에 에러로 중단.
+
+동작·주의:
+- **AA `/segments` 는 `ownerId` 서버 파라미터를 지원하지 않습니다.** → `--modified-after/before` 와 같은
+  **클라이언트측 필터** 입니다. `--search` 키워드가 있으면 그 후보 안에서만 거르므로 빠르고,
+  `--owner` 단독이면 회사 전체 세그를 페이징으로 훑습니다.
+- owner 단독 스캔은 page 0 으로 `totalPages` 를 확인한 뒤 나머지를 `OWNER_SCAN_WORKERS`(기본 6) 개
+  스레드로 **병렬 fetch** 합니다. 순차 대비 훨씬 빠르지만 그래도 전량 스캔이라 `--rsid` 로 좁히는 게 낫습니다.
+- 페이지 상한(`OWNER_SCAN_MAX_PAGES`, 기본 300 page × 1,000건)에 걸리면 **조용히 자르지 않고 경고**를 출력합니다.
+- 결과가 `SEARCH_RESULT_LIMIT`(`--limit`) 를 넘으면 원본과 동일하게 경고 후 상위 N 건만 출력합니다.
+  세그를 많이 가진 owner 는 수만 건이 나올 수 있으니 `--limit` 을 의식적으로 지정하세요.
+
+출력 (코드 폴더의 `lookup/` 하위):
+- `lookup/segment_lookup_owner_<ts>.csv` / `.dsl` — 컬럼·DSL 문법은 `aa_segment_lookup.py` 와 동일
 
 ## aa_segment_lookup_from_pjt.py 사용법
 
