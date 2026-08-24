@@ -247,7 +247,7 @@ AND @YOUR_SEGMENT_ID          # 기존 세그먼트 참조 (@<segment_id>)
 |---|---|---|
 | `=` / `equals` | `streq` | **문자** 등가 |
 | `!=` | `streq` + `without` | |
-| `eq` / `not-eq` | `eq` / `not-eq` | **숫자** 등가 — `=` 와 다른 연산자다. 합치면 의미가 바뀐다 (2026-08-24 추가) |
+| `eq` / `not-eq` | `eq` / `not-eq` | **숫자** 등가 — `=`(streq) 와 다른 func. 값 타입이 다르다 (아래) |
 | `>` `>=` `<` `<=` | `gt` `ge` `lt` `le` | |
 | `contains` / `not-contains` | 동일 | |
 | `contains-any-of` / `contains-all-of` | 동일 | 값은 `["a", "b"]` 리스트 |
@@ -267,6 +267,9 @@ AND @YOUR_SEGMENT_ID          # 기존 세그먼트 참조 (@<segment_id>)
 > metric 에 대한 숫자비교는 AA 가 `val` 을 `total` + `evt` 로 감싼 형태로 받는다
 > (`{"func":"eq","val":{"func":"total","evt":{"func":"event","name":"metrics/units"}},"num":1}`).
 > v2.4 가 컴파일 후 자동으로 감싸니 DSL 에는 쓰지 않는다.
+
+**`=`(streq) 는 문자값, `eq` 는 숫자값과 써야 한다.** 어긋나면 AA 가 거부한다 —
+`visitnumber = 1` ❌ / `visitnumber eq 1` ✅. GUI 는 둘 다 "equals" 로 보인다.
 
 ### 라운드트립 (lookup `.dsl` → v2.4 재입력)
 
