@@ -15,6 +15,12 @@
 # updated: 2026-07-08  — sequence dimension-restriction round-trip 지원: (1) 'WITHIN N <dim>' 토큰 + RestrictionNode + 파서/컴파일러 → AA dimension-restriction 노드 재생성. (2) sequence label strip 을 visitor 뿐 아니라 hit/visit scope 도 처리하도록 일반화 (visit-scope sequence 왕복 가능). lookup 의 'WITHIN 1 page' 를 되읽음.
 # updated: 2026-07-27  — v2.4: prop/page 디멘션 → evar 변환 옵션 (CONVERT_TO_EVAR / EVAR_SPECIAL_MAP / EVAR_DEFAULT_PROP_TO_EVAR / EVAR_TARGET_RSID + --to-evar). 정의 트리 attr name 을 variables/prop{N}·page → variables/evar{M} 로 remap (op·값·구조 보존). 특수 페어링(page→evar40, prop29→evar92)은 suite별 상단 상수.
 # updated: 2026-07-31  — EVAR_SPECIAL_MAP 에 self-mapping("prop70": "prop70") = 변환 제외 규약 추가 (기본 prop{N}→evar{N} fallback 보다 우선). + 치환 리포트 print: 세그별 [to-evar]/[keep] 한 줄 + 실행 끝에 전체 unique 집계표(어떤 prop 이 뭘로 대체됐는지 건수/세그수). metrics/* 이벤트도 [keep] 으로 집계.
+# updated: 2026-08-24  — lookup .dsl 라운드트립 수용: (1) OPERATOR_MAP 에 eq/not-eq/not-contains-all-of 추가.
+#                       (2) .dsl 파일 경로도 CSV 경로와 같은 전처리를 타게 통일 (_normalize_dsl_line_tokens 공유) —
+#                       예전엔 CSV 경로만 event-exists 치환 + sequence label strip 을 타서 .dsl 재입력이 대부분 실패.
+#                       (3) metric 숫자비교를 AA 실측 shape (val=total+evt) 으로 래핑, not-event-exists 왕복 추가.
+#                       (4) '?' placeholder / '??' 미지원 구조 노드 / '@daterange:' 를 ParseError 로 명시 거부 —
+#                       조용히 variables/? 로 컴파일돼 AA 400 이 나던 자리를 시끄럽게 만듦.
 # updated: 2026-08-04  — 배너/사용법 문자열에 남아있던 v2.2 잔재를 v2.4 로 정정. INPUT_CSV 기본값을 실재하는 디폴트 파일로 교체 (4곳 모두 없는 파일을 가리켜 --input 없이 실행하면 즉시 에러였음).
 """
 CSV 입력 → AA 세그먼트 일괄 생성 또는 업데이트.
@@ -230,6 +236,12 @@ OPERATOR_MAP: dict[str, str] = {
     ">=": "ge",
     "<": "lt",
     "<=": "le",
+    # ── 260824 라운드트립 보강 (ROUNDTRIP_PATCH_260824) ──
+    # lookup 이 뽑는 .dsl 은 AA 의 eq / not-eq (숫자 등가) 를 그대로 낸다.
+    # streq("=") 와 다른 연산자라 "=" 로 합칠 수 없어 토큰째로 받는다.
+    "eq": "eq",
+    "not-eq": "not-eq",
+    "not-contains-all-of": "not-contains-all-of",
 }
 
 # 항상 without wrapper가 붙는 연산자
@@ -257,6 +269,10 @@ FUNC_TO_DSL: dict[str, str] = {
     "ge": ">=",
     "lt": "<",
     "le": "<=",
+    # 260824: 렌더러 FUNC_TO_DSL 과 동일하게 유지 — ROUNDTRIP_PATCH_260824
+    "eq": "eq",
+    "not-eq": "not-eq",
+    "not-contains-all-of": "not-contains-all-of",
 }
 
 # context 매핑
@@ -264,13 +280,17 @@ CONTEXT_TO_SCOPE = {"hits": "hit", "visits": "visit", "visitors": "visitor"}
 SCOPE_TO_CONTEXT = {"hit": "hits", "visit": "visits", "visitor": "visitors"}
 
 # 리스트 값을 받는 연산자
-LIST_OPERATORS = {"contains-any-of", "contains-all-of", "streq-in", "in", "equals-any-of", "not-equal-any-of", "not-in", "not-contains-any-of"}
+LIST_OPERATORS = {"contains-any-of", "contains-all-of", "streq-in", "in", "equals-any-of", "not-equal-any-of", "not-in", "not-contains-any-of", "not-contains-all-of"}
 
 # 값이 없는 연산자
 NO_VALUE_OPERATORS = {"exists", "not-exists"}
 
 # 숫자 비교 연산자
-NUMERIC_OPERATORS = {">", ">=", "<", "<=", "gt", "ge", "lt", "le"}
+NUMERIC_OPERATORS = {">", ">=", "<", "<=", "gt", "ge", "lt", "le", "eq", "not-eq"}
+
+# 260824 2차 (ROUNDTRIP_PATCH2_260824): 위와 같은 뜻의 **AA func 이름** 집합.
+# metric 숫자비교를 AA 형식(total+evt)으로 되돌릴 때 쓴다.
+NUMERIC_AA_FUNCS = {"gt", "ge", "lt", "le", "eq", "not-eq"}
 
 # 모든 유효 연산자 (파서 에러 메시지용)
 ALL_OPERATORS = sorted(OPERATOR_MAP.keys())
@@ -306,6 +326,17 @@ def _resolve_variable(name: str) -> tuple[str, str]:
     m = _RE_EVENT.match(name)
     if m:
         return f"metrics/event{m.group(1)}", "event"
+
+    # 260824 (ROUNDTRIP_PATCH_260824): placeholder 가 조용히 variables/? 로 컴파일돼
+    # AA 가 400 (Unknown Attribute) 으로 거부하던 지점. lookup DSL 의 '?' 는 렌더러가
+    # 좌변을 복원하지 못한 자리이므로, 여기서 세워 조용한 오류를 시끄러운 오류로 바꾼다.
+    # 정상적인 미지의 dimension 이름은 그대로 통과해야 하니 '?' 만 걸러낸다.
+    if not name or "?" in name:
+        raise DSLParseError(
+            f"변수명으로 쓸 수 없는 토큰: '{name}' — lookup DSL 의 '?' 는 "
+            f"렌더러가 좌변(변수/메트릭)을 복원하지 못한 자리다. "
+            f"해당 세그는 raw-JSON 으로 다뤄야 한다."
+        )
 
     # 알 수 없으면 variables/ 접두사 붙여서 통과
     return f"variables/{name}", "attr"
@@ -507,6 +538,16 @@ def _tokenize(text: str) -> list[Token]:
         if seg_ref_text.startswith("NOT "):
             not_prefix_ref = True
             seg_ref_text = seg_ref_text[4:].strip()
+        if seg_ref_text.startswith("@daterange:"):
+            # 260824 (ROUNDTRIP_PATCH_260824): lookup 은 datetime-interval-ref 를
+            # "@daterange:<id> 'name' (defn)" 으로 렌더한다. 아래 '@' 분기가 이걸
+            # segment-ref 로 오인해 엉뚱한 segmentId 로 **조용히** 통과시켰다.
+            # date range 재구성은 아직 미지원이므로 명시적으로 거부한다.
+            raise DSLParseError(
+                f"date range 참조는 아직 재컴파일 미지원: '{seg_ref_text}' — "
+                f"해당 세그는 raw-JSON 으로 다뤄야 한다.",
+                line=lineno,
+            )
         if seg_ref_text.startswith("@"):
             seg_id = seg_ref_text[1:].strip()
             # NOT 정보는 value에 prefix로 전달
@@ -582,6 +623,27 @@ _RE_CONDITION = re.compile(
 
 
 def _parse_condition(text: str, line: int) -> ConditionNode:
+    # 260824 2차 (ROUNDTRIP_PATCH2_260824): lookup 이 '?? <func>(' 로 낸 노드는
+    # 렌더러에 렌더 분기가 없는 AA 구조 func 이다 (exclude-next-checkpoint,
+    # container-restriction, time-restriction, sequence-and/or). 자식은 보존해 뒀지만
+    # 파서 문법이 없으므로, 일반 "조건 파싱 실패" 대신 원인을 밝혀 준다.
+    _stripped = text.strip()
+    if "@daterange:" in _stripped:
+        # lookup 은 datetime-interval-ref 를 'WITHIN @daterange:<id> ...' 로 렌더한다.
+        # (실측: .dsl 의 @daterange 줄 6,535개 전부 이 WITHIN 형태 — bare 형태는 0건.)
+        # date range 재구성은 아직 미지원 → 조용히 틀리게 통과시키지 않고 여기서 세운다.
+        raise DSLParseError(
+            f"date range 참조는 아직 재컴파일 미지원: '{_stripped}' — "
+            f"이 세그는 raw-JSON 으로 다뤄야 한다.",
+            line=line,
+        )
+    if _stripped.startswith("??") or _stripped.startswith("? "):
+        raise DSLParseError(
+            f"파서가 지원하지 않는 AA 구조 노드: '{_stripped}' — "
+            f"lookup 이 '??' / '?' 로 표시한 자리다. 이 세그는 DSL 왕복이 안 되니 "
+            f"raw-JSON 으로 다뤄야 한다.",
+            line=line,
+        )
     """조건 텍스트 → ConditionNode."""
     m = _RE_CONDITION.match(text.strip())
     if not m:
@@ -1277,7 +1339,12 @@ def main_dsl() -> int:
             errors.append((i + 1, "DSL 본문이 비어있습니다"))
             continue
         try:
-            ast = parse_dsl(spec.dsl_body)
+            # 260824 (ROUNDTRIP_PATCH_260824): .dsl 파일 경로도 CSV 경로와 **같은** 전처리를
+            # 타게 한다. 이 비대칭이 lookup .dsl 재입력 실패의 최대 원인이었다
+            # (event-exists 65.5% + [sequence-*] 라벨 41.6% 의 세그가 여기서 죽었다).
+            _body = "\n".join(_normalize_dsl_line_tokens(spec.dsl_body.split("\n")))
+            _body = _strip_sequence_label_tokens(_body)
+            ast = parse_dsl(_body)
             spec.definition = compile_to_definition(ast)
             print(f"  [segment {i+1}] '{spec.name}' — 파싱 OK")
         except DSLParseError as e:
@@ -1698,6 +1765,24 @@ def _patch_definition_for_aa(node, *, fetch_seg_pred=None):
             metric_name = attr_name.replace("variables/", "metrics/", 1)
             return {"func": "event-exists",
                     "evt": {"func": "event", "name": metric_name}}
+        # 1d) 260824 2차 (ROUNDTRIP_PATCH2_260824): metric 에 대한 숫자비교.
+        #     AA 는 val 을 total+evt 로 감싼 형태로 받는다 (GET 실측 3세그/7 pred 확인):
+        #       {"func":"eq","val":{"func":"total","evt":{"func":"event","name":"metrics/units"}},"num":1}
+        #     v2 컴파일러는 val={"func":"event",...} 로 내므로 여기서 감싼다.
+        #     dimension (val.func=="attr") 은 감싸지 않는다 — AA 가 그대로 받는다.
+        if (node.get("func") in NUMERIC_AA_FUNCS
+                and isinstance(node.get("val"), dict)
+                and node["val"].get("func") == "event"):
+            wrapped = dict(node)
+            wrapped["val"] = {"func": "total", "evt": node["val"]}
+            return wrapped
+        # 1c) 260824 (ROUNDTRIP_PATCH_260824): not-exists 의 metric 형태.
+        #     _normalize_dsl_line_tokens 가 `not-event-exists` → `not-exists` 로 바꿔
+        #     파서를 통과시켰으니, 여기서 AA 호환 func 으로 되돌린다 (1a 의 not- 짝).
+        if (node.get("func") == "not-exists"
+                and isinstance(node.get("val"), dict)
+                and node["val"].get("func") == "event"):
+            return {"func": "not-event-exists", "evt": node["val"]}
         # 2) segment-ref → sub-segment 의 container inline
         if node.get("func") == "segment-ref" and fetch_seg_pred is not None:
             seg_id = node.get("segmentId")
@@ -1711,6 +1796,28 @@ def _patch_definition_for_aa(node, *, fetch_seg_pred=None):
     if isinstance(node, list):
         return [_patch_definition_for_aa(v, fetch_seg_pred=fetch_seg_pred) for v in node]
     return node
+
+
+def _normalize_dsl_line_tokens(lines: list[str]) -> list[str]:
+    """DSL 한 줄 단위 토큰 정규화 — CSV(structure) 경로와 .dsl 파일 경로가 **공유**한다.
+
+    260824 (ROUNDTRIP_PATCH_260824): 예전엔 이 치환이 _structure_to_dsl 안에만 있어서
+    CSV 경로만 타고 .dsl 파일 경로는 전처리 없이 parse_dsl 로 직행했다. lookup 이 뽑은
+    .dsl 을 그대로 --input 으로 넣으면 event-exists 줄에서 전부 ParseError 가 났다.
+
+    1) `<var> event-exists`     -> `<var> exists`
+    2) `<var> not-event-exists` -> `<var> not-exists`
+       (1의 정규식은 하이픈 때문에 not- 형태를 못 잡아 별도 규칙이 필요하다)
+
+    parser 는 OPERATOR_MAP 의 exists / not-exists 만 받고, JSON 컴파일 후
+    _patch_definition_for_aa 가 metric 이면 AA 호환 event-exists / not-event-exists 로 되돌린다.
+    """
+    out: list[str] = []
+    for t in lines:
+        t = re.sub(r"\b(\w+) not-event-exists\b", r"\1 not-exists", t)
+        t = re.sub(r"\b(\w+) event-exists\b", r"\1 exists", t)
+        out.append(t)
+    return out
 
 
 def _structure_to_dsl(structure: str) -> str:
@@ -1732,10 +1839,7 @@ def _structure_to_dsl(structure: str) -> str:
     #    글로벌: `event<N> event-exists`, US: `evar<N>instances event-exists` 둘 다 매칭.
     #    v2 parser 는 `exists` operator 만 받음 — `event-exists` 는 토큰 자체로 파싱 실패.
     #    JSON 컴파일 후 _patch_definition_for_aa 에서 AA 호환 `event-exists` func 으로 다시 변환.
-    tokens = [
-        re.sub(r"\b(\w+) event-exists\b", r"\1 exists", t)
-        for t in raw_tokens
-    ]
+    tokens = _normalize_dsl_line_tokens(raw_tokens)
     # 2) `not '<container>'!hit(` → `NOT (`  (parser 는 NOT named container 미지원, NOT (...) grouping 만 받음)
     #    매칭 `)` 는 그대로 유지 — 아래 paren stack 에서 'cont' (NOT ( 가 endswith "(") 로 처리되어 보존
     tokens = [

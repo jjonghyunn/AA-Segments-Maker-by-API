@@ -1,5 +1,5 @@
 # segment_maker/  
-<sub>2026-08-21  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-24  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
 
@@ -241,6 +241,51 @@ OR
 AND @YOUR_SEGMENT_ID          # 기존 세그먼트 참조 (@<segment_id>)
 ```
 
+### 연산자
+
+| DSL 토큰 | AA func | 비고 |
+|---|---|---|
+| `=` / `equals` | `streq` | **문자** 등가 |
+| `!=` | `streq` + `without` | |
+| `eq` / `not-eq` | `eq` / `not-eq` | **숫자** 등가 — `=` 와 다른 연산자다. 합치면 의미가 바뀐다 (2026-08-24 추가) |
+| `>` `>=` `<` `<=` | `gt` `ge` `lt` `le` | |
+| `contains` / `not-contains` | 동일 | |
+| `contains-any-of` / `contains-all-of` | 동일 | 값은 `["a", "b"]` 리스트 |
+| `not-contains-any-of` / `not-contains-all-of` | 동일 | `not-contains-all-of` 는 2026-08-24 추가 |
+| `in` / `equals-any-of` | `streq-in` | |
+| `not-in` / `not-equal-any-of` | `not-streq-in` | |
+| `starts-with` / `ends-with` (+ `not-` 형) | 동일 | |
+| `matches` | `matches-regex` | |
+| `exists` / `not-exists` | 동일 | 값 없음 |
+| `event-exists` / `not-event-exists` | 동일 | lookup 이 내는 형태. 파싱 직전 `exists` / `not-exists` 로 바뀌고, 컴파일 후 AA 형식으로 되돌아간다 (2026-08-24 추가) |
+
+**metric 은 풀네임으로 쓴다.** `orders` / `revenue` / `visits` / `visitors` / `pageviews` /
+`event<N>` 은 짧은 이름이 그대로 metric 으로 되돌아가지만, 그 밖의 metric (`units`,
+`cartadditions` 등) 은 짧게 쓰면 **dimension (`variables/*`) 으로 오컴파일**된다.
+그래서 lookup 은 이런 metric 을 `metrics/units eq 1` 처럼 풀네임으로 낸다 (2026-08-24).
+
+> metric 에 대한 숫자비교는 AA 가 `val` 을 `total` + `evt` 로 감싼 형태로 받는다
+> (`{"func":"eq","val":{"func":"total","evt":{"func":"event","name":"metrics/units"}},"num":1}`).
+> v2.4 가 컴파일 후 자동으로 감싸니 DSL 에는 쓰지 않는다.
+
+### 라운드트립 (lookup `.dsl` → v2.4 재입력)
+
+`aa_segment_lookup*` 이 뽑은 `.dsl` 을 그대로 `aa_create_segment_v2.4.py --input <file>.dsl`
+로 되먹일 수 있다. 단 **아직 왕복되지 않는 구조가 두 종류** 남아 있고, 둘 다 조용히
+틀린 JSON 을 만드는 대신 **ParseError 로 세운다** (원인을 밝힌 메시지):
+
+| 남은 미지원 | lookup 표기 | 대응 |
+|---|---|---|
+| 렌더 분기 없는 AA 구조 func — `exclude-next-checkpoint`, `container-restriction`, `time-restriction`, `sequence-and`, `sequence-or` | `?? <func>( ... )` — **자식은 보존**해서 눈으로 복원 가능 | raw-JSON 수술 |
+| Date Range 참조 (`datetime-interval-ref`) | `WITHIN @daterange:<id> 'name' (defn)` | raw-JSON 수술 |
+
+- `[sequence-after]` / `[sequence-before]` / `[sequence-all]` 라벨은 **파싱은 되지만 라벨이
+  버려진다** → 재컴파일하면 `sequence-prefix` / `sequence-suffix` 구분이 사라지고 전부
+  평범한 `sequence` 가 된다. 시퀀스 방향이 중요한 세그는 왕복시키지 말 것 (후속 과제).
+- 렌더링 중 `FUNC_TO_DSL` 에 없는 AA func 을 만나면 실행 끝에 **경고로 요약**된다
+  (`report_roundtrip_warnings()`). 새 AA func 이 등장했다는 신호이므로, 그때
+  `FUNC_TO_DSL` 과 `aa_create_segment` 의 `OPERATOR_MAP` **양쪽에** 추가할 것.
+
 ### sequence (THEN)
 
 ```
@@ -323,6 +368,10 @@ CSV 필수 칼럼:
 | `not '<container>'!hit(...)` → de Morgan | parser 가 NOT named container 미지원 |
 | 단독 paren grouping `( ... )` 제거 | input_csv_maker 가 visit/visitor 모드에 추가하는 외부 grouping paren |
 | stdout utf-8 reconfigure | Windows cp949 콘솔에서도 한글·em dash 안 깨짐 |
+| metric 숫자비교 → `total` + `evt` 래핑 (2026-08-24) | `{"func":"eq","val":{"func":"event",…}}` → `{"func":"eq","val":{"func":"total","evt":{…}}}`. AA 실측 shape (dimension 은 감싸지 않음) |
+| `not-event-exists` 왕복 (2026-08-24) | 파싱 직전 `not-exists` 로 받고 컴파일 후 되돌림 (`event-exists` 규칙의 not- 짝 — 정규식이 하이픈 때문에 못 잡던 것) |
+| `.dsl` 파일 경로에도 전처리 적용 (2026-08-24) | 예전엔 CSV(`structure`) 경로만 `event-exists` 치환 + sequence label strip 을 탔고 `.dsl` 파일은 전처리 없이 파싱돼 대부분 실패. 이제 두 경로가 `_normalize_dsl_line_tokens()` 공유 |
+| `?` / `??` / `@daterange:` 명시 거부 (2026-08-24) | 조용히 `variables/?` 로 컴파일돼 AA 400 (Unknown Attribute) 이 나던 자리를 ParseError 로 세움 |
 
 ### segment-ref 캐시
 
@@ -403,11 +452,11 @@ python aa_segment_lookup.py --search "campaign" --accessed-before 2025-01-01    
 
 출력 (코드 폴더의 `lookup/` 하위에 생성):
 - `lookup/segment_lookup_<ts>.csv` — `segment_id, name, owner_id, owner_name, owner_email, rsid, created, modified, definition_last_modified, recent_access, modified_by_id, description, tags, structure`
-- `lookup/segment_lookup_<ts>.dsl` — 역변환된 DSL 멀티라인 (v2.4 입력으로 재사용 가능)
+- `lookup/segment_lookup_<ts>.dsl` — 역변환된 DSL 멀티라인 (v2.4 입력으로 재사용 가능 — 미지원 구조는 위 「라운드트립」 표 참고)
 
 > **sequence dimension-restriction round-trip (2026-07-08)**: sequence THEN 스텝 사이 "within N \<dim\>" 제약(AA `dimension-restriction`)을 DSL `WITHIN N <dim>` 스텝으로 표기 (예: `WITHIN 1 page`). `aa_create_segment_v2.4` 이 되읽어 재생성 → lookup↔maker 왕복. 차원은 조건문과 같은 short var(`page`) 표기. (sequence label strip 도 `hit`/`visit`/`visitor` scope 전부 처리하도록 일반화.)
 >
-> **AA native 부정(not-*) func 패밀리 (2026-07-08)**: AA 네이티브 부정 func 을 읽기 쉬운 DSL 로 표기하고 maker 가 네이티브 func 그대로 되읽음(`without` 래핑 아님): `not-streq`→`not-equals`, `not-streq-in`→`not-equal-any-of`/`not-in`, `not-contains`, `not-contains-any-of`, `not-starts-with`, `not-ends-with`, `not-exists`. 예: `evar73 not-equal-any-of ["0","NA",...]`, `page not-starts-with "in:"`, `evar40 not-exists`. (별개 미처리 gap: `event-exists`, `eq`.)
+> **AA native 부정(not-*) func 패밀리 (2026-07-08)**: AA 네이티브 부정 func 을 읽기 쉬운 DSL 로 표기하고 maker 가 네이티브 func 그대로 되읽음(`without` 래핑 아님): `not-streq`→`not-equals`, `not-streq-in`→`not-equal-any-of`/`not-in`, `not-contains`, `not-contains-any-of`, `not-starts-with`, `not-ends-with`, `not-exists`. 예: `evar73 not-equal-any-of ["0","NA",...]`, `page not-starts-with "in:"`, `evar40 not-exists`. (2026-08-24: 아래 gap 2건 **해소** — `event-exists` / `eq` 도 왕복된다. 「연산자」 표 참고.)
 
 ## aa_segment_lookup_by_owner.py 사용법
 

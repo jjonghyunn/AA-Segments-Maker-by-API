@@ -142,6 +142,19 @@ FUNC_TO_DSL: dict[str, str] = {
     "ge": ">=",
     "lt": "<",
     "le": "<=",
+    # ── 260824 라운드트립 보강 (ROUNDTRIP_PATCH_260824) ──
+    # AA 의 eq / not-eq 는 **숫자 등가**로, streq(문자 등가, "=") 와 다른 연산자다.
+    # "=" 로 합치면 재컴파일 때 streq 가 되어 의미가 바뀌므로 별도 토큰으로 유지하고,
+    # aa_create_segment 의 OPERATOR_MAP 이 같은 토큰을 받아 eq 로 되돌린다.
+    "eq": "eq",
+    "not-eq": "not-eq",
+    "not-contains-all-of": "not-contains-all-of",
+    # event-exists / not-event-exists 는 **의도적으로 identity** — DSL 에 AA func 이름
+    # 그대로 나가고, aa_create_segment 의 _normalize_dsl_line_tokens 가 파싱 직전
+    # exists / not-exists 로 바꿔 받은 뒤 _patch_definition_for_aa 가 되돌린다.
+    # 표에 없으면 아래 UNMAPPED_FUNCS 경고가 "왕복 불가"로 오탐을 낸다.
+    "event-exists": "event-exists",
+    "not-event-exists": "not-event-exists",
 }
 
 CONTEXT_TO_SCOPE = {"hits": "hit", "visits": "visit", "visitors": "visitor"}
@@ -339,6 +352,25 @@ def _decompile_pred(pred: dict, indent: int, parent_context: str) -> list[str]:
         attr_tok = (_reverse_variable(attr_name) if attr_name else "") or attr.get("description") or "?"
         return [f"{pad}{lim} {n} {attr_tok}"]
 
+    # ── 260824 라운드트립 보강 (ROUNDTRIP_PATCH_260824) ──
+    # 위 어느 분기에도 안 걸린 func 인데 자식을 품고 있으면, 자식을 버리지 말고 재귀 렌더한다.
+    # 예전엔 그대로 _decompile_leaf 로 떨어져 '? exclude-next-checkpoint' 한 줄만 남고
+    # 자식 트리가 통째로 사라졌다 (원본을 눈으로도 복원할 수 없는 유일한 유실 지점).
+    # '??' 접두 = 파서가 못 받는 미지원 노드 = raw-JSON 수술 대상 표시.
+    if func:
+        for _key in _CHILD_KEYS:
+            _child = pred.get(_key)
+            if isinstance(_child, list) and _child:
+                UNSUPPORTED_FUNCS.add(func)
+                _inner: list[str] = []
+                for _step in _child:
+                    _inner.extend(_decompile_pred(_step, indent + 1, parent_context))
+                return [f"{pad}?? {func}("] + _inner + [f"{pad})"]
+            if isinstance(_child, dict) and _child:
+                UNSUPPORTED_FUNCS.add(func)
+                _inner = _decompile_pred(_child, indent + 1, parent_context)
+                return [f"{pad}?? {func}("] + _inner + [f"{pad})"]
+
     leaf = _decompile_leaf(pred, parent_context)
     return [f"{pad}{l}" for l in leaf]
 
@@ -373,6 +405,82 @@ def _format_datetime_interval(iv: dict) -> str:
     return f"{iv_func}({items})" if items else iv_func
 
 
+# ─── 260824 라운드트립 보강 (ROUNDTRIP_PATCH_260824) ──────────────
+# 이 렌더러가 내는 .dsl 은 aa_create_segment 의 input 으로 되돌아갈 수 있어야 한다.
+# 아래 두 set 은 "되돌릴 수 없는 자리"를 실행 끝에 드러내기 위한 것 —
+# 예전엔 아무 신호 없이 통과해서 재입력 때 파서가 죽는 이유를 알 방법이 없었다.
+UNMAPPED_FUNCS: set[str] = set()      # FUNC_TO_DSL 에 없어 raw 이름이 새어나간 연산자
+UNSUPPORTED_FUNCS: set[str] = set()   # 구조 노드인데 렌더 분기가 없는 func ('??' 로 표시)
+
+# _decompile_pred 의 어느 분기에도 안 걸린 func 이 자식을 품고 있는지 볼 키 후보.
+_CHILD_KEYS = ("preds", "stream", "pred")
+
+
+def _extract_operand_name(pred: dict) -> str:
+    """predicate 좌변(변수/메트릭) 풀네임을 중첩까지 파고들어 찾는다.
+
+    metric 집계는 val 안에 한 겹 더 들어가 있다:
+      {"func":"gt","val":{"func":"total","evt":{"func":"event","name":"metrics/orders"}},"num":1}
+    예전엔 val["name"] 만 봐서 이런 노드가 전부 '?' 로 뭉개졌고, 그 '?' 가 재입력 때
+    variables/? 로 컴파일돼 AA 가 400 (Unknown Attribute) 으로 거부했다.
+    """
+    for holder in (pred.get("val"), pred.get("evt")):
+        if not isinstance(holder, dict):
+            continue
+        name = holder.get("name")
+        if isinstance(name, str) and name:
+            return name
+        inner = holder.get("evt") or holder.get("val")
+        if isinstance(inner, dict):
+            name = inner.get("name")
+            if isinstance(name, str) and name:
+                return name
+        desc = holder.get("description")
+        if isinstance(desc, str) and desc:
+            return desc
+    return ""
+
+
+# ── 260824 2차 (ROUNDTRIP_PATCH2_260824) ──
+# aa_create_segment._resolve_variable 은 짧은 이름을 VARIABLE_ALIASES 에 있거나 event<N>
+# 일 때만 metrics/* 로 되돌리고, 나머지는 variables/* 를 붙인다. 그래서 'units' /
+# 'cartadditions' 처럼 alias 에 없는 metric 을 축약해서 내보내면 재컴파일 때 **dimension
+# 으로 오컴파일**된다 (CLAUDE.md 의 "Delayed Purchase 가 metric 을 variables/* 로
+# 오컴파일해 AA 가 400 Unknown Attribute 로 거부" 가 바로 이 지점이다).
+# → 축약이 왕복되지 않는 metric 은 풀네임 'metrics/<name>' 을 그대로 낸다.
+#   파서 _resolve_variable 은 '/' 가 든 이름을 그대로 받아 metrics/ 접두면 event 로 본다.
+_ROUNDTRIP_METRIC_ALIASES = {v for v in VARIABLE_ALIASES.values() if v.startswith("metrics/")}
+_RE_EVENT_SHORT = re.compile(r"^event\d+$")
+
+
+def _roundtrip_safe_var(full_name: str) -> str:
+    """풀네임 -> DSL 토큰. 축약이 왕복 안 되는 metric 은 풀네임 그대로 낸다."""
+    short = _reverse_variable(full_name)
+    if (full_name.startswith("metrics/")
+            and full_name not in _ROUNDTRIP_METRIC_ALIASES
+            and not _RE_EVENT_SHORT.match(short)):
+        return full_name
+    return short
+
+
+def report_roundtrip_warnings() -> None:
+    """실행 끝에 미치환/미지원 func 요약. 새 AA func 이 등장했음을 드러낸다."""
+    if UNMAPPED_FUNCS:
+        print()
+        print(f"  WARN: FUNC_TO_DSL 에 없는 AA 연산자 {len(UNMAPPED_FUNCS)}종 — "
+              f"raw 이름으로 DSL 에 나갔고 재입력 시 파싱 실패한다:")
+        for f in sorted(UNMAPPED_FUNCS):
+            print(f"    - {f}")
+        print("  → FUNC_TO_DSL + aa_create_segment 의 OPERATOR_MAP 양쪽에 추가할 것.")
+    if UNSUPPORTED_FUNCS:
+        print()
+        print(f"  WARN: 렌더 분기가 없는 구조 func {len(UNSUPPORTED_FUNCS)}종 — "
+              f"'?? <func>(' 형태로 자식까지 출력했다. 파서는 못 받으니 "
+              f"해당 세그는 raw-JSON 으로 다뤄야 한다:")
+        for f in sorted(UNSUPPORTED_FUNCS):
+            print(f"    - {f}")
+
+
 def _decompile_leaf(pred: dict, parent_context: str) -> list[str]:
     func = pred.get("func", "")
     negated = False
@@ -387,10 +495,13 @@ def _decompile_leaf(pred: dict, parent_context: str) -> list[str]:
         prefix = "NOT " if negated else ""
         return [f"{prefix}@{seg_id}"]
 
-    val = pred.get("val") or pred.get("evt") or {}
-    var_name = val.get("name", "")
-    short_var = _reverse_variable(var_name) if var_name else "?"
+    # 260824: 중첩(metric 집계)까지 파고들어 좌변 이름을 찾는다 — ROUNDTRIP_PATCH_260824
+    var_name = _extract_operand_name(pred)
+    # 260824 2차: 축약이 왕복 안 되는 metric 은 풀네임 유지 — ROUNDTRIP_PATCH2_260824
+    short_var = _roundtrip_safe_var(var_name) if var_name else "?"
 
+    if func and func not in FUNC_TO_DSL:
+        UNMAPPED_FUNCS.add(func)
     dsl_op = FUNC_TO_DSL.get(func, func)
 
     if "list" in pred:
