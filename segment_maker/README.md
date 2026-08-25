@@ -1,5 +1,5 @@
 # segment_maker/  
-<sub>2026-08-24  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-25  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 생성·조회·삭제 도구 모음.
 
@@ -208,7 +208,7 @@ visit(                          ⟨1⟩ scope = visit   ← 일반 세그와 다
 |---|---|
 | `aa_create_segment_v2.4.py` | **권장** — CSV 입력 + AA validator 호환 patch 자동화. CREATE / UPDATE / mixed (`--update-or-create`) 지원 |
 | `aa_segment_lookup.py` | 세그먼트 ID 또는 이름 키워드 검색 → CSV (기본 정보 + owner 이름/이메일 + structure 칼럼) + `.dsl` (DSL 역변환). v2.4 가 받는 입력 형식과 동일. 결과는 `lookup/` 하위 |
-| `aa_segment_lookup_by_owner.py` | 위 lookup 의 **사본 + `--owner` 검색** — owner(loginId / 이메일 / 이름 부분일치) 기준 필터. 출력 포맷 동일, 결과 prefix 만 `segment_lookup_owner_` |
+| `aa_segment_lookup_by_owner.py` | 위 lookup 의 **사본 + `--owner` 검색 + `--with-projects`** — owner(loginId / 이메일 / 이름 부분일치) 기준 필터, `--with-projects` 로 **세그가 쓰이는 project id** 컬럼 3개 추가. 결과 prefix `segment_lookup_owner_` |
 | `aa_segment_lookup_from_pjt.py` | project 안 panel·reportlet 이 참조하는 segment 들을 일괄 lookup → CSV + DSL (`lookup/` 하위) |
 | `aa_delete_segment.py` | result CSV 기반 안전 삭제 (3중 안전장치: CSV 강제, 이름 prefix 검증, `--yes` 필수) |
 | `input_csv_maker.py` | raw `seg_make_ref_*.csv` → v2.4 input CSV + `.dsl` + `_WARN.csv` 자동 변환. LCS 추출 / crystallize override / 양수·음수 site 필터 / 그룹화 |
@@ -507,6 +507,73 @@ owner 해석 순서:
 - `lookup/segment_lookup_owner_<ts>.csv` / `.dsl` — 컬럼·DSL 문법은 `aa_segment_lookup.py` 와 동일
   (날짜 컬럼 `created` / `modified` / `definition_last_modified` / `recent_access` / `modified_by_id` 포함,
    `--created-after` 등 날짜 필터도 `--owner` 와 조합 가능)
+
+### `--with-projects` — 이 세그가 어느 프로젝트에서 쓰이나
+
+**스캔 대상 프로젝트는 세그 owner 와 무관하다.** 기본은 상단 상수 `PROJECTS_OWNER_DEFAULT`
+(빈 값이면 조회된 세그들의 owner 기준, 본인 loginId 를 넣어두면 본인 소유 프로젝트만).
+
+```bash
+# 기본 (PROJECTS_OWNER_DEFAULT 기준)
+python aa_segment_lookup_by_owner.py --owner YOUR_LOGIN_ID --search "campaign" --with-projects
+
+# 스캔할 프로젝트 owner 를 직접 지정 (loginId / 이메일 / 이름 부분일치, 여러 명이면 OR)
+python aa_segment_lookup_by_owner.py --owner YOUR_LOGIN_ID --with-projects --projects-owner YOUR_LOGIN_ID
+python aa_segment_lookup_by_owner.py --owner YOUR_LOGIN_ID --with-projects --projects-owner "jane" "john"
+
+# 전 회사 프로젝트 (⚠ 프로젝트가 수만 건이면 수 시간 — 확인 프롬프트 뜸)
+python aa_segment_lookup_by_owner.py --owner YOUR_LOGIN_ID --with-projects --all-projects
+
+# 캐시 무시하고 새로 수집
+python aa_segment_lookup_by_owner.py sYOUR_SEGMENT_ID --with-projects --refresh-projects
+```
+
+추가 컬럼 3개 (`tags` 와 `structure` 사이, `;` 구분, **상한 없음** — 같은 owner 프로젝트가 앞으로 정렬):
+
+| 컬럼 | 내용 |
+|---|---|
+| `project_count` | 그 세그를 쓰는 프로젝트 수 |
+| `project_ids` | project id 를 `;` 로 이어붙임 |
+| `project_names` | 프로젝트 이름 (이름 안 `;` 는 `,` 로 치환 — 구분자 모호성 제거) |
+
+`--with-projects` 를 안 켜면 세 칸 모두 빈값이고, 프로젝트 조회 자체를 하지 않습니다.
+
+스캔 대상 결정 순서: ① `--all-projects` → 전체 ② `--projects-owner` → 지정한 사람
+③ `PROJECTS_OWNER_DEFAULT` → 상수에 박아둔 사람 ④ 상수가 빈 값이면 → 결과 세그들의 owner.
+
+**동작 원리**: AA 2.0 API 에는 `segment → projects` 역방향 조회 엔드포인트가 **없습니다**
+(`componentmetadata/*` 는 share 전용, `usage`/`usedIn` 류는 존재하지 않음).
+→ `/projects` 를 훑어 `project → segment id` 를 모은 뒤 뒤집습니다. 추출은 프로젝트 JSON 을
+통째로 직렬화해 segment id 패턴을 쓸어담는 방식이며, 구조 walk(`segmentGroups`/`columnTree`/
+`staticRows`)와 대조 검증했을 때 두 방식 결과가 동일했습니다.
+
+**비용**: 세그 건수가 아니라 **definition 을 받는 프로젝트 수**가 결정합니다
+(인덱스는 dict 조회라 세그가 수만 건이어도 추가 비용 0).
+
+| 항목 | 값 |
+|---|---|
+| `/projects` 목록 | 페이징 몇 번이면 끝 (빠름) |
+| `expansion=definition` 을 목록 호출에 | **안 먹음** → 프로젝트마다 개별 GET 필요 |
+| 처리량 | 워커 6 ≈ 2.6건/s, **워커 12 ≈ 3.9건/s** (기본값 12) |
+| 프로젝트 수백 건 | 수 분 |
+| 수만 건 (`--all-projects`) | 수 시간 → `PROJECT_SCAN_CONFIRM_OVER`(기본 3,000) 초과 시 예상시간 + 확인 프롬프트 (`--yes` 로 생략) |
+
+결과는 `lookup/_project_index_cache.json` 에 캐시되어 `PROJECT_CACHE_HOURS`(기본 24h) 안에
+**같은 스캔 범위**로 다시 돌리면 즉시 재사용됩니다.
+
+⚠ **`project_count = 0` 은 '미사용'이 아닙니다** — 기본 모드는 좁힌 owner 의 프로젝트만 봅니다.
+또 `/projects` 는 API 계정이 볼 수 있는 프로젝트(본인 소유 + 공유받은 것)만 반환하므로
+안 보이는 프로젝트의 사용분은 못 잡습니다. 실행 끝에 이 두 경고를 항상 출력합니다.
+
+⚠ **`--projects-owner` 의 이름 부분일치는 OR 이라 의도보다 많이 잡힐 수 있습니다.**
+해석된 사람 목록을 콘솔에 전부 찍으니 실행 직후 확인하고, 정확히 1명만 원하면 numeric loginId 로 주세요.
+
+⚠ **'본인'을 `GET /users/me` 로 자동 판별하면 안 됩니다.** OAuth S2S 인증이면 테크니컬 계정
+(`…@techacct.adobe.com`)이 돌아옵니다 — 그 계정 소유 프로젝트는 보통 0건이라 **아무 경고 없이
+전부 `project_count=0`** 이 됩니다. 그래서 값을 상수/옵션으로 받습니다.
+
+> ⚠ `/projects` 응답은 `/segments` 와 달리 `{content, lastPage}` envelope 가 아니라
+> **bare JSON 배열**로 옵니다. 코드는 두 모양 다 받도록 정규화해 뒀습니다.
 
 ## aa_segment_lookup_from_pjt.py 사용법
 

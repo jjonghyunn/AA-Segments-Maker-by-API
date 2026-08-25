@@ -7,6 +7,22 @@
 #     (--modified-after 와 같은 구조). owner 단독 스캔은 전량 페이징이라 느림 → --rsid 병행 권장
 #   · owner 단독 스캔은 page 0 으로 totalPages 확인 후 나머지를 ThreadPoolExecutor 로 병렬 fetch
 #   · 출력 파일 prefix 를 segment_lookup_owner_ 로 분리 (원본 결과와 안 섞이게)
+# updated: 2026-08-25       — --with-projects: 세그별 **사용 프로젝트** 컬럼 3개 추가
+#                            (project_count / project_ids / project_names, ';' 구분).
+#                            AA 2.0 에는 segment → projects 역방향 조회 API 가 **없다**
+#                            (componentmetadata/* 는 share 전용, usage/usedIn 류는 미존재)
+#                            → /projects 를 훑어 project→segment 를 모은 뒤 뒤집는 수밖에 없다.
+#                            스캔 대상 프로젝트는 **세그 owner 와 무관** — 상단 PROJECTS_OWNER_DEFAULT
+#                            (본인 loginId 를 넣으면 본인 소유 프로젝트만), --projects-owner 로 지정,
+#                            --all-projects 로 전체, --refresh-projects 로 캐시 무시.
+#                            플래그 안 켜면 기존 동작 그대로.
+#                            ⚠ '본인'을 GET /users/me 로 자동 판별하면 안 된다 — OAuth S2S 는
+#                            테크니컬 계정(@techacct.adobe.com)을 돌려줘서 프로젝트 0건을 스캔하고
+#                            전부 project_count=0 으로 조용히 틀린 답이 나온다.
+#                            ⚠ /projects 응답은 /segments 와 달리 {content,lastPage} envelope 가
+#                            아니라 **bare 배열**로 온다 — 두 모양 다 받도록 정규화해 뒀다.
+#                            ⚠ expansion=definition 은 **목록 호출에선 안 먹는다** → 프로젝트마다
+#                            개별 GET 이 필요해 대상이 많으면 오래 걸린다(확인 프롬프트 있음).
 # ── 아래는 원본 aa_segment_lookup.py 에서 이어받은 변경 이력 ──
 # updated: 2026-06-15       — --search 결과에 날짜 필터 추가: --modified-after / --modified-before (YYYY-MM-DD).
 #                            (2026-08-21 정정: 생성일은 expansion=createdDate 로 제공된다. 아래 참조)
@@ -110,6 +126,24 @@ SEARCH_MAX_PAGES = 50               # --search 키워드 검색 시 페이지 �
 OWNER_SCAN_MAX_PAGES = 300          # --owner 단독(키워드 없음) 스캔 시 상한 — 회사 전체라 크게
 OWNER_SCAN_WORKERS = 6              # owner 단독 스캔 병렬 페이지 fetch 워커 수 (1 = 순차)
 
+# ─── 프로젝트 사용처 인덱스(--with-projects) 설정 ───────────────────
+# 스캔할 프로젝트 owner **기본값** — 각자 환경에 맞게 변경 (numeric loginId / 이메일 / 이름 부분일치).
+#   ""(빈 문자열) = 조회된 세그들의 owner 기준.
+#   본인 loginId 를 넣어두면 **본인 소유 프로젝트만** 스캔해 훨씬 빠르다.
+#   `--projects-owner` 로 실행 시 덮어쓰고, `--all-projects` 면 무시된다.
+PROJECTS_OWNER_DEFAULT = ""         # 예: "YOUR_LOGIN_ID"
+PROJECT_LIST_PAGE_SIZE = 1000       # /projects 목록 페이지 크기 (AA max)
+PROJECT_LIST_MAX_PAGES = 100        # 목록 페이지 순회 상한 (도달 시 조용한 절단 대신 경고)
+PROJECT_DEF_WORKERS    = 12         # project definition 병렬 GET 워커
+PROJECT_IDS_MAX        = 0          # 셀당 project id 상한 (0 = 무제한). Excel 셀 한도 32,767자 ≈ id 1,300개
+PROJECT_CACHE_HOURS    = 24         # 인덱스 캐시 유효시간(h) — 넘으면 재수집
+PROJECT_SCAN_CONFIRM_OVER = 3000    # 대상이 이보다 많으면 예상시간 보여주고 확인 입력 (--yes 로 생략)
+
+# 처리량 참고(실측 경향): /projects **목록** 자체는 금방 받지만 expansion=definition 이 목록
+#   호출에서 안 먹어 프로젝트마다 개별 GET 이 필요하다. 워커 6 ≈ 2.6건/s, 워커 12 ≈ 3.9건/s.
+#   → 프로젝트 수백 건이면 수 분, 수만 건이면 수 시간. 그래서 owner 한정 사용을 권장.
+PROJECT_DEF_RATE_PER_SEC = 3.9      # 위 실측치 (워커 12) — 예상시간 안내용
+
 # ─── 콘솔 출력 설정 ────────────────────────────────────────────────
 PROGRESS_EVERY = 100                # CSV/DSL 작성 진행률을 몇 건마다 찍을지
 DETAIL_PRINT_MAX = 20               # 결과가 이 건수 이하일 때만 마지막에 구조(DSL) 상세 덤프
@@ -132,6 +166,12 @@ DATE_FIELDS: dict[str, str] = {
 }
 
 RESULT_PREFIX = "segment_lookup_owner_"   # 원본(aa_segment_lookup.py) 결과와 안 섞이게 분리
+
+# ─── 프로젝트 사용처 인덱스 — 내부 상수 ───────────────────────────
+PROJECT_INDEX_CACHE = LOOKUP_DIR / "_project_index_cache.json"
+# ⚠ segment id 정규식은 숫자 접두 길이를 고정하지 말 것 (`s\d{9}_` 로 박으면 9자리가 아닌 id 를
+#    조용히 놓친다). length-agnostic `\d+` 로 둔다.
+SEG_ID_IN_JSON_RE = re.compile(r"s\d+_[0-9a-f]{24}")
 
 # ─── 변수 단축어 (decompile용) ────────────────────────────────────
 VARIABLE_ALIASES: dict[str, str] = {
@@ -965,6 +1005,281 @@ def _search_segments(headers: dict, gcid: str, keywords: list[str] | str | None,
 
 
 # ═══════════════════════════════════════════════════════════════════
+# 프로젝트 사용처 인덱스 (--with-projects)
+#
+# AA 2.0 API 에는 segment → projects 역방향 조회 엔드포인트가 **없다**
+# (componentmetadata/* 는 share 전용, usage/usedIn 류는 존재하지 않음).
+# → /projects 를 훑어 project → segment id 를 모은 뒤 뒤집는 수밖에 없다.
+#
+# 비용은 세그 건수가 아니라 **definition 을 받는 프로젝트 수** 가 결정한다
+# (인덱스는 dict 조회라 세그가 수만 건이어도 추가 비용 0).
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _project_owner_id(p: dict) -> str:
+    o = p.get("owner") or {}
+    return str(o.get("id", "")) if isinstance(o, dict) else ""
+
+
+def _list_projects(headers: dict, gcid: str) -> tuple[list[dict], bool]:
+    """GET /projects 페이징 → (프로젝트 목록, definition 이 목록에 같이 왔는지).
+
+    목록 호출에서 expansion=definition 이 먹으면 프로젝트별 GET 을 통째로 건너뛸 수 있다.
+    Adobe 문서에 명시가 없어 **page 0 응답을 보고 런타임에 판별**하고,
+    안 먹으면 definition 을 뺀 가벼운 expansion 으로 다시 받는다.
+    """
+    url = f"https://analytics.adobe.io/api/{gcid}/projects"
+    base_exp = "ownerFullName,modified"
+
+    def _fetch(page: int, exp: str):
+        """→ (parsed_body, err). body 는 list(=envelope 없음) 또는 dict 둘 다 올 수 있다."""
+        try:
+            r = requests.get(url, headers=headers,
+                             params={"includeType": "all", "expansion": exp,
+                                     "limit": PROJECT_LIST_PAGE_SIZE, "page": page},
+                             timeout=120)
+        except Exception as e:
+            return None, str(e)
+        if r.status_code != 200:
+            return None, f"{r.status_code} {r.reason}: {r.text[:200]}"
+        try:
+            return r.json(), ""
+        except Exception as e:
+            return None, f"json parse: {e}"
+
+    # ⚠ /projects 는 /segments 와 응답 모양이 다르다 — {content, lastPage} envelope 가 아니라
+    #   **bare JSON 배열**로 오는 경우가 있다. 둘 다 받도록 정규화한다.
+    def _rows_of(body) -> list[dict]:
+        if isinstance(body, list):
+            return [x for x in body if isinstance(x, dict)]
+        if isinstance(body, dict):
+            return [x for x in (body.get("content") or []) if isinstance(x, dict)]
+        return []
+
+    def _is_last(body, rows: list[dict]) -> bool:
+        if isinstance(body, dict) and "lastPage" in body:
+            return bool(body["lastPage"])
+        return len(rows) < PROJECT_LIST_PAGE_SIZE   # envelope 없으면 짧은 페이지 = 끝
+
+    # page 0 — definition 포함으로 먼저 시도
+    exp = base_exp + ",definition"
+    data, err = _fetch(0, exp)
+    if data is None:
+        print(f"  WARN: /projects (definition 포함) 실패 — {err}")
+        exp = base_exp
+        data, err = _fetch(0, exp)
+    if data is None:
+        print(f"ERROR: /projects 목록 실패 — {err}")
+        return [], False
+
+    rows0 = _rows_of(data)
+    inline = any(isinstance(r0.get("definition"), dict) for r0 in rows0)
+    if not inline and exp != base_exp:
+        # definition 이 안 왔다 → 불필요한 expansion 빼고 다시 (트래픽 낭비 방지)
+        exp = base_exp
+        data, err = _fetch(0, exp)
+        if data is None:
+            print(f"ERROR: /projects 목록 실패 — {err}")
+            return [], False
+        rows0 = _rows_of(data)
+
+    items: list[dict] = list(rows0)
+    hit_cap = True
+    if _is_last(data, rows0):
+        hit_cap = False
+    else:
+        for page in range(1, PROJECT_LIST_MAX_PAGES):
+            d, err = _fetch(page, exp)
+            if d is None:
+                print(f"  WARN: /projects page {page} 실패 — {err}")
+                hit_cap = False
+                break
+            rows = _rows_of(d)
+            if not rows:
+                hit_cap = False
+                break
+            items.extend(rows)
+            if _is_last(d, rows):
+                hit_cap = False
+                break
+    # 조용한 절단 방지 — 페이지 상한에 걸려 끝난 경우 경고
+    if hit_cap:
+        print(f"  ⚠️ 프로젝트 목록 페이지 상한 {PROJECT_LIST_MAX_PAGES:,} 도달 — 뒤쪽 프로젝트는 "
+              f"못 봤을 수 있습니다 (누적 {len(items):,}건). PROJECT_LIST_MAX_PAGES 를 올리세요.")
+    return items, inline
+
+
+def _fetch_project_definition(headers: dict, gcid: str, pid: str) -> dict:
+    """GET /projects/{id} — definition 포함. 실패해도 raise 안 하고 error 키로 돌려준다."""
+    url = f"https://analytics.adobe.io/api/{gcid}/projects/{pid}"
+    try:
+        r = requests.get(url, headers=headers,
+                         params={"expansion": "definition,ownerFullName,modifiedDate,name"},
+                         timeout=120)
+    except Exception as e:
+        return {"id": pid, "error": str(e)}
+    if r.status_code != 200:
+        return {"id": pid, "error": f"{r.status_code} {r.reason}"}
+    try:
+        return r.json()
+    except Exception as e:
+        return {"id": pid, "error": f"json parse: {e}"}
+
+
+def _extract_segment_ids_from_project(project: dict) -> set[str]:
+    """프로젝트 JSON 을 통째로 직렬화해 segment id 패턴을 쓸어담는다.
+
+    구조 walk(segmentGroups / columnTree / staticRows) 보다 **넓게** 잡는다 —
+    패널 필터·드롭다운·breakdown 등 구조 walk 가 놓치는 자리까지 포함되기 때문.
+    여기서는 "쓰이는가" 만 알면 되고 어느 테이블인지는 불필요하다.
+    (구조 walk 와 대조 검증 완료 — 두 방식 결과 동일)
+    """
+    try:
+        body = json.dumps(project, ensure_ascii=False)
+    except Exception:
+        return set()
+    return set(SEG_ID_IN_JSON_RE.findall(body))
+
+
+def _cache_scope_key(owner_ids: set[str], all_projects: bool) -> str:
+    """캐시는 **스캔 범위가 정확히 같을 때만** 재사용 — 범위가 다르면 의미가 달라진다."""
+    return "ALL" if all_projects else "OWNER:" + ",".join(sorted(owner_ids))
+
+
+def _load_project_index_cache(scope: str) -> dict[str, list[dict]] | None:
+    if not PROJECT_INDEX_CACHE.exists():
+        return None
+    try:
+        blob = json.loads(PROJECT_INDEX_CACHE.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"  WARN: 캐시 읽기 실패 — {e} (새로 수집)")
+        return None
+    if blob.get("scope") != scope:
+        return None
+    try:
+        built = datetime.strptime(blob.get("built_at", ""), "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+    age_h = (datetime.now() - built).total_seconds() / 3600
+    if age_h > PROJECT_CACHE_HOURS:
+        print(f"  캐시 만료 ({age_h:.1f}h > {PROJECT_CACHE_HOURS}h) — 새로 수집합니다.")
+        return None
+    idx = blob.get("index")
+    if not isinstance(idx, dict):
+        return None
+    print(f"  ♻ 캐시 재사용 — 프로젝트 {blob.get('project_count', '?')}개 / "
+          f"세그 {len(idx):,}개, {age_h:.1f}h 전 수집 ({PROJECT_INDEX_CACHE.name}). "
+          f"새로 받으려면 --refresh-projects")
+    return idx
+
+
+def build_project_usage_index(headers: dict, gcid: str, owner_ids: set[str],
+                              all_projects: bool = False,
+                              refresh: bool = False,
+                              assume_yes: bool = False) -> dict[str, list[dict]]:
+    """segment_id → [{id, name, owner_id}, ...] 역인덱스."""
+    scope = _cache_scope_key(owner_ids, all_projects)
+    if not refresh:
+        cached = _load_project_index_cache(scope)
+        if cached is not None:
+            return cached
+
+    print("  프로젝트 목록 수집 중 (GET /projects) ...")
+    projects, inline = _list_projects(headers, gcid)
+    if not projects:
+        print("  ⚠️ 프로젝트를 하나도 못 받았습니다 — 사용처 컬럼은 빈값으로 남습니다.")
+        return {}
+    print(f"    전체 {len(projects):,}건 "
+          f"(API 계정이 볼 수 있는 프로젝트 = 본인 소유 + 공유받은 것)")
+
+    if all_projects:
+        targets = list(projects)
+    else:
+        targets = [p for p in projects if _project_owner_id(p) in owner_ids]
+        print(f"    대상 {len(targets):,}건 (owner 일치분만 — 전체를 보려면 --all-projects)")
+    if not targets:
+        print("    → 대상 프로젝트 0건. 인덱스 빈 채로 진행합니다.")
+        return {}
+
+    # 큰 스캔은 몇 시간짜리라 조용히 시작하지 않는다 (--all-projects 오타 방어)
+    if not inline and len(targets) > PROJECT_SCAN_CONFIRM_OVER and not assume_yes:
+        eta_min = len(targets) / PROJECT_DEF_RATE_PER_SEC / 60
+        print(f"    ⚠️ definition 을 {len(targets):,}건 개별 GET 해야 합니다 — "
+              f"예상 {eta_min:,.0f}분 (실측 {PROJECT_DEF_RATE_PER_SEC}건/s @ 워커 {PROJECT_DEF_WORKERS}).")
+        try:
+            ans = input("    계속할까요? [y/N] ").strip().lower()
+        except EOFError:
+            ans = ""
+        if ans != "y":
+            print("    → 중단. 사용처 컬럼은 빈값으로 남습니다. (--yes 로 확인 생략 가능)")
+            return {}
+
+    index: dict[str, list[dict]] = {}
+
+    def _add(proj: dict, meta: dict) -> None:
+        for sid in _extract_segment_ids_from_project(proj):
+            index.setdefault(sid, []).append(meta)
+
+    metas = [{"id": p.get("id", ""), "name": p.get("name", ""),
+              "owner_id": _project_owner_id(p)} for p in targets]
+
+    if inline:
+        print("    ✓ /projects 목록이 definition 을 같이 줌 — 프로젝트별 GET 생략")
+        for p, meta in zip(targets, metas):
+            _add(p, meta)
+    else:
+        print(f"    definition 개별 조회 — {len(metas):,}건 (워커 {PROJECT_DEF_WORKERS})")
+        t0 = time.time()
+        step = max(1, min(PROGRESS_EVERY, max(1, len(metas) // 10)))
+        fail = 0
+        with ThreadPoolExecutor(max_workers=PROJECT_DEF_WORKERS) as ex:
+            fetched = ex.map(lambda m: _fetch_project_definition(headers, gcid, m["id"]), metas)
+            for i, (meta, full) in enumerate(zip(metas, fetched), 1):
+                if full.get("error"):
+                    fail += 1
+                else:
+                    _add(full, meta)
+                if i % step == 0 or i == len(metas):
+                    _progress("PROJECT", i, len(metas), t0)
+        if fail:
+            print(f"    ⚠️ definition 조회 실패 {fail:,}건 — 그만큼 사용처를 못 봤습니다.")
+
+    try:
+        PROJECT_INDEX_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        PROJECT_INDEX_CACHE.write_text(json.dumps({
+            "built_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "scope": scope,
+            "project_count": len(targets),
+            "index": index,
+        }, ensure_ascii=False), encoding="utf-8")
+        print(f"    캐시 저장: {PROJECT_INDEX_CACHE}")
+    except Exception as e:
+        print(f"    WARN: 캐시 저장 실패 — {e}")
+
+    print(f"    인덱스 완성: 세그 {len(index):,}개가 어딘가에서 쓰이고 있음")
+    return index
+
+
+def _format_project_cells(hits: list[dict], seg_owner_id: str) -> tuple[str, str, str]:
+    """(project_count, project_ids, project_names) — 같은 owner 프로젝트를 앞으로 정렬."""
+    if not hits:
+        return "0", "", ""
+    so = str(seg_owner_id or "")
+    ordered = sorted(hits, key=lambda h: (0 if h.get("owner_id") == so else 1,
+                                          h.get("name", "") or ""))
+    total = len(ordered)
+    shown = ordered[:PROJECT_IDS_MAX] if PROJECT_IDS_MAX > 0 else ordered
+    ids = ";".join(h.get("id", "") or "" for h in shown)
+    # 이름 안 ';' 는 ',' 로 — 구분자 모호성 제거
+    names = ";".join((h.get("name", "") or "").replace(";", ",") for h in shown)
+    if PROJECT_IDS_MAX > 0 and total > len(shown):
+        more = f"(+{total - len(shown)} more)"
+        ids += f";{more}"
+        names += f";{more}"
+    return str(total), ids, names
+
+
+# ═══════════════════════════════════════════════════════════════════
 # 진행률 출력 (대량 조회 시 CSV/DSL 작성이 오래 걸려 체감용)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -1037,7 +1352,31 @@ def main() -> int:
                         help="이 날짜 이후(>=) **사용**된 세그만 (recentRecordedAccess)")
     parser.add_argument("--accessed-before", default="", metavar="YYYY-MM-DD",
                         help="이 날짜 이전(<=) 사용된 세그만 — 미사용 세그 정리에 유용")
+    # ─── 프로젝트 사용처 (세그 → 그 세그를 쓰는 project) ───
+    parser.add_argument("--with-projects", action="store_true",
+                        help="세그별 사용 프로젝트 컬럼 추가 "
+                             "(project_count / project_ids / project_names, ';' 구분). "
+                             "AA 에 역방향 API 가 없어 /projects 를 훑어 인덱스를 만든다")
+    parser.add_argument("--all-projects", action="store_true",
+                        help="(--with-projects 와 함께) owner 제한 없이 전 프로젝트 스캔. "
+                             "⚠ 프로젝트가 수만 건이면 수 시간 걸린다. "
+                             "기본은 PROJECTS_OWNER_DEFAULT / --projects-owner 로 좁힌다")
+    parser.add_argument("--projects-owner", nargs="+", default=None, metavar="OWNER",
+                        help="(--with-projects 와 함께) 스캔할 **프로젝트 owner** 지정 "
+                             "(loginId / 이메일 / 이름 부분일치, 여러 명이면 OR). "
+                             "미지정 시 상단 PROJECTS_OWNER_DEFAULT. 세그 owner 와는 무관하게 동작한다")
+    parser.add_argument("--refresh-projects", action="store_true",
+                        help="(--with-projects 와 함께) 프로젝트 인덱스 캐시를 무시하고 새로 수집")
+    parser.add_argument("--yes", action="store_true",
+                        help=f"대량 스캔(>{PROJECT_SCAN_CONFIRM_OVER:,}건) 확인 프롬프트 생략")
     args = parser.parse_args()
+
+    if (args.all_projects or args.refresh_projects or args.projects_owner) and not args.with_projects:
+        print("  WARN: --all-projects / --refresh-projects / --projects-owner 는 --with-projects 와 "
+              "같이 써야 의미가 있습니다 — 무시합니다.")
+    if args.all_projects and args.projects_owner:
+        print("  WARN: --all-projects 와 --projects-owner 가 같이 왔습니다 "
+              "— --all-projects 가 우선(전체 스캔)이라 --projects-owner 는 무시합니다.")
 
     # 날짜 옵션 형식 검증 (YYYY-MM-DD)
     for label, val in (("--created-after", args.created_after),
@@ -1153,6 +1492,46 @@ def main() -> int:
         print(f"  owner 보강(/users): {len(user_map)}명")
     print()
 
+    # 프로젝트 사용처 인덱스 (--with-projects) — CSV 쓰기 직전에 구축
+    project_index: dict[str, list[dict]] = {}
+    project_scan_label = ""
+    if args.with_projects:
+        # 스캔 대상 프로젝트 owner 결정 — **세그 owner 와 무관**하다.
+        #   ① --all-projects  → 전체
+        #   ② --projects-owner → 지정한 사람
+        #   ③ PROJECTS_OWNER_DEFAULT → 상수에 박아둔 사람 (보통 본인)
+        #   ④ 상수가 빈 값이면 → 결과 세그들의 owner
+        scan_owner_ids: set[str] = set()
+        if not args.all_projects:
+            specs = args.projects_owner or (
+                [PROJECTS_OWNER_DEFAULT] if PROJECTS_OWNER_DEFAULT.strip() else [])
+            if specs:
+                scan_owner_ids, proj_owner_log = _resolve_owner_ids(user_map, specs)
+                src = "--projects-owner" if args.projects_owner else "PROJECTS_OWNER_DEFAULT"
+                print(f"프로젝트 스캔 대상 owner ({src}):")
+                for line in proj_owner_log:
+                    print(line)
+                if not scan_owner_ids:
+                    print(f"ERROR: {src} 로 해석된 사용자가 없습니다. loginId / 이메일 / 이름을 확인하세요.")
+                    return 1
+            else:
+                # 상수도 비고 옵션도 없음 → 결과 세그들의 owner 기준
+                scan_owner_ids = {str(r.get("owner_id") or "") for r in results if r.get("owner_id")}
+                print(f"프로젝트 스캔 대상 owner (세그 owner 기준): "
+                      f"{', '.join(sorted(scan_owner_ids)) or '(없음)'}")
+                if not scan_owner_ids:
+                    print("  WARN: 세그 owner 를 못 정해 owner 제한을 걸 수 없습니다 "
+                          "— 전체 프로젝트를 스캔합니다.")
+                    args.all_projects = True
+        project_scan_label = ("전체 프로젝트를" if args.all_projects
+                              else f"owner {', '.join(sorted(scan_owner_ids))} 의 프로젝트만")
+        print("프로젝트 사용처 인덱스 구축 (--with-projects)")
+        project_index = build_project_usage_index(
+            headers, gcid, scan_owner_ids,
+            all_projects=args.all_projects, refresh=args.refresh_projects,
+            assume_yes=args.yes)
+        print()
+
     # CSV 출력 — lookup/ 하위
     LOOKUP_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = LOOKUP_DIR / f"{RESULT_PREFIX}{timestamp}.csv"
@@ -1163,7 +1542,9 @@ def main() -> int:
         w = csv.writer(f)
         w.writerow(["segment_id", "name", "owner_id", "owner_name", "owner_email", "rsid",
                      "created", "modified", "definition_last_modified", "recent_access",
-                     "modified_by_id", "description", "tags", "structure", "error"])
+                     "modified_by_id", "description", "tags",
+                     "project_count", "project_ids", "project_names",
+                     "structure", "error"])
         for i, r in enumerate(results, 1):
             if i % PROGRESS_EVERY == 0 or i == total_n:
                 _progress("CSV", i, total_n, t_csv)
@@ -1176,12 +1557,18 @@ def main() -> int:
                     structure = dsl_text.replace('"', "'").replace("\n", " | ")
                 except Exception:
                     structure = "(decompile error)"
+            # 사용 프로젝트 — --with-projects 안 켜면 세 칸 모두 빈값
+            if args.with_projects:
+                p_cnt, p_ids, p_names = _format_project_cells(
+                    project_index.get(r["segment_id"], []), r.get("owner_id", ""))
+            else:
+                p_cnt = p_ids = p_names = ""
             w.writerow([
                 r["segment_id"], r["name"], r["owner_id"], r["owner_name"],
                 r["owner_email"], r["rsid"], r.get("created", ""), r.get("modified", ""),
                 r.get("definition_last_modified", ""), r.get("recent_access", ""),
                 r.get("modified_by_id", ""), r["description"],
-                r["tags"], structure, r["error"],
+                r["tags"], p_cnt, p_ids, p_names, structure, r["error"],
             ])
     print(f"CSV: {csv_path}  ({_fmt_dur(time.time() - t_csv)})")
 
@@ -1219,6 +1606,17 @@ def main() -> int:
     ok = sum(1 for r in results if not r["error"])
     fail = sum(1 for r in results if r["error"])
     print(f"\n[summary] 성공: {ok}, 실패: {fail}")
+
+    # 프로젝트 사용처 — 조용한 오해 방지용 경고를 항상 찍는다
+    if args.with_projects:
+        used = sum(1 for r in results if project_index.get(r["segment_id"]))
+        print(f"[projects] 사용처 발견: {used:,} / {len(results):,}건")
+        if not args.all_projects:
+            print(f"  ⚠️ project_count=0 은 '미사용'이 아닙니다 — {project_scan_label} "
+                  "스캔했습니다. 다른 사람 프로젝트까지 보려면 --all-projects, "
+                  "특정인만 보려면 --projects-owner.")
+        print("  ⚠️ /projects 는 API 계정이 볼 수 있는 프로젝트만 반환합니다 "
+              "(본인 소유 + 공유받은 것). 안 보이는 프로젝트의 사용분은 못 잡습니다.")
 
     # 성공한 것들 콘솔 출력 — 대량 조회 시 수만 줄이 되므로 소량일 때만
     if ok > DETAIL_PRINT_MAX:
