@@ -33,6 +33,7 @@ AA-Segments-Maker-by-API/
 ├── panel_date_update/      # panel 시작/종료일 일괄 치환
 ├── panel_maker/            # source project panel 복제 + segment swap (기본 전체 panel, recomm variant 포함)
 ├── segment_share/          # 본인 owner segment 키워드 매칭 → 일괄 share 추가
+├── project_share_owner/    # 프로젝트(Workspace) 일괄 share / owner 이관 (MODE 상수로 전환)
 ├── column_filler/          # tb_column_name_mapping 빈 컬럼 유사도 자동 채움
 └── (루트 유지)             cleanup_recent_json.py, requirements.txt, LICENSE
 ```
@@ -111,7 +112,8 @@ Workspace 리포트 데이터를 API로 추출 → CSV 출력. dimension 칼럼 
 | `panel_collapse/` | panel 안 모든 subPanel `collapsed=True` 강제 (panel 자체 헤더는 유지) |
 | `panel_date_update/` | panel 시작/종료일 일괄 치환 — ISO interval / start*·end* 키 자동 탐지 |
 | `panel_maker/` | source project 의 panel(들) 을 빈 target project 로 복제 + segment ID 자동 swap. panel_contents (CC 패턴) / panel_contents_recomm (recomm fallback) |
-| `segment_share/` | 본인 owner segment 중 키워드 매칭된 것에 SHARE_USER_IDS 일괄 추가 (PUT) |
+| `segment_share/` | 본인 owner segment 중 키워드 매칭된 것에 SHARE_USER_IDS 일괄 추가 (`POST /componentmetadata/shares`) |
+| `project_share_owner/` | 프로젝트(Workspace) 일괄 share / owner 이관 — `MODE` 상수로 `share` / `owner` / `both` 전환 |
 
 ### 기타 도구
 
