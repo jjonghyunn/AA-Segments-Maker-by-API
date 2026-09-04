@@ -495,7 +495,7 @@ SITE_PANEL_BOUNDARY = r"(?<![0-9A-Za-z_]){kw}(?![0-9A-Za-z_])"
 #   site 마다 "이 site 는 어느 분류의 패널에서 뽑을지" 를 정한다.
 #   분류가 안 맞는 패널은 그 site 에서 skip 된다.
 #
-# 설정 예 (BTS 캠페인의 B2B / B2C 분리 — **어디까지나 예시**다):
+# 설정 예 (CAMPAIGN NAME 캠페인의 B2B / B2C 분리 — **어디까지나 예시**다):
 #     PANEL_GROUP_COLUMN        = "B2B_B2C"
 #     PANEL_GROUP_RULES         = [("B2B", "B2B"), ("B2C", "B2C")]
 #     PANEL_GROUP_SITE_DEFAULT  = "B2B"
@@ -522,7 +522,7 @@ PANEL_GROUP_OFF           = ""   # 미사용 sentinel — 이 값이면 분류 �
 # 여기 등록된 분류는 전역 YEAR_OFFSETS 대신 이 offset 목록만 돈다 (미등록 분류 = YEAR_OFFSETS).
 # 기본 미사용({}). 특정 분류만 연도 확장을 막고 싶을 때 쓴다.
 #   예) {"B2C": [0]} — 그 분류 site 는 올해만. 다른 연도는 sites_input 에 행을 따로 넣는다.
-#       (BTS 사례: B2C 는 us 신 suite 뿐이라 연도 -1 이 빈 run 이 됨. 2025 는 us_old 행으로 별도 추출)
+#       (CAMPAIGN NAME 사례: B2C 는 us 신 suite 뿐이라 연도 -1 이 빈 run 이 됨. 2025 는 us_old 행으로 별도 추출)
 PANEL_GROUP_YEAR_OFFSETS: dict[str, list[int]] = {}
 
 # ─── site↔패널 룰 면제 분류 ─────────────────────────────────────────

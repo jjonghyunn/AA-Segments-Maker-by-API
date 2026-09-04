@@ -385,7 +385,7 @@ def build_evar_block(evar_num: int, values: list[str],
             ]
     elif not values:
         # 값 없고 event-exists 만 TRUE 인 case — reference 패턴 따라 `evar<N> exists AND event<N> event-exists`
-        # (예: CC_00. Contents Click Total 의 evar25/26/35 — 값 없이 event-exists 만 TRUE)
+        # (예: CC_00. Content Total 의 evar25/26/35 — 값 없이 event-exists 만 TRUE)
         tokens = [
             f"'v{evar_num}'!hit(",
             f"evar{evar_num} exists",

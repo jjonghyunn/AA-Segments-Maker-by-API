@@ -55,7 +55,7 @@ extract_data 헤더에서 디멘션 값 컬럼을 자동 감지해서 그대로 
             table_data_extract_*.csv 가로형 아님 — 디멘션 항목별 값은 stack(long) 에 들어있음)
   · site 별 최신 ts 파일 1개씩만 골라 세로로 union
   · ITEM 컬럼 = segments 의 ';' split 제일 우측 토큰 (양끝 공백 trim)
-        예) '[26 SW] Campaign Main Page_Entry; push' → 'push'
+        예) '[CAMPAIGN NAME] Campaign Main Page_Entry; push' → 'push'
   · VALUE = value1 값. revenue metric 이면 currency.csv 환율 적용, 그 외 원본 그대로
         (환율 적용된 batch 면 VALUE=환산값 + 'VALUE (원본)' 컬럼 추가)
   · (v1.4) category : panel/table/reportlet 에 product 키워드 있으면 dim_value 를
@@ -131,8 +131,8 @@ OUTPUT_BASENAME = "_union_standard"
 # ─── ITEM = segments 의 ';' split 제일 우측 토큰 (trim) ──────────────
 # segments 컬럼이 'A; B; push' 처럼 구분자로 묶여 있을 때, 제일 우측 값을 ITEM 으로.
 # 양끝 공백은 strip 으로 제거.
-#   예: '[26 SW] Campaign Main Page_Entry; push'        → 'push'
-#       '[26 SW] Campaign Main Page_Entry; owned others' → 'owned others'
+#   예: '[CAMPAIGN NAME] Campaign Main Page_Entry; push'        → 'push'
+#       '[CAMPAIGN NAME] Campaign Main Page_Entry; owned others' → 'owned others'
 SEG_SPLIT_CHAR = ";"
 
 # ─── 디멘션 컬럼 ────────────────────────────────────────────────────
