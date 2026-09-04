@@ -1,4 +1,4 @@
-# segment_share/ — segment 키워드 매칭 → 일괄 share 추가 (운영 사본)  
+# segment_share/ — segment 키워드 매칭 → 일괄 share 추가 (placeholder 사본)  
 <sub>2026-09-04  Jonghyun Park w/ Claude</sub>  
 
 repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_share
@@ -13,18 +13,18 @@ repo: https://github.com/jjonghyunn/AA-Segments-Maker-by-API/tree/main/segment_s
 
 > 분석 시즌 시작 시 동일 라벨이 붙은 운영용 segment 들을 팀원들에게 일괄 공유 → 매 segment UI 들어가서 share 메뉴 클릭 안 해도 됨.
 
-## 현재 운영 설정 (add_segment_shares.py 상단 상수 기준)
+## 사용자 설정 (add_segment_shares.py 상단 상수)
 
 | 상수 | 값 |
 |---|---|
 | `AUTH_JSON_PATH` | `C:\path\to\your\aanalytics_auth.json` |
 | `COMPANY_ID` | `your_aa_company_id` |
 | `RSID` | `""` (전체 RSID — 빈 문자열이면 server-side RSID 필터 안 함) |
-| `OWN_LOGIN_ID` | `0` — 본인 numeric loginId 로 교체 후 사용 (`utils/find_user_id.py` 로 조회). 미설정(`0`)이면 실행 시 안내 후 종료 |
-| `KEYWORDS` | `["[CAMPAIGN NAME]"]` (name/description AND substring 매칭, case-insensitive. `"visit"` 등 나머지 후보는 주석 처리돼 있음) |
+| `OWN_LOGIN_ID` | `0` — 본인 numeric loginId 로 교체 후 사용 (`../utils/find_user_id.py --email <이메일>` 로 조회). 미설정(`0`)이면 실행 시 안내 후 종료 |
+| `KEYWORDS` | `[]` — **기본값 비움**(예시는 주석). name/description AND substring 매칭 (case-insensitive). 첫 키워드는 server-side `name` 필터로도 사용 |
 | `OWNER_ID_FILTER` | `[]` (비어있으면 미사용) |
 | `OWNER_FULLNAME_INCLUDES` | `[]` (비어있으면 미사용) |
-| `TARGET_SEGMENT_IDS` | 코드 안 `TARGET_SEGMENT_IDS_RAW` 에 한 줄에 하나씩 박기. **기본값이 비어있지 않다** — placeholder id 가 여러 줄 들어있으므로, 매칭 전체를 대상으로 하려면 블록을 비우거나 각 줄 앞에 `#` 를 붙일 것 |
+| `TARGET_SEGMENT_IDS` | 코드 안 `TARGET_SEGMENT_IDS_RAW` 에 한 줄에 하나씩 박기. **기본값 비움**(예시 1줄은 주석) — 비어 있으면 매칭 전체 대상. `#` 로 주석 처리 가능 |
 | `SHARE_USER_IDS` | `[]` — 주석 예시를 참고해 numeric loginId 를 채울 것 (비어 있으면 실행 시 안내 후 종료). 공유할 사람 id 를 모르면 `../utils/find_user_id.py --email <이메일>` (또는 `--name`) 로 조회. 운영에선 본인 + 공유 대상 팀원 |
 
 ### SHARE_USER_IDS 멤버
@@ -106,7 +106,7 @@ KEYWORDS=['[CAMPAIGN NAME]'] 매칭 segment: M개
 코드 상단 상수 수정:
 
 - `KEYWORDS` — 매칭할 키워드 리스트 (AND substring 매칭). 첫 키워드는 server-side `name` 파라미터로도 사용 → 가장 specific 한 키워드를 앞에
-- `SHARE_USER_IDS` — 추가할 numeric loginId 리스트
+- `SHARE_USER_IDS` — 추가할 numeric loginId 리스트 (모르면 `../utils/find_user_id.py` 로 조회)
 - `RSID` — RSID 필터 (`""` 이면 전체 RSID)
 - `OWNER_ID_FILTER` / `OWNER_FULLNAME_INCLUDES` — 본인 외 segment 도 처리하려면 (admin 권한 필요)
 

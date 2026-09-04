@@ -1,6 +1,7 @@
 # add_segment_shares.py
 # 2026-05-13  Jonghyun Park w/ Claude
-# updated: 2026-09-04  — SHARE_USER_IDS 안내에 utils/find_user_id.py 명시 + TARGET_SEGMENT_IDS_RAW placeholder 축소
+# updated: 2026-09-04  — 사용자 상수(OWN_LOGIN_ID · KEYWORDS · TARGET_SEGMENT_IDS_RAW · SHARE_USER_IDS) 전부 비움(예시는 주석).
+#                        공유할 사람의 loginId 를 모르면 ../utils/find_user_id.py 로 조회해 채울 것.
 # updated: 2026-07-29 19:33  — bare placeholder 정리(0/주석) + 미설정 실행 가드 추가
 """
 Adobe Analytics segment 중 이름에 특정 키워드가 들어간 것들에 대해 shares 일괄 추가.
@@ -48,15 +49,14 @@ RSID = ""
 
 # 본인 numeric loginId — `/segments` GET 후 owner.id 가 이 값과 일치하는 segment 만 처리.
 # (AA API 의 ownerId 쿼리 파라미터는 지원 안 함 → 클라이언트 사이드 필터링)
-OWN_LOGIN_ID = 0  # 본인 numeric loginId 로 교체 (utils/find_user_id.py 로 조회)
-
+OWN_LOGIN_ID = 0   # 본인 numeric loginId 로 교체 — 모르면 ../utils/find_user_id.py --email <이메일>  (또는 --name <이름>)
 # 이 키워드가 name 또는 description 에 substring 으로 포함된 segment 매칭 (case-insensitive)
 # 같은 값을 AA API 의 `name` 쿼리 파라미터로도 보내서 server-side 사전 필터링 (회사 전체 22만 → 수십개로)
 # 이 키워드들 모두 (AND) name 또는 description 에 substring 으로 포함된 segment 만 매칭.
 # server-side `name` 필터는 KEYWORDS[0] 만 사용 (가장 specific 한 키워드를 앞에 둘 것).
 # client-side 에서 나머지 키워드들도 다 매칭하는 segment 만 통과 (AND).
 KEYWORDS: list[str] = [
-    "[CAMPAIGN NAME]",
+    # "[CAMPAIGN NAME]",   # 예시 — 매칭할 키워드를 채울 것 (비우면 server-side 필터 없이 전체 대상)
     # "& order",
     # "[part_name] US_",
     # "visit",
@@ -361,7 +361,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if OWN_LOGIN_ID == 0 or not SHARE_USER_IDS:
-        print("설정 필요: OWN_LOGIN_ID / SHARE_USER_IDS 를 본인 환경 값으로 채운 뒤 실행하세요 (utils/find_user_id.py 로 조회).")
+        print("설정 필요: OWN_LOGIN_ID / SHARE_USER_IDS 를 본인 환경 값으로 채운 뒤 실행하세요 "
+              "(모르면 ../utils/find_user_id.py --email <이메일> 로 조회).")
         return 1
 
     try:
