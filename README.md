@@ -1,5 +1,5 @@
 # AA-Segments-Maker-by-API  
-<sub>2026-08-21  Jonghyun Park w/ Claude</sub>  
+<sub>2026-09-15  Jonghyun Park w/ Claude</sub>  
 
 Adobe Analytics 세그먼트 및 Workspace 데이터 자동화 도구 모음.
 
@@ -174,3 +174,54 @@ pip install aanalytics2 requests pyyaml
 ```
 
 - `pyyaml` 은 `data_extract/RESHAPE_standard_v*.py` 의 product 카테고리 분류(`product_category.yaml`)에만 필요.
+
+---
+
+## 릴리스 / 태그
+
+도구가 여러 개라 **repo 단일 버전이 아니라 컴포넌트 스코프 태그**를 씁니다 → [Releases](../../releases)
+
+| 항목 | 규칙 |
+|---|---|
+| 태그 형식 | `<도구>/vN.N` — 예: `extract_data/v4.4`, `RESHAPE_standard/v1.8` |
+| 태그 지점 | 그 버전 파일을 **마지막으로 수정한 커밋** |
+| 노트 원천 | 각 스크립트 **상단 헤더 changelog** |
+| 묶음 | 두 도구가 **같은 커밋**에서 올라가면 그게 곧 호환 묶음 (태그 2개가 같은 SHA) |
+
+### 호환 묶음이 왜 필요한가
+
+`extract_data` 의 출력 CSV 컬럼을 `RESHAPE_standard` 가 그대로 읽습니다. `extract_data` 가
+새 컬럼을 내보내는데 정제 쪽 `PASSTHROUGH_COLUMNS` 에 그 이름이 없으면 **에러 없이 조용히
+유실**됩니다 — 실행은 되고 데이터만 빠지므로 발견이 늦습니다.
+
+| RESHAPE | 요구 extract_data | 계기 |
+|---|---|---|
+| v1.6 | v3.9 이상 | (extract 변경 없음) |
+| v1.7 | **v4.2 이상** | `period` 컬럼 (MONTHLY) |
+| v1.8 | **v4.4 이상** | `start_time` / `end_time` (시각 컷) |
+
+반대로 `extract_data` 는 신규 기능을 **기본값에서 끄고** 내보내므로, 기능을 안 쓰면 이전
+버전과 출력이 100% 동일합니다 (v4.1→v4.0, v4.2→v4.1, v4.4→v4.3). 즉 **기능을 실제로
+쓸 때만** 짝을 맞추면 됩니다.
+
+### 새 버전 릴리스하는 법
+
+1. 코드 수정 + 파일 rename (`extract_data_vN.N.py`)
+2. **헤더 changelog 에 새 버전 블록 추가** — 이게 릴리스 노트가 되므로 먼저 써야 합니다
+3. 커밋 후 태그 push (묶음이면 같은 커밋에 태그 2개):
+   ```bash
+   git tag -a extract_data/v4.5     -m "extract_data v4.5"
+   git tag -a RESHAPE_standard/v1.9 -m "RESHAPE_standard v1.9"
+   git push origin extract_data/v4.5 RESHAPE_standard/v1.9
+   ```
+4. `.github/workflows/release.yml` 이 헤더에서 노트를 뽑고, **같은 커밋에 두 도구의 버전
+   파일이 함께 올라갔으면 묶음 릴리스로 자동 인식**합니다
+
+노트 미리보기는 Actions 탭의 **Release** 워크플로를 `workflow_dispatch` 로 실행하거나:
+
+```bash
+python .github/make_release_notes.py extract_data/v4.5
+```
+
+> 커밋 메시지 기반 자동 노트(`--generate-notes`)는 쓰지 않습니다 — 커밋 제목이 그대로
+> 공개 릴리스 노트로 재발행되기 때문입니다. 노트 원천은 헤더 changelog 하나로 고정입니다.

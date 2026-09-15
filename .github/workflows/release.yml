@@ -1,0 +1,64 @@
+# release.yml
+# 2026-09-15  Jonghyun Park w/ Claude
+#
+# <도구>/vX.Y 태그를 push 하면 그 도구 헤더 changelog 로 릴리스를 만든다.
+# 같은 커밋에서 두 도구가 함께 올라갔으면 묶음 릴리스로 자동 감지한다.
+# workflow_dispatch 로 실행하면 노트만 출력하고 릴리스는 만들지 않는다 (dry-run).
+#
+# --generate-notes 는 쓰지 않는다 — 커밋 제목이 그대로 공개 노트로 재발행되기 때문.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'extract_data/v*'
+      - 'RESHAPE_standard/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '노트를 미리 볼 태그 (예: extract_data/v4.4) — 릴리스는 만들지 않음'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # 묶음 감지에 태그의 부모 커밋이 필요
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: 태그 결정
+        id: tag
+        run: echo "name=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: 릴리스 노트 생성
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          python .github/make_release_notes.py "$TAG" > release_notes.md
+          python .github/make_release_notes.py "$TAG" --title > release_title.txt
+          echo "─────────── 생성된 노트 ───────────"
+          cat release_notes.md
+
+      - name: 릴리스 생성
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          gh release create "$TAG" \
+            --title "$(cat release_title.txt)" \
+            --notes-file release_notes.md
+
+      - name: dry-run 안내
+        if: github.event_name != 'push'
+        run: echo "dry-run 이라 릴리스를 만들지 않았습니다. 태그를 push 하면 생성됩니다."
