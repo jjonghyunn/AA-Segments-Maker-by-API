@@ -1,5 +1,5 @@
 # sites_input.csv — extract_data_v4.6.py 입력 템플릿
-# 형식: site_code,start_date,end_date  (ISO YYYY-MM-DD)
+# 형식: 아래 헤더 참고. 필수는 site_code,start_date,end_date (ISO YYYY-MM-DD), 나머지는 선택
 #       + (v4.3, 선택) 패널 분류 컬럼 — 이름은 PANEL_GROUP_COLUMN 으로 지정. 없으면 분류 필터 미적용
 # 빈 줄 / '#' 로 시작하는 라인은 자동 skip. 실제 캠페인 site·기간으로 행만 교체.
 #
@@ -19,14 +19,14 @@
 #   last_year_start,last_year_end  (v4.6) 작년 기간 수동 지정. YEAR_OFFSETS 의 offset -1 run 에만
 #                              쓰이고, 비면 연도 -1 산술. 캠페인은 해마다 기간이 달라
 #                              '작년 같은 날짜'가 '작년 같은 캠페인'이 아닐 때 채운다
-#   예) site_code,start_date,end_date,last_year_start,last_year_end
-#       at,2026-08-17,2026-09-15,2025-08-11,2025-09-09   <- at_y2025 는 이 기간으로
-#       fr,2026-07-29,2026-08-30,,                        <- fr_y2025 는 연도 -1 산술
-site_code,start_date,end_date
-ae,2026-05-11,2026-05-17
-ae_ar,2026-05-11,2026-05-17
-au,2026-05-14,2026-05-17
-br,2026-05-11,2026-05-17
-de,2026-05-12,2026-05-17
-us_old,2026-05-11,2026-05-18
-us,2026-05-19,2026-05-31
+#   예) 아래 헤더 컬럼 순서대로 (start_time~prior_end 는 비움):
+#       at,2026-08-17,2026-09-15,,,,,2025-08-11,2025-09-09   <- at_y2025 는 이 기간으로
+#       fr,2026-07-29,2026-08-30,,,,,,                       <- fr_y2025 는 연도 -1 산술
+site_code,start_date,end_date,start_time,end_time,prior_start,prior_end,last_year_start,last_year_end
+ae,2026-05-11,2026-05-17,,,,,,
+ae_ar,2026-05-11,2026-05-17,,,,,,
+au,2026-05-14,2026-05-17,,,,,,
+br,2026-05-11,2026-05-17,,,,,,
+de,2026-05-12,2026-05-17,,,,,,
+us_old,2026-05-11,2026-05-18,,,,,,
+us,2026-05-19,2026-05-31,,,,,,
