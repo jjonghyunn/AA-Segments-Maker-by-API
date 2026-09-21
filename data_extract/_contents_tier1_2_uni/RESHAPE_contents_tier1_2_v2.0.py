@@ -44,8 +44,7 @@
 #     · 매트릭스 xlsx 좌표·시트명·site 보정을 전부 상단 상수로 승격
 #     · 출력 1개로 통합 (_union_contents_tier1_2_*)
 #   v1.2 (2026-05-29) — 콘텐츠×국가 매트릭스 필터 + __zero_fx__ (원본 보존형 0 처리)
-#   v1.1 (2026-05-26) — 출력 직전 site_code 정규화 (us_old → us)
-#   v1.0 (2026-05-18) — initial
+#   (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 from __future__ import annotations
 
 import csv

@@ -1,10 +1,8 @@
 # prewarm_seg_ref_cache.py
 # 2026-05-18  Jonghyun Park w/ Claude
-# updated: 2026-08-03 19:20  — 깨진 import 제거, v2.4 헬퍼 4종 복사(self-contained)로 복구 (TODO_next_session 1-1)
-# updated: 2026-08-04  — 사용자 설정 상수(AUTH_JSON_PATH / COMPANY_ID)를 헬퍼 블록에서 꺼내 파일 상단 '사용자가 바꿔야 하는 부분' 섹션으로 통합. 내부 상수(OUTPUT_DIR / 파싱 헬퍼)는 '내부 사용' 으로 분리.
-# updated: 2026-08-04  — --cache 에 콤마로 여러 key 를 주면 각각 자기 파일로 처리 (기존엔 첫 key 만 쓰고 나머지 무시) + --all 로 정의된 그룹 전부 한 번에. 로그인은 1회만.
 # updated: 2026-08-04  — fix: 캐시 항목의 name 이 빈 값이면 재fetch 하도록 _needs_fetch 보정 (v2.4 자동 fetch 가 남긴 빈 name 이 영영 안 채워지던 문제).
 # updated: 2026-08-04  — fix: --cache 가 파일명만 바꾸고 id 목록은 안 골라서, 어떤 값을 줘도 전체 id 가 저장되던 문제 (global 캐시에 US 세그 혼입). SEGMENT_IDS_RAW → SEGMENT_IDS_BY_CACHE 그룹 dict + DEFAULT_SEGMENT_IDS_RAW 로 교체, --cache key 의 그룹만 fetch.
+# (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 """
 segment-ref 캐시 미리 채우기 utility — input csv 없이 segment ID list 만으로
 AA GET /segments/{id} 호출 → segment_ref_cache[_<name>].json 채움.

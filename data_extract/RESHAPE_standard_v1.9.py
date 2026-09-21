@@ -24,38 +24,7 @@
 #                      (출력 컬럼도 안 늘어남) → v1.7 출력과 동일.
 #                    · v4.4 는 start_date/end_date 를 순수 날짜로 유지하므로 환율 조회
 #                      (end_date[:4] 연도 매칭)는 그대로 동작한다. 별도 수정 불필요.
-# v1.7 (2026-07-24): extract_data_v4.2 출력 대응 —
-#                    · MONTHLY 추출물의 'period' 컬럼(월 라벨 'Jul 2026')을 출력에 passthrough
-#                      (device / bd{k}_* 와 동일 취급). 없으면 그대로 무시 → v1.6 출력과 동일.
-#                      v1.6 은 period 를 안 넘겨서 월 라벨이 유실됐다(행 자체는 start_date/end_date
-#                      로 분리 유지됐지만 'Jul 2026' 키가 사라져 피봇/조인이 불편).
-#                    · YEAR_OFFSETS 추출물(파일명 '_y{연도}' 태그)은 v1.6 에서도 이미 동작 —
-#                      site 키가 'us'/'us_y2025' 로 갈려 연도별 최신 1개씩 union 되고, 환율도
-#                      행별 end_date 연도로 조회되므로 두 연도가 섞여도 정상.
-# v1.6 (2026-06-23): · wide 출력에서 revenue 계열 metric 을 revenue_org(원본)+revenue(fx)
-#                      두 열로 분리 (기존 wide 는 fx 값만, 원본 누락이었음).
-#                    · 'variable' 컬럼 추가(long+wide) — extract 의 dimension(variables/evar26 등)
-#                      에서 'variables/' 앞부분 떼고 뒤 토큰(evar26·product·marketingchannel)만.
-# v1.5 (2026-06-18): stack 의 metric_origin + 정제 metric 반영(출력에 metric_origin 추가),
-#                    VALUE (원본)→value_origin 리네임, 정제 metric 을 열로 올린 wide union
-#                    (_union_standard_wide_*) 추가 출력. RESHAPE 도 metric_origin 에서 직접
-#                    정제(_normalize_metric) — v3.8 미정제 stack 섞여도 일관.
-# v1.4 (2026-06-15): panel/table/reportlet 이름에 키워드(Multi Purchase·Multi Order·
-#                    Best Selling Product, 대소문자/언더바 무시) 가 있으면 product_category.yaml
-#                    (include/exclude regex) 로 제품코드를 분류해 'category' 컬럼 추가.
-#                    · multi(콤마 다제품): category(ACC·Unknown 포함, 알파벳 오름차순, 중복유지)
-#                                         + category_non_acc_unknown_excl(ACC·Unknown 제외)
-#                    · single(best selling, 단일 제품): category 만 (non_acc 컬럼 빈칸)
-#                    미분류 = Unknown. ADD_CATEGORY_COLUMN 으로 on/off. (pyyaml 필요)
-# v1.3 (2026-06-12): extract_data_v3.7 파일명 개편 대응 — 입력 패턴을
-#                    stack_data_extract_* (신규) + extract_data_* (구버전 호환) 둘 다 인식.
-#                    (v3.7 의 table_data_extract_* 가로형은 RESHAPE 입력 아님 — stack 만 사용)
-# v1.2 (2026-06-11): 출력 컬럼 추가 — metric (value_n 다음), Panel name (reportlet 왼쪽)
-#                    + EXCLUDE_OUTPUT_COLUMNS — 출력에서 뺄 컬럼 선택 옵션
-# v1.1 (2026-06-10): extract_data_v3.5 출력 대응 —
-#   · breakdown 행(bd{k}_itemId 채워진 행) 처리 모드 BREAKDOWN_ROWS_MODE 추가
-#     ("exclude" 기본 = dim1 총계만 union, 이중집계 방지 / "only" / "include")
-#   · device / bd{k}_* 컬럼이 입력에 있으면 출력에 passthrough
+# (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 #
 # ※ [LOCAL ONLY / 마이너] 단발성 union 정제용 로컬 도구.
 """

@@ -2,17 +2,7 @@
 # 2026-06-01  Jonghyun Park w/ Claude
 # updated: 2026-06-01  v1.7 — build_customlink_block: customlink 멀티값(줄바꿈 split) 지원 — 한 컨테이너에 여러 customlink 를 OR 로 묶고 라벨은 코드들 ' or ' 조합('pd25 or ft31 component'). 바깥 container_label 도 멀티 customlink 코드 반영.
 # updated: 2026-06-01  v1.6 — 컨테이너 라벨 정렬: 바깥 segment 컨테이너를 customlink 코드 ' or ' 조합('pd25 or co78 component')으로(build_structure container_label). DP 는 '<base>(Visit)'!visit( hit( @common AND ( '<label>'!hit( hit(A) OR hit(B) ) ) ) ) 구조 — '<label>' 이 모든 브랜치를 감쌈(hit/visit 와 동일 대칭). customlink 서브컨테이너 'pd25 component'/'co78 component' 유지.
-# updated: 2026-06-01  v1.5 — build_customlink_block: COMPONENT_LABEL_FROM_CUSTOMLINK(기본 True) 면 브랜치 컨테이너를 customlink 선두코드('pd25 component'/'co78 component')로 명명 + customlink inline (무명 hit() 래퍼 제거). hit/visit/DP 전 변형 공통 적용. False 면 기존 hit('Component'!hit(customlink)...) 구조.
-# updated: 2026-06-01  v1.4 — _build_delayed_purchase_structure: customlink_block 2 개+ (OR 브랜치) 일 때 각 hit() 래퍼 유지하고 ( hit(A) OR hit(B) ) 괄호 그룹으로 묶음. 기존엔 래퍼 벗겨 평탄화 → @COMMON_REF AND A OR B 로 그룹 경계가 사라져 B 가 @ref/THEN 시퀀스에서 빠지는 버그 수정. 1 개일 땐 기존 inline 유지.
-# updated: 2026-05-29  v1.2 — _build_delayed_purchase_structure 재작성: mixed-AND 패턴 + 'Order (All Products)' named container + [sequence-after]/[sequence-all] 라벨 명시. CAMPAIGN NAME US_CC_xx DP 컨벤션 따름.
-# updated: 2026-05-29  v1.3 — build_structure (visit) 의 inner hit 에 'page+content' description 박음. aa_create_segment_v2.3 의 _lift_inner_hit_into_visit_root 후처리가 description 없는 단일 inner hit 을 벗기는 문제 우회 — visit(hit(AND(@page, named_content))) 구조 보존.
-# updated: 2026-05-26       — crystallize: regex 에 hyphen 변형 (starts-with / contains-any-of) 매칭 추가, contains-any-of multi-value 처리 (build_evar_block)
-# updated: 2026-05-27       — CRYSTALLIZE_COLUMN_REGEX_OR 추가: `or_starts-with_evar105` 같이 `_crystallize_` 키워드 없는 form 도 evar block 의 crystallize_override 로 인식 (OR group evar value condition 명시용)
-# updated: 2026-05-27  v1.1 — `set_pair` 컬럼 추가. 회사 특성 (event+evar AND set) 처리.
-#                              format: `e<event_num>+v<evar_num>[<operator>]` (operator 생략시 contains, default 가 contains 아닌 starts-with 인 케이스는 명시).
-#                              세미콜론 multi: `e45+v33;e44+v55[starts-with]`. 빈 값 = 처리 안 함 (회귀 안전).
-#                              지정된 row 에서 v<M> named container wrap 안 event<N> event-exists AND evar<M> <op> '<val>' 자동 생성 + 다른 evar_block 과 AND 강제.
-#                              같은 row 의 `eVar<M>` column 값을 set block 의 value 로 재사용 (그 evar<M> 은 site filter 분류에서 제외).
+# (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 """
 seg_make_ref_*.csv → aa_create_segment_v2_1.py 가 받는 input CSV 자동 변환.
 

@@ -1,20 +1,5 @@
 # aa_create_segment_v2.4.py
 # 2026-05-15  Jonghyun Park w/ Claude
-# updated: 2026-08-03 20:30  — 팀본 기준 재동기화: to-evar self-mapping(변환 제외 규약)·치환 리포트([to-evar]/[keep]+집계표) 반영, sanitize 재적용
-# updated: 2026-07-29 19:33  — 중복 main() 해소: DSL 러너를 main_dsl() 로 개명 (CSV 러너가 유일한 main)
-# updated: 2026-05-15  — v2.1 기반. --input 상대경로일 때 스크립트 폴더 기준 fallback 추가
-#                       (cwd 가 어디든 segment_maker 폴더의 segments.csv 자동 발견)
-# updated: 2026-05-18  — segment-ref cache patch (sequence-prefix 변환) +
-#                       --update-or-create (mixed PUT/POST) +
-#                       --lookup-by-name (segment_id 빈 row 의 자동 채움 via 폴더의 최신 segment_lookup csv) +
-#                       result csv 의 Action 컬럼 (PUT/POST 구분)
-# updated: 2026-05-22  — --lookup-by-name 의 source 위치를 같은 폴더의 lookup/ 하위로 변경 (segment_lookup_*.csv 가 lookup/ 로 이동됨)
-# updated: 2026-05-26  — v2.3: (1) DSL preprocess 추가 — [sequence-after] visitor( 같은 label+scope-keyword 토큰을 visit( 으로 strip → Delayed Purchase ParseError 해결. (2) v2.py 의존성 제거 — v2 의 parser/compiler/auth 코드 inline (self-contained). (3) OWNER_IMS_USER_ID + OWNER_LOGIN 빈 값 default (다른 사람 fork 시 자기 정보로 채움). OWNER_ID 는 유지.
-# updated: 2026-05-26  — _lift_inner_hit_into_visit_root 후처리 추가. visit/visitor scope segment 가 AA server-side simplification (outer-visit + 단일 inner-hit no_desc wrap → hit-scope 로 합침) 에 의해 hit scope 로 떨어지는 문제 fix. inner hit wrap 제거하고 outer.pred = inner.pred 직접 박아서 server 가 단일 wrap 패턴 simplify 못 하도록.
-# updated: 2026-06-17  — decompile 버그픽스: 반대 연산자의 중첩 and/or 그룹을 scope 블록(괄호)으로 보존 (desc 없는 컨테이너 collapse 시 'A AND (B OR C)' 가 'A AND B OR C' 로 평평해져 우선순위 깨지던 문제). aa_segment_lookup.py 와 동일 수정.
-# updated: 2026-07-08  — sequence dimension-restriction round-trip 지원: (1) 'WITHIN N <dim>' 토큰 + RestrictionNode + 파서/컴파일러 → AA dimension-restriction 노드 재생성. (2) sequence label strip 을 visitor 뿐 아니라 hit/visit scope 도 처리하도록 일반화 (visit-scope sequence 왕복 가능). lookup 의 'WITHIN 1 page' 를 되읽음.
-# updated: 2026-07-27  — v2.4: prop/page 디멘션 → evar 변환 옵션 (CONVERT_TO_EVAR / EVAR_SPECIAL_MAP / EVAR_DEFAULT_PROP_TO_EVAR / EVAR_TARGET_RSID + --to-evar). 정의 트리 attr name 을 variables/prop{N}·page → variables/evar{M} 로 remap (op·값·구조 보존). 특수 페어링(page→evar40, prop29→evar92)은 suite별 상단 상수.
-# updated: 2026-07-31  — EVAR_SPECIAL_MAP 에 self-mapping("prop70": "prop70") = 변환 제외 규약 추가 (기본 prop{N}→evar{N} fallback 보다 우선). + 치환 리포트 print: 세그별 [to-evar]/[keep] 한 줄 + 실행 끝에 전체 unique 집계표(어떤 prop 이 뭘로 대체됐는지 건수/세그수). metrics/* 이벤트도 [keep] 으로 집계.
 # updated: 2026-08-24  — lookup .dsl 라운드트립 수용: (1) OPERATOR_MAP 에 eq/not-eq/not-contains-all-of 추가.
 #                       (2) .dsl 파일 경로도 CSV 경로와 같은 전처리를 타게 통일 (_normalize_dsl_line_tokens 공유) —
 #                       예전엔 CSV 경로만 event-exists 치환 + sequence label strip 을 타서 .dsl 재입력이 대부분 실패.
@@ -22,6 +7,7 @@
 #                       (4) '?' placeholder / '??' 미지원 구조 노드 / '@daterange:' 를 ParseError 로 명시 거부 —
 #                       조용히 variables/? 로 컴파일돼 AA 400 이 나던 자리를 시끄럽게 만듦.
 # updated: 2026-08-04  — 배너/사용법 문자열에 남아있던 v2.2 잔재를 v2.4 로 정정. INPUT_CSV 기본값을 실재하는 디폴트 파일로 교체 (4곳 모두 없는 파일을 가리켜 --input 없이 실행하면 즉시 에러였음).
+# (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 """
 CSV 입력 → AA 세그먼트 일괄 생성 또는 업데이트.
 

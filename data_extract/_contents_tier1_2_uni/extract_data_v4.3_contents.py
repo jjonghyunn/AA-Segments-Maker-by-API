@@ -53,51 +53,7 @@
 #                    → 연도별 폴더 사본(y25/y26) 없이 폴더 1개로 동기간 YoY 추출.
 #                    기본값(False, [0])은 v4.1 출력과 100% 동일. CLI --monthly / --year-offsets.
 #                    그 외 추출 로직은 v4.1 과 동일.
-# v4.1 (2026-07-09): breakdown 깊이/부모행 출력 제어 상수 2개 추가 —
-#                    BREAKDOWN_MAX_DEPTH (정수 깊이 캡: -1=무제한, 0=총계만, 1=bd1까지, N=bdN까지) +
-#                    INCLUDE_PARENT_ROWS (dim1 총계행 출력 포함 여부; False=breakdown행만 "bd만" 모드).
-#                    "총계만 / 총계+bd1 / bd1만" 등을 enum 나열 없이 상수 2개 조합으로 표현.
-#                    기본값(-1, True)은 v4.0 출력과 100% 동일. CLI --breakdown-max-depth / --no-parent-rows.
-#                    그 외 추출 로직은 v4.0 과 동일.
-# v4.0 (2026-06-29): 출력 CSV 쓰기 직후 자가 무결성 검증(_verify_csv_written) 추가 —
-#                    stack/table CSV 를 다시 읽어 모든 행의 필드수가 헤더와 일치하는지 확인,
-#                    정상이면 ✓(데이터 행수×칼럼수), 불일치 시 ⚠ 경고 + 재추출 권장 (OneDrive 동기화/복사 등 외부 손상 즉시 감지).
-#                    + breakdown 단계별 행 cap 분리 — LIMIT_BD/BD2/BD3/BD4 (bd1~4 = level2~5, bd5+ 는 BD4), CLI --limit-bd2~bd4.
-#                    + --estimate 사전 추정 모드 — breakdown 단계별 1경로 샘플 측정 → 총 /reports 호출수·ETA 출력 후 추출 생략.
-#                    그 외 추출 로직은 v3.9 와 동일.
-# 2026-06-15: 진행률 + ETA 콘솔 출력 추가 (VERBOSE_PROGRESS) — site 1개 끝날 때마다
-#             [i/N]·소요·추출 row수·누적·평균·남은·전체 한 줄. 남은 = 완료 site 평균소요 × 남은 site 수,
-#             전체 = 누적 + 남은 (SITE_WORKERS>1 이면 ÷ 워커수 근사). 추출 로직 불변(출력만 추가).
-# v3.9 (2026-06-18): stack CSV 의 metric → metric_origin + 정제 metric 컬럼 추가
-#                    (별칭 AppBounce→Bounces, 이벤트 괄호 제거·단위 괄호 유지).
-# v3.8 (2026-06-12): device 케이스별 반복 추출 (DEVICE_CASES) —
-#                    프로젝트 패널에 device 세그가 전혀 없을 때, 패널마다 (Seg1, Seg2) 세그 stack 을
-#                    globalFilter 로 끼워 케이스별로 각각 추출. 케이스 수는 DEVICE_CASES 상수로
-#                    자유 증감 (기본 5: PC/Mobile/App/Android/iOS — Downloads\device_case5.csv 참고).
-#                    + app_O_X.csv 룰 — App 론치 X site 는 requires_app 케이스 제외(PC/Mobile 만).
-#                      `_old` 접미사 site 는 `_old` 뗀 site명의 O/X 를 따름, 미매칭 site 는 경고 후 X 간주.
-#                    + DEVICE_CASE_SITE_OVERRIDES — 구/별도 suite 에서 [Global] 세그가 0행을 만드는
-#                      site 용 세그 치환 (us_old: [Global] Excluded APP → [US] Excluded APP).
-#                    DEVICE_CASES=[] 면 v3.7 과 100% 동일 동작 (옵트인).
-# v3.7 (2026-06-12): 레벨별 limit 분리 + 실제 행수 cap 적용 —
-#                    LIMIT_LV1(dim1/1st level) / LIMIT_BD(breakdown/2nd level~) 로 분리.
-#                    v3.6 까지 LIMIT 은 API page 크기로만 쓰여 페이지네이션(MAX_PAGES)이
-#                    계속 돌아 행수 제한이 실제로 안 걸렸음 → _fetch_all_pages 에 max_rows
-#                    cap 추가(초과분 truncate). 0 = 무제한(기존 동작). CLI --limit / --limit-bd.
-#                    + 출력 CSV 2종 개편:
-#                      · stack_data_extract_* (기존 extract_data_*) — long unpivot 유지 (세로 스택).
-#                      · table_data_extract_* (기존 column_mapping_* 대체) — AA 테이블 모양 가로형:
-#                        1행 = item(또는 breakdown/총계 행), value1..N 컬럼 + seg_value1..N 컬럼.
-#                        seg_value{i} = "metric;; segments" (metric 맨앞, 구분자 ';;' — segments
-#                        내부 구분자가 '; ' 라 세미콜론 2개로 분리. SEG_VALUE_SEP 상수).
-# v3.6 (2026-06-10): site 단위 병렬 처리 포팅 (_contents 시리즈의 SITE_WORKERS) —
-#                    SITE_WORKERS>1 이면 여러 site 동시 추출. 동시 API 요청 = SITE_WORKERS × workers.
-#                    SITE_WORKERS=1 이면 v3.5 와 100% 동일(순차). CLI --site-workers 로 override.
-# v3.5 (2026-06-10): N단계 dimension breakdown 추가 — dim1(행) 각 item 을 하위 차원으로 재귀 분해.
-#                    AA /reports 의 type="breakdown" metricFilter 로 조상 (차원,itemId) 체인을 AND.
-#                    CSV 에 도달 깊이만큼 bd{k}_dimension/itemId/value 컬럼 셋이 레벨당 추가됨.
-#                    BREAKDOWN_ENABLED=False 면 v3.4 와 100% 동일 동작.
-# v3.4 (2026-06-04): EXTRA_SEGMENTS name_keywords 패널-우선 해석 추가 (패널 내 1건->자동적용, 2건+->중단)
+# (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 """
 extract_data — AA Workspace 프로젝트의 panel·reportlet 구조를 여러 site(RSID)로 추출.
 한 프로젝트를 site별 RSID + 기간(dateRange) override 로 반복 호출해 long/wide CSV 2종으로 떨군다.

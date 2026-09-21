@@ -1,10 +1,9 @@
 # input_csv_maker_us.py
 # 2026-05-29  Jonghyun Park w/ Claude
 # input_csv_maker.py 의 US 캠페인 파생 — RSID, flat 구조, event<N> event-exists 패턴
-# updated: 2026-05-26       — crystallize: regex 에 hyphen 변형 (starts-with / contains-any-of) 매칭 추가, map → list 구조 + 우선순위 (starts-with > equals > contains-any-of > contains), row 마다 값 있는 첫 컬럼 사용
-# updated: 2026-05-29  v1.1 — event metric 명 통일: 기존 `evar<N>instances event-exists` → `event<N> event-exists` (Adobe Analytics commerce event <N> 사용 — US 캠페인 click total/구체 컨텐츠 click 측정에 instances metric 보다 더 정확). 영향: 모든 evar block 의 main event-exists 토큰 변경 (build_evar_block line 318).
-# updated: 2026-05-29  v1.2 — _build_delayed_purchase_structure 재작성: mixed-AND 패턴 + 'Order (All Products)' named container + [sequence-after]/[sequence-all] 라벨. CAMPAIGN NAME US_CC_xx DP 컨벤션 따름.
 # updated: 2026-05-29  v1.3 — build_structure (visit) 의 inner hit 에 'page+content' description 박음. v2.3 _lift_inner_hit_into_visit_root 후처리 우회 — visit(hit(AND)) 구조 보존.
+# updated: 2026-05-29  v1.2 — _build_delayed_purchase_structure 재작성: mixed-AND 패턴 + 'Order (All Products)' named container + [sequence-after]/[sequence-all] 라벨. CAMPAIGN NAME US_CC_xx DP 컨벤션 따름.
+# (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 """
 seg_make_ref_us_*.csv → aa_create_segment_v2_1.py 가 받는 input CSV 자동 변환.
 
