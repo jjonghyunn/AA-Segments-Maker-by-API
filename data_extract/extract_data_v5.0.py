@@ -1,5 +1,22 @@
-# extract_data_v4.6.py
+# extract_data_v5.0.py
 # 2026-09-21  Jonghyun Park w/ Claude
+# v5.0 (2026-09-21): **기간 분할에 daily 추가** + 상수 통합 — MONTHLY(bool) -> PERIOD_SPLIT(str).
+#   ⚠ **호환이 깨지는 변경**이라 메이저 버전이다. MONTHLY=True 로 쓰던 사본은
+#     PERIOD_SPLIT="monthly" 로 바꿔야 한다. MONTHLY 를 다시 정의해두면 조용히 무시되지 않고
+#     시작 시 에러로 멈춘다 (분할이 안 된 채 뽑히는 사고 방지).
+#     · PERIOD_SPLIT = "" (기본, 총기간 1회) / "monthly" / "daily"
+#     · daily 의 period 라벨은 ISO 날짜 '2026-05-14' (monthly 는 기존대로 'Jul 2025').
+#     · task 수 = 패널 x 테이블 x device x **조각 수** — daily 는 날짜 수만큼 호출이 는다.
+#       돌리기 전에 --estimate 로 확인할 것.
+#   · DAILY_TIME_MODE : daily + 시각 컷을 같이 쓸 때의 해석 (daily 일 때만 의미).
+#     "continuous" (기본) = 첫날 시작시각 ~ 마지막날 종료시각을 **연속 한 구간**으로 보고 날로
+#       쪼갠다 (중간 날은 온전한 하루). monthly 와 같은 동작이라 기존 의미가 유지된다.
+#     "repeat" = **매일 그 시간대만** (5/14 09:00~18:59, 5/15 09:00~18:59 …).
+#       dateRange 하나로는 표현할 수 없던 반복 시간대를 날짜 수만큼의 요청으로 구현한 것.
+#   · CLI --period-split ""|monthly|daily / --daily-time-mode continuous|repeat.
+#     기존 --monthly / --no-monthly 도 별칭으로 계속 받는다.
+#   ※ 출력 컬럼은 안 늘어난다 (period 컬럼은 v4.2 부터 있던 것) → RESHAPE_standard 는 v1.9 그대로.
+#   ※ 그 외 추출 로직은 v4.6 과 동일.
 # v4.6 (2026-09-21): **작년 기간 수동 지정** — sites_input 선택 컬럼 last_year_start / last_year_end.
 #   YEAR_OFFSETS 의 **offset -1 run 에만** 적용된다. 값이 있으면 그 기간을 그대로 쓰고,
 #   **비어 있는 행만** 기존처럼 연도 -1 산술(_shift_year)로 뽑는다. 섞어 쓸 수 있다.
@@ -44,12 +61,12 @@ extract_data — AA Workspace 프로젝트의 panel·reportlet 구조를 여러 
   3) site(×연도) 별 반복 (SITE_WORKERS 병렬):
        a. task 생성 = panel × reportlet/table × device case × 기간조각
             (모두 옵션 — panel·table 은 REQUIRED_PANEL_KEYWORDS / REQUIRED_TABLE_KEYWORDS 이름 필터,
-             device case 는 DEVICE_CASES, 기간조각은 MONTHLY(v4.2). 비우면/끄면 전체 대상 1회).
+             device case 는 DEVICE_CASES, 기간조각은 PERIOD_SPLIT. 비우면/끄면 전체 대상 1회).
        b. 각 task 의 globalFilter 구성:
             · 패널 기존 세그(panel.segmentGroups) 적용 — (옵션) SKIP_PANEL_SEGMENTS 로 패널 세그 전체 무시,
               SKIP_PANEL_SEGMENT_KEYWORDS 로 이름 키워드 매칭 세그만 골라 제외
             · (옵션) EXTRA_SEGMENTS 추가 — 이름→id 최초 1회 확정(+lookup 파일 저장) 후 매 task 적용, enabled 토글로 on/off
-            · site 기간(start/end) dateRange override — MONTHLY 면 그 달 조각의 기간
+            · site 기간(start/end) dateRange override — PERIOD_SPLIT 면 그 조각(월/일)의 기간
        c. /reports 호출 (MAX_WORKERS 병렬) — 페이지네이션 + 레벨별 행수 cap(LIMIT_LV1 / LIMIT_BD~LIMIT_BD4).
        d. (옵션) N단계 breakdown(BREAKDOWN_ENABLED) — dim1 의 각 item 을 하위 차원으로 재귀 분해 (metricFilter 체인 AND).
        e. 결과를 CSV 2종으로 기록 후 무결성 자가검증(v4.0):
@@ -178,14 +195,25 @@ REQUIRED_TABLE_KEYWORDS: list[str] = []
 #     (조용히 틀린 기간을 뽑지 않게 하는 가드).
 #   · 컬럼명을 바꾸려면 아래 *_COLUMN_* 상수만 고치면 된다.
 #
-# MONTHLY : 총기간을 달력 월로 쪼개 월마다 따로 뽑는다.
-#   False → 총기간 1회 (기본)
-#   True  → 월마다 1회. 출력에 period 컬럼('Jul 2025') 추가, start_date/end_date 는 그 달 범위
-#           (양 끝 부분월은 총기간에 맞춰 잘림).
-#   · AA 프로젝트에 daterangemonth breakdown 을 안 만들어도 되고 bd 슬롯도 안 써서,
+# PERIOD_SPLIT : 총기간을 어떤 단위로 쪼개 조각마다 따로 뽑을지 (v5.0).
+#   ""        → 쪼개지 않고 총기간 1회 (기본). period 컬럼도 안 생긴다.
+#   "monthly" → 달력 월 단위. period 라벨 'Jul 2025' (AA daterangemonth 표기와 동일)
+#   "daily"   → 하루 단위.   period 라벨 '2026-05-14' (ISO)
+#   · 출력에 period 컬럼 추가, start_date/end_date 는 그 조각의 범위
+#     (양 끝 조각은 총기간에 맞춰 잘린다).
+#   · AA 프로젝트에 daterange* breakdown 을 안 만들어도 되고 bd 슬롯도 안 써서,
 #     기존 breakdown 과 병행할 수 있다.
-#   · task 수 = 패널 × 테이블 × device × **월수** — API 호출이 그만큼 늘어난다.
-MONTHLY: bool = False
+#   · task 수 = 패널 × 테이블 × device × **조각 수** — daily 는 날짜 수만큼 호출이 는다.
+#     돌리기 전에 --estimate 로 확인할 것.
+#   ⚠ v5.0 에서 MONTHLY(bool) 을 대체했다. MONTHLY=True 로 쓰던 사본은 "monthly" 로 바꿀 것.
+PERIOD_SPLIT: str = ""
+
+# DAILY_TIME_MODE : PERIOD_SPLIT="daily" + 시각 컷을 같이 쓸 때의 해석 (daily 일 때만 의미).
+#   "continuous" (기본) → 첫날 start_time ~ 마지막날 end_time 을 **연속 한 구간**으로 보고
+#                         날로 쪼갠다 (중간 날은 온전한 하루). monthly 와 같은 동작.
+#   "repeat"            → **매일 그 시간대만** (5/14 09:00~18:59, 5/15 09:00~18:59 …).
+#                         dateRange 하나로는 표현이 안 되던 반복 시간대를 이걸로 뽑을 수 있다.
+DAILY_TIME_MODE: str = "continuous"
 
 # YEAR_OFFSETS : 날짜의 **연도**를 N 만큼 옮겨 같이 뽑는다 (동기간 YoY).
 #   [0] 그대로 1 run (기본) / [0,-1] 올해+작년 = site 당 2 run. 개수·부호 자유.
@@ -904,12 +932,16 @@ _MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
-def _split_months(start_date: str, end_date: str) -> list[tuple[str, str, str]]:
-    """총기간을 달력 월 조각으로 분할 → [(조각시작, 조각끝, 라벨), ...].
-    MONTHLY=False 면 분할 없이 [(start, end, "")] 1개 (이하 로직 공통 처리용).
-    라벨은 'Jul 2025' 형식 — AA daterangemonth 표기와 동일해서 후처리에서 그대로 파싱된다.
-    양 끝은 총기간에 맞춰 잘림: ('2025-07-06','2025-07-21') → [('2025-07-06','2025-07-21','Jul 2025')]"""
-    if not MONTHLY:
+def _split_periods(start_date: str, end_date: str) -> list[tuple[str, str, str]]:
+    """총기간을 PERIOD_SPLIT 단위 조각으로 분할 → [(조각시작, 조각끝, 라벨), ...].
+
+    PERIOD_SPLIT="" 면 분할 없이 [(start, end, "")] 1개 (이하 로직 공통 처리용).
+      "monthly" → 달력 월. 라벨 'Jul 2025' (AA daterangemonth 표기라 후처리에서 그대로 파싱된다)
+      "daily"   → 하루.   라벨 '2026-05-14' (ISO)
+    양 끝 조각은 총기간에 맞춰 잘린다:
+      monthly ('2025-07-06','2025-07-21') → [('2025-07-06','2025-07-21','Jul 2025')]
+      daily   ('2026-05-14','2026-05-16') → 조각 3개 (각 하루)"""
+    if not PERIOD_SPLIT:
         return [(start_date, end_date, "")]
     s = datetime.strptime(start_date, "%Y-%m-%d")
     e = datetime.strptime(end_date, "%Y-%m-%d")
@@ -918,11 +950,14 @@ def _split_months(start_date: str, end_date: str) -> list[tuple[str, str, str]]:
     out: list[tuple[str, str, str]] = []
     cur = s
     while cur <= e:
-        # 그 달의 마지막 날 = 다음 달 1일 - 1일
-        nxt_month = cur.replace(day=1) + timedelta(days=32)
-        month_end = nxt_month.replace(day=1) - timedelta(days=1)
-        chunk_end = min(month_end, e)
-        label = f"{_MONTH_ABBR[cur.month - 1]} {cur.year}"
+        if PERIOD_SPLIT == "daily":
+            chunk_end = cur
+            label = cur.strftime("%Y-%m-%d")
+        else:   # monthly — 그 달의 마지막 날 = 다음 달 1일 - 1일
+            nxt_month = cur.replace(day=1) + timedelta(days=32)
+            month_end = nxt_month.replace(day=1) - timedelta(days=1)
+            chunk_end = min(month_end, e)
+            label = f"{_MONTH_ABBR[cur.month - 1]} {cur.year}"
         out.append((cur.strftime("%Y-%m-%d"), chunk_end.strftime("%Y-%m-%d"), label))
         cur = chunk_end + timedelta(days=1)
     return out
@@ -1975,8 +2010,10 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
     period_type: v4.5 prior 라벨 'campaign'/'prior'/'prior2' — 비면(PRIOR_OFFSETS=[0])
         출력에 period_type 컬럼 자체를 만들지 않는다 (v4.4 출력과 동일)."""
     time_mode = bool(start_time and end_time)   # v4.4
-    # v4.2: MONTHLY 면 총기간을 달력 월 조각으로 분할 (False 면 조각 1개 = 총기간)
-    periods = _split_months(start_date, end_date)
+    # v5.0: daily + repeat = 매일 같은 시간대. 그 외(월 분할·연속 모드)는 첫/끝 조각에만 적용
+    _daily_repeat = (PERIOD_SPLIT == "daily" and DAILY_TIME_MODE == "repeat")
+    # v5.0: PERIOD_SPLIT 이면 총기간을 월/일 조각으로 분할 ("" 면 조각 1개 = 총기간)
+    periods = _split_periods(start_date, end_date)
     _range_str = (f"{start_date} {start_time} ~ {end_date} {end_time}" if time_mode
                   else f"{start_date} ~ {end_date}")
     print(f"\n{'═'*78}\nSITE: {site.site_code}{file_tag}  →  rsid={site.rsid}  "
@@ -1984,10 +2021,13 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
     if time_mode:
         print(f"  시각 컷(v4.4): {start_time} ~ {end_time} (종료 시각의 59초까지 포함) — "
               f"연속 구간 1개")
-    if MONTHLY:
-        print(f"  기간 분할(MONTHLY): {len(periods)}개  "
-              f"[{periods[0][2]} ~ {periods[-1][2]}]"
-              + ("  ※ 첫 조각에만 시작시각, 마지막 조각에만 종료시각 적용" if time_mode else ""))
+    if PERIOD_SPLIT:
+        _tnote = ""
+        if time_mode:
+            _tnote = ("  ※ 매일 그 시간대만 (repeat)" if _daily_repeat
+                      else "  ※ 첫 조각에만 시작시각, 마지막 조각에만 종료시각 적용")
+        print(f"  기간 분할({PERIOD_SPLIT}): {len(periods)}개  "
+              f"[{periods[0][2]} ~ {periods[-1][2]}]" + _tnote)
     if resolved_extras:
         print(f"  extra segments ({len(resolved_extras)}):")
         for sid, scope in resolved_extras:
@@ -2046,15 +2086,19 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             for case in site_cases:
                 # site 별 세그 치환 적용 (DEVICE_CASE_SITE_OVERRIDES — us_old 류)
                 case_seg_ids = [site_seg_override.get(s, s) for s in case["segment_ids"]] if case else []
-                # 기간조각(MONTHLY)별 task 1개씩 (MONTHLY=False 면 조각이 1개 = 총기간 1회)
+                # 기간조각(PERIOD_SPLIT)별 task 1개씩 ("" 면 조각이 1개 = 총기간 1회)
                 for _pi, (pd_start, pd_end, pd_label) in enumerate(periods):
-                    # v4.4 시각 컷: 총기간의 **첫 조각에만 시작시각, 마지막 조각에만 종료시각**.
-                    #   MONTHLY=False 면 조각이 1개라 둘 다 그 조각에 걸린다(일반 케이스).
-                    #   MONTHLY=True 의 중간 달 조각은 00:00~23:59 = 온전한 달력일이 되어
-                    #   "매달 SH~EH 시만" 으로 의미가 뒤바뀌지 않는다.
+                    # 시각 컷 분배 — 기본은 **첫 조각에만 시작시각, 마지막 조각에만 종료시각**
+                    #   (= 연속 한 구간을 조각으로 쪼갠 것. 중간 조각은 00:00~23:59 온전한 하루라
+                    #    "매달/매일 SH~EH 시만" 으로 의미가 뒤바뀌지 않는다).
+                    #   v5.0: daily + DAILY_TIME_MODE="repeat" 면 **모든 조각에 같은 시각**을 줘
+                    #   "매일 그 시간대만" 을 만든다 (dateRange 하나로는 표현이 안 되는 형태).
                     if time_mode:
-                        sh_i = start_time if _pi == 0 else "00:00"
-                        eh_i = end_time if _pi == len(periods) - 1 else "23:59"
+                        if _daily_repeat:
+                            sh_i, eh_i = start_time, end_time
+                        else:
+                            sh_i = start_time if _pi == 0 else "00:00"
+                            eh_i = end_time if _pi == len(periods) - 1 else "23:59"
                     else:
                         sh_i = eh_i = ""
                     payload, seg_names_per_metric, metric_names, panel_seg_names, dim_id, dim_name = \
@@ -2078,7 +2122,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                         "device_case": case["device"] if case else "",   # v3.8
                         "period_start": pd_start,     # v4.2: 이 task 의 실제 추출 기간
                         "period_end": pd_end,
-                        "period_label": pd_label,     # MONTHLY 일 때만 'Jul 2025', 아니면 ""
+                        "period_label": pd_label,     # PERIOD_SPLIT 일 때만 'Jul 2025'/'2026-05-14', 아니면 ""
                         "period_start_time": sh_i,    # v4.4: 시각 컷일 때만 'HH:MM', 아니면 ""
                         "period_end_time": eh_i,
                         "payload": payload,
@@ -2174,8 +2218,8 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                         for t in tasks for br in (t.get("breakdown_rows") or [])),
                        default=0)
     bd_blank = [""] * (3 * max_bd_depth)
-    # v4.2: MONTHLY 일 때만 end_date 뒤에 period 컬럼 추가 (False 면 컬럼 자체가 없어 v4.1 출력과 동일)
-    period_header = ["period"] if MONTHLY else []
+    # v4.2/v5.0: PERIOD_SPLIT 일 때만 end_date 뒤에 period 컬럼 추가 ("" 면 컬럼 자체가 없다)
+    period_header = ["period"] if PERIOD_SPLIT else []
     # v4.4: 시각 컷일 때만 start_time/end_time 컬럼 추가.
     #   start_date/end_date 는 **날짜 그대로 둔다** — 'YYYY-MM-DD HH:MM' 로 바꾸면
     #   그 컬럼을 날짜로 파싱하는 RESHAPE_standard_v1.7.py 가 깨진다.
@@ -2201,10 +2245,10 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             dim_name = t.get("dimension_name", "")
             metric_names = t.get("metric_names") or []
             seg_names_per_metric = t.get("seg_names_per_metric") or []
-            # v4.2: 기간은 site 총기간이 아니라 이 task 의 기간조각 (MONTHLY=False 면 총기간과 동일)
+            # 기간은 site 총기간이 아니라 이 task 의 기간조각 (PERIOD_SPLIT="" 면 총기간과 동일)
             base_cols = ([site.site_code, site.rsid, t["period_start"], t["period_end"]]
                          + ([t["period_start_time"], t["period_end_time"]] if time_mode else [])
-                         + ([t["period_label"]] if MONTHLY else [])
+                         + ([t["period_label"]] if PERIOD_SPLIT else [])
                          + ([period_type] if period_type else [])          # v4.5
                          + [t["panel_name"], t["tb_name"], t["reportlet_name"], dim_id, dim_name])
             # v4.1: INCLUDE_PARENT_ROWS=False 면 dim1 총계(부모) 행을 skip (breakdown 행만 출력)
@@ -2308,10 +2352,10 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
         for t in tasks:
             if not t["ok"]:
                 continue
-            # v4.2: 기간 = 이 task 의 기간조각 (+ MONTHLY 면 period 라벨, + v4.4 시각 컷이면 시각)
+            # 기간 = 이 task 의 기간조각 (+ PERIOD_SPLIT 면 period 라벨, + 시각 컷이면 시각)
             base_cols = ([site.site_code, site.rsid, t["period_start"], t["period_end"]]
                          + ([t["period_start_time"], t["period_end_time"]] if time_mode else [])
-                         + ([t["period_label"]] if MONTHLY else [])
+                         + ([t["period_label"]] if PERIOD_SPLIT else [])
                          + ([period_type] if period_type else [])          # v4.5
                          + [t["panel_name"], t["tb_name"], t["reportlet_name"],
                             t.get("dimension_id", ""), t.get("dimension_name", ""),
@@ -2433,10 +2477,16 @@ def main() -> int:
                              "-1=무제한, 0=총계만(분해안함), 1=bd1까지, N=bdN까지")
     parser.add_argument("--no-parent-rows", action="store_true",
                         help="dim1 총계(부모) 행을 출력에서 제외 — breakdown 행만 (INCLUDE_PARENT_ROWS=False)")
+    parser.add_argument("--period-split", type=str, default=None, metavar="none|monthly|daily",
+                        help="(v5.0) 총기간을 월/일 조각으로 쪼개 조각마다 추출 (PERIOD_SPLIT override). "
+                             "none=쪼개지 않음. daily 는 날짜 수만큼 호출이 늘어나니 --estimate 로 먼저 확인")
+    parser.add_argument("--daily-time-mode", type=str, default=None, metavar="continuous|repeat",
+                        help="(v5.0) daily + 시각 컷 해석 (DAILY_TIME_MODE override). "
+                             "continuous=연속 한 구간을 날로 쪼갬 / repeat=매일 그 시간대만")
     parser.add_argument("--monthly", dest="monthly", action="store_true", default=None,
-                        help="(v4.2) sites_input 총기간을 달력 월로 쪼개 월별 추출 (MONTHLY=True). 출력에 period 컬럼 추가")
+                        help="(구 별칭) --period-split monthly 와 같다. 총기간을 달력 월로 쪼개 월별 추출")
     parser.add_argument("--no-monthly", dest="monthly", action="store_false",
-                        help="(v4.2) 총기간 1회 추출 (MONTHLY=False)")
+                        help="(구 별칭) --period-split none 과 같다. 총기간 1회 추출")
     parser.add_argument("--year-offsets", type=str, default=None, metavar="0,-1",
                         help="(v4.2) sites_input 날짜 연도를 shift 해 추출 (YEAR_OFFSETS override). "
                              "예: '0,-1' = 올해+작년 동기간. offset≠0 은 파일명에 _y{연도} 태그")
@@ -2465,8 +2515,28 @@ def main() -> int:
     if args.no_parent_rows:
         globals()["INCLUDE_PARENT_ROWS"] = False
     # v4.2: 기간 분할 / 연도 shift override
-    if args.monthly is not None:
-        globals()["MONTHLY"] = args.monthly
+    if args.monthly is not None:      # v5.0: 구 플래그 별칭
+        globals()["PERIOD_SPLIT"] = "monthly" if args.monthly else ""
+    if args.period_split is not None:
+        _ps = args.period_split.strip().lower()
+        _ps = "" if _ps in ("", "none", "off") else _ps
+        if _ps not in ("", "monthly", "daily"):
+            raise SystemExit(f"❌ --period-split 값 오류: {args.period_split!r} "
+                             f"(none | monthly | daily)")
+        globals()["PERIOD_SPLIT"] = _ps
+    if args.daily_time_mode is not None:
+        globals()["DAILY_TIME_MODE"] = args.daily_time_mode.strip().lower()
+    # v5.0: 값 검증 + 구 상수(MONTHLY) 잔재 차단 — 조용히 무시되면 분할 없이 뽑히는 사고가 난다
+    if PERIOD_SPLIT not in ("", "monthly", "daily"):
+        raise SystemExit(f"❌ PERIOD_SPLIT 값 오류: {PERIOD_SPLIT!r} "
+                         f'("" | "monthly" | "daily")')
+    if DAILY_TIME_MODE not in ("continuous", "repeat"):
+        raise SystemExit(f"❌ DAILY_TIME_MODE 값 오류: {DAILY_TIME_MODE!r} "
+                         f'("continuous" | "repeat")')
+    if "MONTHLY" in globals():
+        raise SystemExit("❌ MONTHLY 는 v5.0 에서 PERIOD_SPLIT 으로 대체됐다. "
+                         'MONTHLY=True → PERIOD_SPLIT="monthly" 로 바꿀 것 '
+                         "(그대로 두면 분할이 안 된 채 뽑힌다)")
     if args.year_offsets is not None:
         try:
             _offs = [int(v.strip()) for v in args.year_offsets.split(",") if v.strip()]
@@ -2549,8 +2619,11 @@ def main() -> int:
     else:
         _why = "MAX_DEPTH=0" if (BREAKDOWN_ENABLED and BREAKDOWN_MAX_DEPTH == 0) else "BREAKDOWN_ENABLED=False"
         print(f"  BREAKDOWN     : OFF (dim1 총계만, {_why})  parent_rows={_parent_disp}")
-    # v4.2: 기간 분할 / 연도 shift
-    print(f"  MONTHLY       : {'ON (총기간을 달력 월로 분할 — period 컬럼 추가)' if MONTHLY else 'OFF (총기간 1회)'}")
+    # 기간 분할 / 연도 shift
+    print(f"  PERIOD_SPLIT  : "
+          + ("OFF (총기간 1회)" if not PERIOD_SPLIT else
+             f"{PERIOD_SPLIT} (조각마다 추출 — period 컬럼 추가"
+             + (f", 시각은 {DAILY_TIME_MODE}" if PERIOD_SPLIT == "daily" else "") + ")"))
     print(f"  YEAR_OFFSETS  : {YEAR_OFFSETS}  ({'sites_input 그대로' if YEAR_OFFSETS == [0] else 'site 당 ' + str(len(YEAR_OFFSETS)) + ' run — offset≠0 은 파일명 _y{연도} 태그'})")
     print(f"  PRIOR_OFFSETS : {PRIOR_OFFSETS}  "
           + ("(본기간만 — prior 미사용)" if PRIOR_OFFSETS == [0] else
