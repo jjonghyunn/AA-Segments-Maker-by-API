@@ -120,12 +120,23 @@ OUTPUT_BASENAME = "_union_standard"
 SEG_SPLIT_CHAR = ";"
 
 # ─── 디멘션 컬럼 ────────────────────────────────────────────────────
-# extract_data 안에서 디멘션 항목 값을 담은 컬럼명.
-#   "" (기본) → 자동 감지: 헤더에서 'itemId' 다음 컬럼 (cid→campaign, contents→evar26 등)
-#   수동 지정도 가능: 예) "campaign", "evar26"
+# extract_data 는 디멘션 값 컬럼의 **이름을 뽑은 차원에 따라 바꿔서** 쓴다.
+#   variables/evar26  -> 'evar26'   /  variables/campaign -> 'campaign'
+#   variables/daterangeyear -> 'daterangeyear'  /  한 파일에 차원이 섞이면 -> 'dim_value'
+# 이름을 미리 알 수 없으니 **위치**로 찾는다 — 헤더에서 itemId 바로 다음 컬럼:
+#   ... , dimension, dimension_name, itemId, evar26, value_n, metric_origin, ...
+#                                            ~~~~~~ 이게 디멘션 값 컬럼
+#
+# DIM_COLUMN : 입력에서 읽을 컬럼명. "" (기본) = 위 방식으로 자동 감지.
+#   자동 감지가 빗나갈 때만 박는다 (CSV 를 수동 편집해 컬럼 순서가 바뀐 경우 등).
+#   실행하면 콘솔에 `[dim] 디멘션 값 컬럼 = 'evar26' → 출력 헤더 'evar26'` 로 찍히니
+#   엉뚱한 컬럼을 잡았으면 그때 지정하면 된다. 못 찾으면 에러로 멈춘다.
 DIM_COLUMN = ""
-# 출력 CSV 에 쓸 디멘션 컬럼 헤더명. "" 면 위에서 감지/지정한 소스 컬럼명 그대로 사용.
-#   예) "CID" 로 바꾸고 싶으면 여기 지정.
+# DIM_OUTPUT_HEADER : **출력 CSV 에 쓸 컬럼명** (입력은 안 건드린다).
+#   컬럼 이름만 바꿔 내보내고 싶을 때 쓴다.
+#     ""      -> 출력 헤더 'evar26'  (입력 컬럼명 그대로 — 기본)
+#     "CID"   -> 출력 헤더 'CID'     (evar26 값을 CID 라는 이름으로)
+#     "ITEM"  -> 출력 헤더 'ITEM'    (보고서 raw 시트 컬럼명에 맞출 때)
 DIM_OUTPUT_HEADER = ""
 
 # ─── variable 컬럼 (v1.6) ──────────────────────────────────────────
