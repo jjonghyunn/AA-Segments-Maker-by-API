@@ -107,18 +107,15 @@ OUTPUT_PREFIX   = ""
 #   table = 기존 column_mapping_* 대체 (AA 테이블 모양 가로형, 1행 = item. 아래 SEG_VALUE_SEP 참고)
 OUTPUT_BASENAME_STACK = "stack_data_extract"
 OUTPUT_BASENAME_TABLE = "table_data_extract"
-# ─── 같은 site 가 group(B2B/B2C) 별로 여러 행일 때 파일명 충돌 방지 (2026-07-31) ──
-# sites_input 에 같은 site_code 가 group 별로 2행 이상 있으면 offset 0 출력 경로가 완전히 같아져
-# **나중에 끝난 run 이 앞 run 파일을 덮어쓴다** → 앞 run 데이터가 통째로 사라진다.
-#   실측(2026-07-31): ca/in/sg 등의 **2026 B2B 가 B2C run 에 덮여 유실**. SITE_WORKERS 병렬이라
-#   중간 시점에 따라 어느 쪽이 남는지도 달라져(경합) run 마다 결과가 바뀌었다. 에러가 안 나서 발견이 늦다.
-# True = 그런 site 에 한해 파일명 site 뒤에 _{group} 을 붙여 분리한다 (단일 group site 는 무변경).
+# ─── 같은 site 가 group(B2B/B2C) 별로 2행일 때 파일명 충돌 방지 ──────
+# 같은 site_code 가 2행이면 출력 경로가 같아져 **나중 run 이 앞 run 파일을 덮어쓴다.**
+#   실측 사고(2026-07-31): ca/in/sg 의 2026 B2B 가 B2C run 에 덮여 유실. 병렬 실행이라
+#   어느 쪽이 남는지도 run 마다 달랐고, 에러가 안 나서 발견이 늦었다.
+# True = 그 site 만 파일명에 _{group} 을 붙여 분리 (group 이 1개인 site 는 이름 그대로).
 #   stack_data_extract_ca_B2B_{ts}.csv / stack_data_extract_ca_B2C_{ts}.csv
-#   stack_data_extract_us_old_{ts}.csv        ← group 1개뿐이라 이름 그대로
-# ⚠ 한 파일에 append 하는 방식은 못 쓴다 — 헤더가 run 단위로 계산돼 어긋난다
-#    (dim1 컬럼명 evar73/daterangeyear, bd{k}_* 컬럼 수 17 vs 20).
-# ⚠ 이름 규칙이 바뀌므로 **옛 이름 파일과 한 output 폴더에 섞지 말 것** — RESHAPE 는 파일명으로
-#    site 를 구분해 'ca_260729_*'(옛) 와 'ca_B2B_260731_*'(신) 를 별개 site 로 보고 둘 다 union 에 넣는다.
+# ⚠ 한 파일에 append 는 못 쓴다 — 헤더가 run 마다 달라진다 (bd 컬럼 수 17 vs 20).
+# ⚠ 옛 이름 파일과 한 output 폴더에 섞지 말 것 — RESHAPE 가 'ca_*' 와 'ca_B2B_*' 를
+#    별개 site 로 보고 둘 다 union 에 넣는다.
 GROUP_TAG_IN_FILENAME: bool = True
 # seg_value{i} 컬럼 구분자 (table CSV) — "metric;; segments" 형태로 metric 을 맨앞에 두고 결합.
 # segments 내부 구분자가 '; ' 라 세미콜론 2개(';;')로 분리 (split 시 SEG_VALUE_SEP 로 1회 split).
@@ -171,76 +168,61 @@ REQUIRED_PANEL_KEYWORDS: list[str] = []
 # 예: ["Watch Visit debug"] → 그 이름 포함 테이블 1개만 (나머지 테이블 skip)
 REQUIRED_TABLE_KEYWORDS: list[str] = []
 
-# ─── 기간 분할 추출 / 연도 shift (v4.2) ─────────────────────────────
-# sites_input.csv 에는 항상 site 별 **총기간**(start_date~end_date)을 넣는다.
-# 아래 두 상수가 그 총기간을 "어떻게 뽑을지"(추출 방식)를 정한다.
+# ─── 기간: 월 분할 / 연도 shift / prior / 시각 컷 ───────────────────
+# sites_input.csv 에는 site 별 **총기간**(start_date, end_date)만 넣는다.
+# 아래 상수들이 "그 총기간을 어떻게 뽑을지"를 정한다 (전부 기본값이면 총기간 1회 추출).
 #
-# MONTHLY : 총기간을 통으로 1회 뽑을지, 달력 월 단위로 쪼개 월마다 뽑을지.
-#   False → 총기간을 쪼개지 않고 1회로 추출 (period 컬럼 없음)
-#   True  → 총기간을 달력 월로 쪼개 월마다 dateRange override 로 각각 추출.
-#           · 출력에 period 컬럼 추가 ('Jul 2025' — AA daterangemonth 표기와 동일),
-#             start_date/end_date 는 그 달 범위로 기록 (양 끝 부분월은 총기간에 맞춰 잘림.
-#             예: 총기간 2025-07-06~07-21 → 'Jul 2025' 한 조각).
-#           · AA 프로젝트에 daterangemonth breakdown 을 미리 만들 필요가 없다(어떤 프로젝트든 월별 가능).
-#           · bd 슬롯을 안 쓰므로 기존 breakdown(예: 채널 detail)과 **병행** 가능.
-#           · task 수 = 패널 × 테이블 × device케이스 × 월수 — API 호출 그만큼 증가.
+# 행별 선택 컬럼(start_time/end_time, prior_*, last_year_*) 공통 규칙:
+#   · 컬럼이 없거나 비면 기본 동작. **둘 다 채워야** 적용된다.
+#   · 한쪽만 / 형식 오류 / 시작>종료 면 경고 후 기본 동작으로 폴백
+#     (조용히 틀린 기간을 뽑지 않게 하는 가드).
+#   · 컬럼명을 바꾸려면 아래 *_COLUMN_* 상수만 고치면 된다.
+#
+# MONTHLY : 총기간을 달력 월로 쪼개 월마다 따로 뽑는다.
+#   False → 총기간 1회 (기본)
+#   True  → 월마다 1회. 출력에 period 컬럼('Jul 2025') 추가, start_date/end_date 는 그 달 범위
+#           (양 끝 부분월은 총기간에 맞춰 잘림).
+#   · AA 프로젝트에 daterangemonth breakdown 을 안 만들어도 되고 bd 슬롯도 안 써서,
+#     기존 breakdown 과 병행할 수 있다.
+#   · task 수 = 패널 × 테이블 × device × **월수** — API 호출이 그만큼 늘어난다.
 MONTHLY: bool = False
 
-# YEAR_OFFSETS : sites_input 날짜의 **연도**를 N 만큼 shift 해서 추출 (동기간 YoY 비교용).
-#   [0]         → sites_input 날짜 그대로 1 run (파일명에 연도 태그 없음)
-#   [0, -1]     → 올해 + 작년 동기간을 한 실행으로 (site 당 2 run)
-#   [-2,-1,0], [0,1] 처럼 개수·부호 자유. 2/29 는 shift 후 없는 날이면 2/28 로 clamp.
-#   ※ offset≠0 인 run 의 출력 파일명에는 `_y{연도}` 태그가 붙는다
-#     (같은 output 폴더에서 연도별 파일이 안 섞이고, RESHAPE 의 "site별 최신 1개" 선택도 연도별로 분리).
-#   → 연도별 폴더 사본(y25/y26)을 만들지 않고 폴더 1개로 두 연도를 뽑기 위한 옵션.
+# YEAR_OFFSETS : 날짜의 **연도**를 N 만큼 옮겨 같이 뽑는다 (동기간 YoY).
+#   [0] 그대로 1 run (기본) / [0,-1] 올해+작년 = site 당 2 run. 개수·부호 자유.
+#   · 2/29 는 옮긴 해에 없으면 2/28 로 맞춘다.
+#   · offset≠0 run 은 파일명에 `_y{연도}` 태그 → 같은 폴더에서 연도별 파일이 안 섞이고
+#     RESHAPE 의 "site 별 최신 1개" 선택도 연도별로 갈린다.
+#   · 연도별 폴더(y25/y26)를 따로 만들지 않으려고 쓰는 옵션이다.
 YEAR_OFFSETS: list[int] = [0]
 
-# PRIOR_OFFSETS : 본기간 **직전의 동일 길이 구간**(prior 기간)을 자동 계산해 같이 추출.
-#   [0]         -> 본기간만 (기본 = v4.4 와 100% 동일 출력. period_type 컬럼도 안 생김)
-#   [0, -1]     -> 본기간 + 직전 1구간 (site 당 run 2배)
-#   [0, -1, -2] -> 직전 2구간까지
-#   계산: N = (end - start).days + 1 (양끝 포함 일수) -> 양 날짜를 N x |offset| 일 뒤로 민다.
-#     예) 2026-05-14~2026-05-17 (4일) -> -1: 2026-05-10~2026-05-13 / -2: 2026-05-06~2026-05-09
-#   ※ **음수만 허용** (양수는 SystemExit — '직후 구간'은 이 도구의 용도가 아니다)
-#   ※ YEAR_OFFSETS 와는 **곱집합이 아니다** — offset 0(본기간) run 에만 prior 가 붙는다.
-#   ※ offset≠0 run 은 파일명에 `_prior`(-2 면 `_prior2`) 태그 + 출력에 period_type 컬럼
-#     (`campaign`/`prior`). RESHAPE_standard 는 **v1.9 이상** 을 쓸 것.
+# PRIOR_OFFSETS : 본기간 **직전의 같은 길이 구간**(prior)을 계산해 같이 뽑는다.
+#   [0] 본기간만 (기본) / [0,-1] 본기간+직전 1구간 / [0,-1,-2] 직전 2구간까지. **음수만** 허용.
+#   계산: 일수 N(양끝 포함)만큼 양 날짜를 뒤로 민다 — 2026-05-14 ~ 05-17 → 05-10 ~ 05-13.
+#   · YEAR_OFFSETS 와 곱집합이 아니다 — **offset 0 run 에만** 붙는다.
+#   · offset≠0 run 은 파일명 `_prior` 태그 + 출력에 period_type 컬럼(campaign/prior).
+#     → **RESHAPE_standard 는 v1.9 이상**을 쓸 것 (낮으면 그 컬럼이 조용히 사라진다).
 PRIOR_OFFSETS: list[int] = [0]
 
-# prior 기간 **수동 지정** 컬럼 (sites_input.csv, 선택). 둘 다 채우면 자동계산 대신 이 값을 쓴다.
-#   US 분할처럼 '직전 구간'이 다른 report suite 시절이라 자동계산이 안 맞는 행에서 사용.
-#   예) us,2026-05-19,2026-06-07,2026-04-01,2026-05-18  <- 신suite 이전 구간은 구suite 로 따로
-#   한쪽만 채우면 경고 후 둘 다 버리고 자동계산 (시각 컬럼과 같은 안전장치).
-#   컬럼명을 바꿔 쓰고 싶으면 아래 두 상수만 고치면 된다.
+# prior_start / prior_end (선택 컬럼) : prior 기간을 직접 지정한다 (비우면 위 계산식).
+#   report suite 가 중간에 바뀐 site 처럼 '직전 구간'이 다른 suite 시절이라 계산이 안 맞을 때 쓴다.
+#   예) us,2026-05-19,2026-06-07,2026-04-01,2026-05-18
 PRIOR_COLUMN_START = "prior_start"
 PRIOR_COLUMN_END   = "prior_end"
 
-# 작년 기간 **수동 지정** 컬럼 (sites_input.csv, 선택 — v4.6).
-#   YEAR_OFFSETS 의 **offset -1 run 에만** 쓰인다. 채운 행만 그 기간으로 뽑고,
-#   빈 행은 기존대로 연도 -1 산술(_shift_year). 한 파일 안에서 섞어 쓸 수 있다.
-#   왜 필요한가: 캠페인은 해마다 시작 요일·기간이 달라 "작년 같은 날짜"가
-#   "작년 같은 캠페인"이 아니다. 어긋나는 site 만 실제 작년 캠페인 기간을 적어둔다.
-#   예) site_code,start_date,end_date,last_year_start,last_year_end
-#       de,2026-08-17,2026-09-15,2025-08-11,2025-09-09
-#   한쪽만 채우면 경고 후 둘 다 버리고 산술 (prior·시각 컬럼과 같은 안전장치).
+# last_year_start / last_year_end (선택 컬럼) : **offset -1 run 의 기간**을 직접 지정한다.
+#   채운 행만 그 기간으로 뽑고 빈 행은 연도 -1 산술 — 한 파일에서 섞어 써도 된다.
+#   캠페인은 해마다 시작 요일·기간이 달라 "작년 같은 날짜"가 "작년 같은 캠페인"이 아닐 때 쓴다.
+#   예) de,2026-08-17,2026-09-15,2025-08-11,2025-09-09
 LAST_YEAR_COLUMN_START = "last_year_start"
 LAST_YEAR_COLUMN_END   = "last_year_end"
 
-# ─── 시각(time) 컷 (v4.4) ───────────────────────────────────────────
-# sites_input.csv 에 아래 두 컬럼을 추가하면 그 site 는 지정 **시각 구간**만 추출한다.
-#   site_code,start_date,end_date,start_time,end_time
+# ─── 시각(time) 컷 ─────────────────────────────────────────────────
+# start_time / end_time (선택 컬럼, 'HH:MM') : 그 site 는 지정 시각 구간만 뽑는다.
 #   in,2026-06-01,2026-06-03,09:00,18:00
-#     → dateRange '2026-06-01T09:00:00.000/2026-06-03T18:01:00.000'
-#       = 6/1 09시부터 6/3 18:59:59 까지 **통으로 한 구간** (6/1 밤·6/2 새벽도 포함).
-#       "매일 09~18시만" 같은 반복 시간대가 아니다 — 그건 dateRange 하나로 표현할 수 없다.
-#
-# 경계 규칙: end_time 는 **inclusive** (그 분의 59초까지) → 배타적 끝 = end_time + 1분.
-#   · `00:00`~`23:59` = 시각 미지정과 **완전히 같은 결과** (문자열까지 동일).
-#   · `00:00~11:59` + `12:00~23:59` 를 합하면 full-day 와 정확히 일치 (중복·누락 없음).
-#
-# 하위호환: 컬럼이 없거나 둘 다 비면 달력일 기준 = v4.3 과 100% 동일 (출력 컬럼도 안 늘어남).
-#   한쪽만 채우면 경고 후 달력일로 fallback (조용히 틀린 기간을 뽑지 않게).
-# 컬럼명을 바꿔 쓰고 싶으면 아래 두 상수만 고치면 된다.
+#     → 6/1 09:00 ~ 6/3 18:59:59 를 **통으로 한 구간**으로 (6/1 밤·6/2 새벽도 포함).
+#       "매일 09 ~ 18시만" 같은 반복 시간대가 아니다 — dateRange 하나로는 표현이 안 된다.
+#   · end_time 은 **inclusive** (그 분의 59초까지). 그래서 00:00 ~ 23:59 는 시각 미지정과
+#     결과가 같고, 00:00 ~ 11:59 + 12:00 ~ 23:59 를 합하면 하루와 정확히 맞는다.
 TIME_COLUMN_START = "start_time"
 TIME_COLUMN_END   = "end_time"
 
@@ -370,17 +352,14 @@ INCLUDE_GLOBAL_FOR_US = False  # CLI --include-global-for-us 로 override
 #   'us_old' → 'US_old B2B (Y25용)' ✓ / 'US B2B' ✗ (us 뒤가 언더바라 'us' 토큰도 아님)
 # 패널명이 site_code 와 다르게 적혀 있으면 SITE_PANEL_ALIAS 로 키워드를 따로 지정한다.
 SITE_PANEL_SITES: list[str] = []
-# ─── 등록 site 의 공용 패널 추가 허용 (positive 예외, 2026-07-31) ────
-# 위 SITE_PANEL_SITES 에 등록된 site 는 기본적으로 **전용 패널만** 본다(all-or-nothing).
-# 그런데 어떤 site 는 전용 패널 + 공용 패널을 함께 필요로 한다 — 이 캠페인의 `us` 가 그렇다:
-#     us = 전용 B2B 패널 'US B2B (Y26용)'  +  공용 B2C 패널 'Global B2C'
-# 여기에 {site_code: [패널명 키워드, ...]} 를 적으면 그 site 는 전용 패널에 **더해** 이 공용 패널도 돈다.
-# 매칭은 부분일치(대소문자 무시).
-#
-# 왜 필요한가: 이게 없으면 "us 의 B2B 는 전용 패널, B2C 는 공용 패널" 을 표현할 방법이
-# sites_input 의 group 컬럼(B2B/B2C 2행)밖에 없었다. 그 2행 구조가 같은 출력 경로를 놓고
-# 경합해 **2026 B2B 가 통째로 유실되는 사고**(2026-07-31)를 냈다.
-# 이 상수로 site 당 1행 + 한 파일에 전 패널을 담는 구조가 가능해진다
+# ─── 등록 site 에 공용 패널도 추가로 허용 ───────────────────────────
+# SITE_PANEL_SITES 에 등록된 site 는 기본적으로 **전용 패널만** 본다.
+# 여기에 {site_code: [패널명 키워드, ...]} 를 적으면 그 site 는 전용 패널에 **더해**
+# 이 공용 패널도 돈다 (부분일치, 대소문자 무시).
+#   예) us = 전용 B2B 패널 + 공용 B2C 패널 'Global B2C'
+# 이게 없으면 그 조합을 sites_input 2행(group 컬럼)으로밖에 표현 못 했고, 그 2행이 같은
+# 출력 경로를 놓고 경합해 유실 사고가 났다 (위 GROUP_TAG_IN_FILENAME 주석 참조).
+# 이 상수를 쓰면 site 당 1행 + 한 파일에 전 패널을 담을 수 있다
 # (B2B/B2C 구분은 정제 단계에서 panel 컬럼으로 한다).
 SITE_EXTRA_PANELS: dict[str, list[str]] = {"us": ["Global B2C"]}
 SITE_PANEL_ALIAS: dict[str, list[str]] = {}   # 예: {"us_old": ["US_old", "US old"]}
