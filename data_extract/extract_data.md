@@ -7,7 +7,7 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 
 | 파일 | 용도 |
 |---|---|
-| `extract_data_v4.5.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** + **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + **stack/table 출력 2종** + **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성) + **(v3.9) stack metric → metric_origin** + **(v4.0) breakdown 단계별 cap `LIMIT_BD`~`LIMIT_BD4` + 출력 무결성 자가검증 + breakdown 진행률·남은예상시간 + `--estimate` 사전추정** + **(v4.1) breakdown 깊이/부모행 출력 제어 `BREAKDOWN_MAX_DEPTH`(깊이 캡)·`INCLUDE_PARENT_ROWS`(총계행 포함 여부) — 총계만/총계+bd1/bd1만 조합** + **(v4.2) 기간 분할·연도 shift `MONTHLY`(총기간을 달력 월로 쪼개 월별 추출, period 컬럼)·`YEAR_OFFSETS`(sites_input 연도 ±N shift, 동기간 YoY 를 한 실행으로)** + **(v4.5) prior 기간 자동계산 `PRIOR_OFFSETS`(본기간 직전의 동일 길이 구간을 같이 추출, `_prior` 파일 태그 + `period_type` 컬럼) · sites_input 선택 컬럼 `prior_start`/`prior_end` 로 수동 지정** |
+| `extract_data_v4.5.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** + **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + **stack/table 출력 2종** + **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성) + **(v3.9) stack metric → metric_origin** + **(v4.0) breakdown 단계별 cap `LIMIT_BD` ~ `LIMIT_BD4` + 출력 무결성 자가검증 + breakdown 진행률·남은예상시간 + `--estimate` 사전추정** + **(v4.1) breakdown 깊이/부모행 출력 제어 `BREAKDOWN_MAX_DEPTH`(깊이 캡)·`INCLUDE_PARENT_ROWS`(총계행 포함 여부) — 총계만/총계+bd1/bd1만 조합** + **(v4.2) 기간 분할·연도 shift `MONTHLY`(총기간을 달력 월로 쪼개 월별 추출, period 컬럼)·`YEAR_OFFSETS`(sites_input 연도 ±N shift, 동기간 YoY 를 한 실행으로)** + **(v4.5) prior 기간 자동계산 `PRIOR_OFFSETS`(본기간 직전의 동일 길이 구간을 같이 추출, `_prior` 파일 태그 + `period_type` 컬럼) · sites_input 선택 컬럼 `prior_start`/`prior_end` 로 수동 지정** |
 | `RESHAPE_standard_v1.9.py` | extract_data 출력 → `_union_standard_*.csv` union 정제 (범용). **v1.7: `period` 컬럼(v4.2 MONTHLY 의 월 라벨) passthrough** (`PASSTHROUGH_COLUMNS`) — YEAR_OFFSETS 의 `_y{연도}` 파일은 v1.6 에서도 이미 연도별로 union 됨. v1.6: wide 의 revenue 계열을 `<metric>_org`(원본)+`<metric>`(fx) 두 열로 분리 + `variable` 컬럼(dimension 뒤 토큰, 예 `variables/evar26`→`evar26`) 추가. v1.5: metric_origin + 정제 metric + value_origin + wide union(`_union_standard_wide_*`). v1.4: panel/table/reportlet 의 product 키워드(`Multi Purchase`/`Multi Order`/`Best Selling Product`) 행에 `product_category.yaml` 로 `category` 컬럼 분류 추가 (`ADD_CATEGORY_COLUMN`). v1.3: `stack_data_extract_*` 입력 패턴 대응 (구버전 `extract_data_*` 호환). v1.2: metric / Panel name 출력 컬럼 추가 + `EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션. v1.1: breakdown 행 모드(`BREAKDOWN_ROWS_MODE`) + device/bd 컬럼 passthrough + `_old` 접미사 SITE CODE 정규화 **v1.9: `period_type`(v4.5 prior 라벨) passthrough + 환율 미조회 경고(못 찾아 rate=1.0 이 먹은 행을 site×연도별로 실행 끝에 표시)** |
 | `site_registry.py` | `site_code → (subsidiary, country, rsid)` 매핑. `lookup_site()` 함수 제공 |
 | `table_data_extract_example.csv` / `stack_data_extract_example.csv` | 출력 2종(가로형 table / 세로형 stack) 형식 예시 (placeholder 값) |
@@ -47,14 +47,14 @@ PANEL_GROUP_PANEL_DEFAULT = "B2B"
 
 ## v4.2 신규 기능 (2026-07-24)
 
-> 전제: `sites_input.csv` 에는 site 별 **총기간**(start~end)만 넣는다. 아래 두 상수가 "그 총기간을 어떻게 뽑을지"를 정한다. 기본값(`False` / `[0]`) 이면 v4.1 과 100% 동일 출력.
+> 전제: `sites_input.csv` 에는 site 별 **총기간**(start ~ end)만 넣는다. 아래 두 상수가 "그 총기간을 어떻게 뽑을지"를 정한다. 기본값(`False` / `[0]`) 이면 v4.1 과 100% 동일 출력.
 
 1. **`MONTHLY` — 총기간을 달력 월로 쪼개 월별 추출** (bd 안 쓰고 monthly)
    - 월마다 `dateRange` override 로 각각 호출. 양 끝 부분월은 총기간에 맞춰 잘림 (`2025-07-06~07-21` → `Jul 2025` 한 조각).
    - 출력에 **`period` 컬럼** 추가 (`Jul 2025` — AA `daterangemonth` 표기와 동일) + `start_date`/`end_date` 가 그 달 범위로 기록. `MONTHLY=False` 면 `period` 컬럼 자체가 생기지 않음.
    - **AA 프로젝트에 daterangemonth breakdown 을 미리 만들 필요가 없다** — 어떤 프로젝트든 월별로 뽑힌다. bd 슬롯을 안 쓰므로 **기존 breakdown(예: 채널 detail)과 병행** 가능.
    - task 수 = 패널 × 테이블 × device케이스 × 월수.
-   - 검증(2026-07-24, 월별 트래픽 프로젝트): 단일월 site 는 기존 bd1(daterangemonth) 추출과 **값 완전일치**. 다월 site 는 월 경계 visit 귀속·UV dedup 차이로 셀 3.5% 가 ±1~2 (합계 기준 -0.002% 이하) — AA 집계 특성이며 방향성 없는 미세 편차. bd 방식에만 있던 셀은 전부 0값(그 달 데이터 없는 store).
+   - 검증(2026-07-24, 월별 트래픽 프로젝트): 단일월 site 는 기존 bd1(daterangemonth) 추출과 **값 완전일치**. 다월 site 는 월 경계 visit 귀속·UV dedup 차이로 셀 3.5% 가 ±1 ~ 2 (합계 기준 -0.002% 이하) — AA 집계 특성이며 방향성 없는 미세 편차. bd 방식에만 있던 셀은 전부 0값(그 달 데이터 없는 store).
 2. **`YEAR_OFFSETS` — sites_input 날짜의 연도를 ±N shift** (동기간 YoY)
    - `[0, -1]` → 올해 + 작년 동기간을 **한 실행으로** (site 당 2 run). `[-2,-1,0]` 처럼 개수·부호 자유. 2/29 는 shift 후 없는 날이면 2/28 로 clamp.
    - offset≠0 인 run 의 출력 파일명에 **`_y{연도}` 태그** (`stack_data_extract_us_y2025_260724_1130.csv`) — 같은 output 폴더에서 연도가 안 섞이고, RESHAPE 의 "site 별 최신 1개" 선택도 연도별로 분리된다. offset 0 은 태그 없음(v4.1 과 동일 파일명).
@@ -72,7 +72,7 @@ PANEL_GROUP_PANEL_DEFAULT = "B2B"
 
 ## v3.7 신규 기능 (2026-06-12)
 
-1. **레벨별 limit 분리 + 실제 행수 cap** — `LIMIT` 1개 → `LIMIT_LV1`(dim1/1st level, reportlet 당) / `LIMIT_BD`(breakdown/2nd level~, 부모 item 1개당) 분리. CLI `--limit` / `--limit-bd`, `0`=무제한.
+1. **레벨별 limit 분리 + 실제 행수 cap** — `LIMIT` 1개 → `LIMIT_LV1`(dim1/1st level, reportlet 당) / `LIMIT_BD`(breakdown/2nd level ~ , 부모 item 1개당) 분리. CLI `--limit` / `--limit-bd`, `0`=무제한.
    - v3.6 까지 limit 은 API page 크기로만 쓰여 페이지네이션(MAX_PAGES)이 계속 돌아 **행수 제한이 실제로 안 걸렸음** → `_fetch_all_pages(max_rows=N)` cap (도달 시 중단 + truncate) 으로 수정.
 2. **출력 CSV 2종 개편** — `stack_data_extract_*`(기존 `extract_data_*`, long unpivot 유지·RESHAPE 입력용) + `table_data_extract_*`(기존 `column_mapping_*` 대체, **AA 테이블 모양 가로형**: 1행=item, `value1..N` + `seg_value1..N`).
    - `seg_value{i}` = `"metric;; segments"` — metric 맨앞, `;;` 구분 (segments 내부 구분자가 `; ` 라 세미콜론 2개. `SEG_VALUE_SEP` 상수).
@@ -161,10 +161,10 @@ python extract_data_v4.5.py --monthly --year-offsets 0,-1      # (v4.2) 두 옵�
 | `AUTH_JSON_PATH` | Adobe OAuth 인증 JSON 경로 | 환경 변경 시 |
 | `COMPANY_ID` | Adobe Analytics company ID | 보통 고정 |
 | `PROJECT_ID` | Workspace URL 의 `/workspace/edit/{이부분}` | **프로젝트마다 변경** |
-| `MAX_WORKERS` | reportlet 병렬 워커 수 (5~8 추천) | 성능/안정성 조절 |
+| `MAX_WORKERS` | reportlet 병렬 워커 수 (5 ~ 8 추천) | 성능/안정성 조절 |
 | `SITE_WORKERS` | site 단위 병렬 워커 수 (1=순차) | 사이트 수 많을 때. 429 뜨면 줄이기 |
 | `LIMIT_LV1` | dim1(1st level) reportlet 당 행 수 cap (`0`=무제한) | 데이터 양 조절 |
-| `LIMIT_BD`~`LIMIT_BD4` | breakdown 단계별 행 수 cap — bd1(=level2)~bd4(=level5+). bd5+ 는 BD4 (`0`=무제한) | 데이터 양 조절 |
+| `LIMIT_BD` ~ `LIMIT_BD4` | breakdown 단계별 행 수 cap — bd1(=level2) ~ bd4(=level5+). bd5+ 는 BD4 (`0`=무제한) | 데이터 양 조절 |
 | `SEG_VALUE_SEP` | table CSV `seg_value{i}` 의 metric↔segments 구분자 (기본 `';; '`) | 보통 고정 |
 | `REQUIRED_PANEL_KEYWORDS` | 빈 리스트면 모든 패널 통과 | 특정 패널만 추출 시 |
 | `REQUIRED_TABLE_KEYWORDS` | 빈 리스트면 모든 테이블 통과 | 특정 reportlet/테이블만 추출 시 |
@@ -219,7 +219,7 @@ us,2026-05-19,2026-06-07,2026-04-01,2026-05-18
 
 ## prior 기간 — v4.5
 
-본기간(sites_input 의 `start_date`~`end_date`) **직전의 동일 길이 구간**을 스크립트가 계산해 같이 뽑는다.
+본기간(sites_input 의 `start_date` ~ `end_date`) **직전의 동일 길이 구간**을 스크립트가 계산해 같이 뽑는다.
 캠페인 전/후 비교를 하려고 직전 구간 날짜를 사람이 세어 행을 추가하던 걸 없앤 것.
 
 ```
@@ -351,7 +351,7 @@ EXTRA_SEGMENTS: list[dict] = [
 | 매칭 수 | 동작 |
 |---|---|
 | 1개 | 진행 (lookup CSV/DSL 같이 저장) |
-| 2~5개 | 콘솔에 ID+이름 나열 + 중단 (lookup CSV/DSL 저장). 키워드 좁히고 재실행 |
+| 2 ~ 5개 | 콘솔에 ID+이름 나열 + 중단 (lookup CSV/DSL 저장). 키워드 좁히고 재실행 |
 | 6개 이상 | "lookup CSV 확인" + 중단 |
 | 0개 | 에러 + 중단 |
 
@@ -496,11 +496,11 @@ in,2026-06-01,2026-06-03,09:00,18:00
 → dateRange `2026-06-01T09:00:00.000/2026-06-03T18:01:00.000`
 = 6/1 09시부터 6/3 18:00:59 까지 **통으로** (6/1 밤·6/2 새벽 포함).
 
-> ⚠ **"매일 09~18시만" 이 아니다.** 반복 시간대는 dateRange 문자열 하나로 표현할 수 없다.
+> ⚠ **"매일 09 ~ 18시만" 이 아니다.** 반복 시간대는 dateRange 문자열 하나로 표현할 수 없다.
 
 ### 경계 규칙
 `end_time` 는 **inclusive** — 그 "분"의 59초까지. 배타적 끝 = `end_time + 1분`.
-- `00:00`~`23:59` = 시각 미지정과 **완전히 동일한 결과** (문자열까지 같음)
+- `00:00` ~ `23:59` = 시각 미지정과 **완전히 동일한 결과** (문자열까지 같음)
 - `00:00~11:59` + `12:00~23:59` 는 구간상 빈틈·겹침이 없다
 
 ### 하위호환
@@ -530,7 +530,7 @@ python extract_data_v4.5.py --no-times            # sites_input 의 시각 무�
 
 Order 가 어떤 분할에서도 정확히 additive 라는 건 dateRange 산술이 정확하다는 뜻이다.
 Visits 초과는 **경계를 걸친 세션이 양쪽에서 각각 1 visit 로 세어지기** 때문이고,
-경계를 1개(2분할)→3개(4분할)로 늘리면 초과분도 함께 커진다 (실측 Δ3/Δ1 = 1.9~3.4).
+경계를 1개(2분할)→3개(4분할)로 늘리면 초과분도 함께 커진다 (실측 Δ3/Δ1 = 1.9 ~ 3.4).
 
 → **시간대별 값을 그대로 쓰는 건 문제없다. 쪼갠 뒤 더해 전체와 맞추려는 검증만
 Visits 계열에서 성립하지 않는다.** Order·Revenue 등 이벤트 스코프 metric 은 분할 합산이 유효하다.

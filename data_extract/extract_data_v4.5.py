@@ -1,9 +1,9 @@
 # extract_data_v4.5.py
 # 2026-09-21  Jonghyun Park w/ Claude
 # v4.5 (2026-09-21): **prior 기간** 자동계산 추가 — PRIOR_OFFSETS.
-#   본기간(sites_input 의 start~end) **직전의 동일 길이 구간**을 스크립트가 계산해 같이 추출한다.
+#   본기간(sites_input 의 start ~ end) **직전의 동일 길이 구간**을 스크립트가 계산해 같이 추출한다.
 #     계산: N = (end - start).days + 1 (양끝 포함 일수) -> 양 날짜를 N x |offset| 일 뒤로 민다.
-#       예) 2026-05-14~2026-05-17 (4일) -> -1: 2026-05-10~2026-05-13 / -2: 2026-05-06~2026-05-09
+#       예) 2026-05-14 ~ 2026-05-17 (4일) -> -1: 2026-05-10 ~ 2026-05-13 / -2: 2026-05-06 ~ 2026-05-09
 #       (prior_end = start - 1일 — 갭 없이 바로 앞에 붙는다)
 #     · [0] 기본 -> 본기간만. **v4.4 와 출력 100% 동일** (period_type 컬럼도 안 생김).
 #       [0,-1] -> site 당 run 2배. [0,-1,-2] -> 직전 2구간까지. **음수만 허용**(양수는 SystemExit).
@@ -24,8 +24,8 @@
 #   start_time / end_time (HH:MM). 채우면 그 site 는 "시작일 SH시 → 종료일 EH시" **연속 구간 1개**만
 #   추출한다 (중간 밤·새벽 포함. 매일 반복되는 시간대가 아님).
 #     · end_time 는 **inclusive** — 그 분의 59초까지. 배타적 끝 = end_time + 1분.
-#       → `00:00`~`23:59` 은 **시각 미지정과 dateRange 문자열까지 완전히 같은 결과**가 된다.
-#       (0~12 / 12~24 로 쪼개 합하면 full-day 와 정확히 일치 — 경계 중복·누락 없음)
+#       → `00:00` ~ `23:59` 은 **시각 미지정과 dateRange 문자열까지 완전히 같은 결과**가 된다.
+#       (0 ~ 12 / 12 ~ 24 로 쪼개 합하면 full-day 와 정확히 일치 — 경계 중복·누락 없음)
 #     · 컬럼이 없거나 둘 다 비면 달력일 기준 = **v4.3 과 100% 동일 출력**(컬럼도 안 늘어남).
 #       한쪽만 채우면 경고 후 달력일로 fallback.
 #     · 시각 컷이면 출력 CSV 에 start_time/end_time 컬럼 2개 추가 + 파일명에 `_t0000-1159` 태그
@@ -69,7 +69,7 @@
 # v4.0 (2026-06-29): 출력 CSV 쓰기 직후 자가 무결성 검증(_verify_csv_written) 추가 —
 #                    stack/table CSV 를 다시 읽어 모든 행의 필드수가 헤더와 일치하는지 확인,
 #                    정상이면 ✓(데이터 행수×칼럼수), 불일치 시 ⚠ 경고 + 재추출 권장 (OneDrive 동기화/복사 등 외부 손상 즉시 감지).
-#                    + breakdown 단계별 행 cap 분리 — LIMIT_BD/BD2/BD3/BD4 (bd1~4 = level2~5, bd5+ 는 BD4), CLI --limit-bd2~bd4.
+#                    + breakdown 단계별 행 cap 분리 — LIMIT_BD/BD2/BD3/BD4 (bd1 ~ 4 = level2 ~ 5, bd5+ 는 BD4), CLI --limit-bd2 ~ bd4.
 #                    + --estimate 사전 추정 모드 — breakdown 단계별 1경로 샘플 측정 → 총 /reports 호출수·ETA 출력 후 추출 생략.
 #                    그 외 추출 로직은 v3.9 와 동일.
 # 2026-06-15: 진행률 + ETA 콘솔 출력 추가 (VERBOSE_PROGRESS) — site 1개 끝날 때마다
@@ -87,7 +87,7 @@
 #                      site 용 세그 치환 (us_old: [Global] Excluded APP → [US] Excluded APP).
 #                    DEVICE_CASES=[] 면 v3.7 과 100% 동일 동작 (옵트인).
 # v3.7 (2026-06-12): 레벨별 limit 분리 + 실제 행수 cap 적용 —
-#                    LIMIT_LV1(dim1/1st level) / LIMIT_BD(breakdown/2nd level~) 로 분리.
+#                    LIMIT_LV1(dim1/1st level) / LIMIT_BD(breakdown/2nd level ~ ) 로 분리.
 #                    v3.6 까지 LIMIT 은 API page 크기로만 쓰여 페이지네이션(MAX_PAGES)이
 #                    계속 돌아 행수 제한이 실제로 안 걸렸음 → _fetch_all_pages 에 max_rows
 #                    cap 추가(초과분 truncate). 0 = 무제한(기존 동작). CLI --limit / --limit-bd.
