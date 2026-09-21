@@ -1,5 +1,5 @@
-# RESHAPE_standard_v1.8.py  
-<sub>2026-07-31  Jonghyun Park w/ Claude</sub>  
+# RESHAPE_standard_v1.9.py  
+<sub>2026-09-21  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -159,7 +159,7 @@ rsid, start_date, end_date, value_n, metric_origin, metric, [variable], <디멘�
 ## 실행
 
 ```bash
-python RESHAPE_standard_v1.8.py
+python RESHAPE_standard_v1.9.py
 ```
 - 같은 폴더에 `site_registry.py` 필요 (site_code → 국가/rsid)
 - `ADD_CATEGORY_COLUMN=True` 면 같은 폴더에 `product_category.yaml` 필요 (없고 키워드 매칭 행 있으면 경고 후 분류 skip)
@@ -176,13 +176,42 @@ python RESHAPE_standard_v1.8.py
 
 표준 라이브러리(csv, re, pathlib 등) + `pyyaml`(category 분류용) + 같은 폴더 `site_registry.py`.
 
+## v1.9 (2026-09-21) — prior 라벨 passthrough + 환율 조용한 실패 차단
+
+`PASSTHROUGH_COLUMNS` 에 `period_type` 추가. `extract_data_v4.5` 가 `PRIOR_OFFSETS` 를 켜면
+stack CSV 에 붙이는 `campaign`/`prior` 라벨 컬럼이다.
+
+```python
+PASSTHROUGH_COLUMNS: list[str] = ["device", "period", "start_time", "end_time", "period_type"]
+```
+
+- 등록하면 metric/value 계열이 아니므로 **wide 피봇의 `index_cols` 에 자동으로 들어가**
+  campaign / prior 가 별도 행으로 분리된다. (SITE CODE 는 `_old` 접미 제거로 정규화되므로
+  날짜와 이 컬럼이 유일한 구분자다.)
+- **v1.8 이하로 돌리면 `period_type` 이 에러 없이 조용히 사라진다** — 행 수·값은 같아서
+  눈으로는 티가 안 난다. prior 산출물은 반드시 v1.9 이상으로 정제할 것.
+- 입력에 없는 이름은 무시되므로 prior 를 안 쓴 기존 추출물은 무영향 (출력 컬럼도 안 늘어남).
+
+### 환율 미조회 경고 (신규)
+
+환율을 못 찾아 `rate=1.0` 이 적용된 행을 `(site, 연도)` 별로 세어 **실행 끝에 경고로 찍는다.**
+v1.8 까지는 아무 표시가 없어서 현지통화 금액이 USD 인 척 나갔다.
+
+```
+  ⚠ 환율 미조회로 rate=1.0 적용 (현지통화 그대로 나감 — 확인 필요):
+      site=fr  연도=2024  1 rows
+```
+
+환율 조회 키는 `end_date` 의 **연도**다. prior 기간이 전년으로 넘어가면(예: 1월 캠페인)
+`currency.csv` 에 그 연도 열이 없어 여기 걸리기 쉽다.
+
 ## v1.8 (2026-08-18) — 시각 컷 컬럼 passthrough
 
 `PASSTHROUGH_COLUMNS` 에 `start_time` / `end_time` 추가.
 extract_data v4.4 의 시각 컷 산출물에 붙는 두 컬럼을 정제 출력까지 그대로 실어 보낸다.
 
 ```python
-PASSTHROUGH_COLUMNS: list[str] = ["device", "period", "start_time", "end_time"]
+PASSTHROUGH_COLUMNS: list[str] = ["device", "period", "start_time", "end_time", "period_type"]
 ```
 
 ⚠ 이 리스트는 **화이트리스트**다 — 빠뜨린 컬럼은 에러 없이 조용히 사라진다.

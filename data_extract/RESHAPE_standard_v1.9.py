@@ -1,5 +1,20 @@
-# RESHAPE_standard_v1.8.py
-# 2026-08-14  Jonghyun Park w/ Claude
+# RESHAPE_standard_v1.9.py
+# 2026-09-21  Jonghyun Park w/ Claude
+# v1.9 (2026-09-21): extract_data_v4.5 (prior 기간) 출력 대응 —
+#                    · 'period_type' 컬럼을 PASSTHROUGH_COLUMNS 에 추가.
+#                      v4.5 는 PRIOR_OFFSETS 를 켜면 stack CSV 에 이 컬럼('campaign'/'prior')을
+#                      붙이는데, 화이트리스트에 없으면 **에러 없이 조용히 유실**된다
+#                      (v1.6 이 'period' 를, v1.7 이 시각 컬럼을 빠뜨린 것과 같은 구조).
+#                    · 등록하면 metric/value 계열이 아니므로 wide 피봇의 index_cols 에 자동으로
+#                      들어가 campaign / prior 가 별도 행으로 분리된다.
+#                      (SITE CODE 는 _old 접미 제거로 정규화되므로, 날짜와 이 컬럼이 유일한 구분자)
+#                    · 입력에 없는 이름은 무시되므로 prior 를 안 쓴 기존 추출물은 무영향
+#                      (출력 컬럼도 안 늘어남) → v1.8 출력과 동일.
+#                    · 환율 **조용한 실패 차단** — 환율을 못 찾아 rate=1.0 이 적용된 행을
+#                      (site, 연도)별로 세어 실행 끝에 경고로 찍는다. v1.8 까지는 아무 표시가
+#                      없어서 현지통화 금액이 USD 인 척 나갔다.
+#                      prior 기간이 **전년으로 넘어가면**(예: 1월 캠페인) end_date[:4] 가 전년이라
+#                      currency.csv 에 그 연도 열이 없어 여기 걸리기 쉽다.
 # v1.8 (2026-08-14): extract_data_v4.4 (시각 컷) 출력 대응 —
 #                    · 'start_time' / 'end_time' 컬럼을 PASSTHROUGH_COLUMNS 에 추가.
 #                      v4.4 는 시각 컷을 걸면 stack/table CSV 에 이 두 컬럼을 붙이는데,
@@ -228,17 +243,18 @@ EXCLUDE_OUTPUT_COLUMNS: list[str] = []
 # v3.4 이하 출력(bd 컬럼 없음)이면 모드 무관 전체 처리.
 BREAKDOWN_ROWS_MODE = "include"
 
-# ─── 그대로 넘길(passthrough) 입력 컬럼 (v1.8) ──────────────────────
+# ─── 그대로 넘길(passthrough) 입력 컬럼 (v1.9) ──────────────────────
 # 입력 stack CSV 에 있으면 출력에도 같은 이름으로 실어 보내는 컬럼들.
 #   device                 : extract_data v3.5+ 의 device 케이스 라벨
 #   period                 : extract_data v4.2 MONTHLY 의 월 라벨 ('Jul 2026')
 #   start_time / end_time  : extract_data v4.4 시각 컷의 'HH:MM' (v1.8 추가)
+#   period_type            : extract_data v4.5 prior 의 'campaign'/'prior' 라벨 (v1.9 추가)
 # 여기 없는 컬럼이라도 `bd{k}_*` 형태(breakdown)는 정규식으로 자동 passthrough.
 # 입력에 없는 이름은 그냥 무시되므로, 새 컬럼이 생기면 이 리스트에 한 줄 추가하면 된다.
 # ⚠ 이 리스트는 **화이트리스트**다 — 빠뜨린 컬럼은 에러 없이 조용히 사라진다.
 #    extract_data 에 출력 컬럼을 추가했으면 여기에도 반드시 등록할 것
 #    (v1.6 이 'period' 를, 그 뒤 v1.7 이 시각 컬럼을 빠뜨린 전례가 있다).
-PASSTHROUGH_COLUMNS: list[str] = ["device", "period", "start_time", "end_time"]
+PASSTHROUGH_COLUMNS: list[str] = ["device", "period", "start_time", "end_time", "period_type"]
 
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
@@ -508,6 +524,7 @@ def process() -> int:
     has_revenue = any(CURRENCY_METRIC_KEYWORD in (r.get("metric") or "").lower() for r in rows)
     currency: dict[tuple[str, str], float] = {}
     apply_fx = APPLY_CURRENCY and has_revenue
+    fx_missing: dict[tuple[str, str], int] = {}   # v1.9: (site, 연도) -> 환율 못 찾아 1.0 먹은 행 수
     if apply_fx:
         currency = load_currency_map(CURRENCY_CSV)
         while not currency:
@@ -601,6 +618,11 @@ def process() -> int:
             rate = (currency.get((site.lower(), year))
                     or currency.get((site, year))
                     or 1.0)
+            # v1.9: 못 찾아서 1.0 이 먹은 건 **조용한 실패**다 — 현지통화가 USD 인 척 나간다.
+            #   prior 기간이 전년으로 넘어가면(예: 1월 캠페인) currency.csv 에 그 연도 열이
+            #   없어 여기 걸리기 쉽다 → 실행 끝에 모아서 경고한다.
+            if currency.get((site.lower(), year)) is None and currency.get((site, year)) is None:
+                fx_missing[(site.lower(), year)] = fx_missing.get((site.lower(), year), 0) + 1
         value = origin * rate
 
         # VALUE==0 행 제외 (옵션)
@@ -687,6 +709,13 @@ def process() -> int:
         print(f"  디멘션값 제외: {n_dim_excluded} rows")
     if DROP_ZERO_VALUE:
         print(f"  VALUE==0 제외: {n_zero_dropped} rows")
+    # v1.9: 환율을 못 찾아 rate=1.0 이 적용된 행 — 현지통화가 USD 인 척 나가므로 반드시 드러낸다
+    if fx_missing:
+        print(f"\n  \u26a0 환율 미조회로 rate=1.0 적용 (현지통화 그대로 나감 — 확인 필요):")
+        for (s_, y_), n_ in sorted(fx_missing.items()):
+            print(f"      site={s_}  연도={y_ or '(end_date 없음)'}  {n_} rows")
+        print(f"    -> {CURRENCY_CSV.name} 에 해당 연도(YYYY-MM-DD 헤더) 열이 있는지 확인할 것. "
+              f"prior 기간이 전년으로 넘어간 경우 자주 발생한다.")
 
     # v1.5: 정제 metric 을 열로 올린 wide union 추가 출력
     _write_wide(out_rows, out_headers, OUTPUT_DIR, ts)

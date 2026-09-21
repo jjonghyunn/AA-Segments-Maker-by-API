@@ -1,5 +1,25 @@
-# extract_data_v4.4.py
-# 2026-08-14  Jonghyun Park w/ Claude
+# extract_data_v4.5.py
+# 2026-09-21  Jonghyun Park w/ Claude
+# v4.5 (2026-09-21): **prior 기간** 자동계산 추가 — PRIOR_OFFSETS.
+#   본기간(sites_input 의 start~end) **직전의 동일 길이 구간**을 스크립트가 계산해 같이 추출한다.
+#     계산: N = (end - start).days + 1 (양끝 포함 일수) -> 양 날짜를 N x |offset| 일 뒤로 민다.
+#       예) 2026-05-14~2026-05-17 (4일) -> -1: 2026-05-10~2026-05-13 / -2: 2026-05-06~2026-05-09
+#       (prior_end = start - 1일 — 갭 없이 바로 앞에 붙는다)
+#     · [0] 기본 -> 본기간만. **v4.4 와 출력 100% 동일** (period_type 컬럼도 안 생김).
+#       [0,-1] -> site 당 run 2배. [0,-1,-2] -> 직전 2구간까지. **음수만 허용**(양수는 SystemExit).
+#     · YEAR_OFFSETS 와 **곱집합이 아니다** — offset 0(본기간) run 에만 prior 가 붙는다.
+#       ([0,-1] x [0,-1] = 3 run: 올해본/올해prior/작년본. 작년 prior 는 안 뽑는다)
+#     · offset≠0 run 은 파일명에 `_prior`(-2 면 `_prior2`) 태그 — 태그가 없으면 RESHAPE 의
+#       "site 별 최신 1개" 선택에서 campaign/prior 가 같은 키로 경쟁해 한쪽이 통째로 버려진다
+#       (아래 GROUP_TAG_IN_FILENAME 주석의 2026-07-31 유실과 같은 구조).
+#     · 기능을 켜면 출력 CSV 에 **period_type 컬럼**(`campaign` / `prior` / `prior2`) 추가.
+#       ⚠ RESHAPE_standard 는 **v1.9 이상**을 쓸 것 — PASSTHROUGH_COLUMNS 화이트리스트에
+#         period_type 이 없으면 **에러 없이 조용히 유실**된다 (v1.6 의 period, v1.7 의 시각 컬럼 전례).
+#     · sites_input 선택 컬럼 `prior_start` / `prior_end` 로 **수동 지정** 가능 (자동계산 대신).
+#       US 분할처럼 직전 구간이 다른 report suite 시절이라 자동계산이 안 맞는 행에 쓴다.
+#       한쪽만 채우면 경고 후 둘 다 버리고 자동계산 (시각 컬럼과 같은 안전장치).
+#     · CLI --prior-offsets 0,-1
+#   ※ 그 외 추출 로직은 v4.4 와 동일.
 # v4.4 (2026-08-14): sites_input.csv 에 **시각(time) 컷** 컬럼 2개 추가 —
 #   start_time / end_time (HH:MM). 채우면 그 site 는 "시작일 SH시 → 종료일 EH시" **연속 구간 1개**만
 #   추출한다 (중간 밤·새벽 포함. 매일 반복되는 시간대가 아님).
@@ -246,6 +266,26 @@ MONTHLY: bool = False
 #     (같은 output 폴더에서 연도별 파일이 안 섞이고, RESHAPE 의 "site별 최신 1개" 선택도 연도별로 분리).
 #   → 연도별 폴더 사본(y25/y26)을 만들지 않고 폴더 1개로 두 연도를 뽑기 위한 옵션.
 YEAR_OFFSETS: list[int] = [0]
+
+# PRIOR_OFFSETS : 본기간 **직전의 동일 길이 구간**(prior 기간)을 자동 계산해 같이 추출.
+#   [0]         -> 본기간만 (기본 = v4.4 와 100% 동일 출력. period_type 컬럼도 안 생김)
+#   [0, -1]     -> 본기간 + 직전 1구간 (site 당 run 2배)
+#   [0, -1, -2] -> 직전 2구간까지
+#   계산: N = (end - start).days + 1 (양끝 포함 일수) -> 양 날짜를 N x |offset| 일 뒤로 민다.
+#     예) 2026-05-14~2026-05-17 (4일) -> -1: 2026-05-10~2026-05-13 / -2: 2026-05-06~2026-05-09
+#   ※ **음수만 허용** (양수는 SystemExit — '직후 구간'은 이 도구의 용도가 아니다)
+#   ※ YEAR_OFFSETS 와는 **곱집합이 아니다** — offset 0(본기간) run 에만 prior 가 붙는다.
+#   ※ offset≠0 run 은 파일명에 `_prior`(-2 면 `_prior2`) 태그 + 출력에 period_type 컬럼
+#     (`campaign`/`prior`). RESHAPE_standard 는 **v1.9 이상** 을 쓸 것.
+PRIOR_OFFSETS: list[int] = [0]
+
+# prior 기간 **수동 지정** 컬럼 (sites_input.csv, 선택). 둘 다 채우면 자동계산 대신 이 값을 쓴다.
+#   US 분할처럼 '직전 구간'이 다른 report suite 시절이라 자동계산이 안 맞는 행에서 사용.
+#   예) us,2026-05-19,2026-06-07,2026-04-01,2026-05-18  <- 신suite 이전 구간은 구suite 로 따로
+#   한쪽만 채우면 경고 후 둘 다 버리고 자동계산 (시각 컬럼과 같은 안전장치).
+#   컬럼명을 바꿔 쓰고 싶으면 아래 두 상수만 고치면 된다.
+PRIOR_COLUMN_START = "prior_start"
+PRIOR_COLUMN_END   = "prior_end"
 
 # ─── 시각(time) 컷 (v4.4) ───────────────────────────────────────────
 # sites_input.csv 에 아래 두 컬럼을 추가하면 그 site 는 지정 **시각 구간**만 추출한다.
@@ -826,8 +866,8 @@ def _parse_own_num(reportlet_name: str):
 
 SLUG_ABBREVIATIONS = [
     (r"\bcampaign\b", "cmp"),
-    (r"\bs\s*\.\s*com\b", "scom"),
-    (r"\bs\.com\b", "scom"),
+    # 사내 약칭 축약 규칙(긴 사이트/섹션 명칭 -> 짧은 토큰)은 공개본에서 제외했다.
+    #   필요하면 각자 운영 사본에 (정규식, 축약토큰) 쌍으로 추가할 것.
     (r"\bconversion\b", "cvr"),
     (r"\blogin\s*&\s*non[\s\-]*login\b", "loginout"),
     (r"\blogin\s*&\s*logout\b", "loginout"),
@@ -918,6 +958,27 @@ def _shift_year(date_str: str, offset: int) -> str:
         return d.replace(year=d.year + offset).strftime("%Y-%m-%d")
     except ValueError:      # 2/29 → 평년
         return d.replace(year=d.year + offset, day=28).strftime("%Y-%m-%d")
+
+
+def _shift_period(start_date: str, end_date: str, offset: int,
+                  ovr_start: str = "", ovr_end: str = "") -> tuple[str, str]:
+    """본기간 **직전의 동일 길이 구간**(prior). offset=-1 -> 바로 앞 구간, -2 -> 그 앞 구간.
+
+    양 날짜를 똑같이 N x |offset| 일 뒤로 민다 (N = 양끝 포함 일수) -> 갭·겹침 없이 붙는다.
+      2026-05-14~2026-05-17 (4일) -> -1: 2026-05-10~2026-05-13 (= prior_end 가 start 의 전날)
+    ovr_* 가 **둘 다** 있으면 그 구간을 -1 로 삼고, 더 깊은 offset 은 그 구간 길이로 이어 민다.
+    연 단위가 아닌 순수 일수 산술이라 윤년 clamp(_shift_year)가 필요 없다."""
+    if not offset:
+        return start_date, end_date
+    if ovr_start and ovr_end:
+        base_s, base_e, step_off = ovr_start, ovr_end, offset + 1   # -1 -> override 그대로
+    else:
+        base_s, base_e, step_off = start_date, end_date, offset
+    s = datetime.strptime(base_s, "%Y-%m-%d")
+    e = datetime.strptime(base_e, "%Y-%m-%d")
+    n = (e - s).days + 1                          # 양끝 포함 일수
+    d = timedelta(days=n * abs(step_off))
+    return (s - d).strftime("%Y-%m-%d"), (e - d).strftime("%Y-%m-%d")
 
 
 # 월 라벨용 영문 약어 — strftime('%b') 는 로케일 의존이라 고정 테이블 사용 (AA 표기 'Jul 2025' 와 일치)
@@ -1731,9 +1792,9 @@ def _extract_one(task: dict, headers: dict, gcid: str) -> dict:
 
 
 # ─── sites_input.csv 로드 ──────────────────────────────────────────
-def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str]]:
+def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str, str, str]]:
     """sites_input.csv 읽음 — site_code, start_date, end_date, site_group(B2B/B2C),
-    start_time, end_time (v4.4).
+    start_time, end_time (v4.4), prior_start, prior_end (v4.5).
 
     - 빈 줄 / # 시작 주석 라인 무시.
     - site_code/start/end 중 하나라도 비면 skip → 앞에 빈칸(`,,,`)을 넣어 컬럼을 오른쪽으로
@@ -1748,8 +1809,12 @@ def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str]]:
         · TIME_COLUMN_* 컬럼이 헤더에 없으면 전 행 ("","") → 달력일 기준 (구 CSV 하위호환).
         · 둘 다 채워야 적용. **한쪽만 채우면 경고 후 둘 다 버린다** — 조용히 의도와 다른
           기간(예: 종료시각 없이 09시부터 끝까지)을 뽑는 사고를 막기 위함.
+    - prior_start/prior_end (v4.5, 7·8번째 값):
+        · PRIOR_COLUMN_* 컬럼이 헤더에 없으면 전 행 ("","") -> PRIOR_OFFSETS 로 자동계산.
+        · 둘 다 채워야 적용. 한쪽만 / 형식 오류 / start>end 면 **경고 후 둘 다 버리고 자동계산**.
+        · PRIOR_OFFSETS=[0] (기본) 이면 이 값은 어차피 안 쓰인다.
     """
-    rows: list[tuple[str, str, str, str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str, str, str, str]] = []
     if not path.exists():
         return rows
     with open(path, encoding="utf-8-sig") as f:
@@ -1762,6 +1827,8 @@ def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str]]:
     # v4.4: 시각 컬럼도 같은 방식 — 헤더에 없으면 기능 미사용 (구 sites_input.csv 그대로 동작)
     _fields = reader.fieldnames or []
     has_time_col = TIME_COLUMN_START in _fields or TIME_COLUMN_END in _fields
+    # v4.5: prior 수동 지정 컬럼도 같은 방식 — 헤더에 없으면 기능 미사용(자동계산)
+    has_prior_col = PRIOR_COLUMN_START in _fields or PRIOR_COLUMN_END in _fields
     for r in reader:
         site = (r.get("site_code") or "").strip()
         s = (r.get("start_date") or "").strip()
@@ -1784,8 +1851,32 @@ def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str]]:
                 sh = eh = ""
         else:
             sh = eh = ""
+        # v4.5: prior 수동 지정 — 둘 다 + 형식 정상일 때만 채택, 아니면 경고 후 자동계산
+        if has_prior_col:
+            ps = (r.get(PRIOR_COLUMN_START) or "").strip()
+            pe = (r.get(PRIOR_COLUMN_END) or "").strip()
+            if bool(ps) != bool(pe):
+                print(f"  ⚠ sites_input '{site}': {PRIOR_COLUMN_START}='{ps}' / "
+                      f"{PRIOR_COLUMN_END}='{pe}' — 한쪽만 채워져 있음. "
+                      f"prior 를 수동 지정하려면 둘 다 채워야 한다 -> 이 site 는 자동계산")
+                ps = pe = ""
+            elif ps and pe:
+                try:
+                    _pds = datetime.strptime(ps, "%Y-%m-%d")
+                    _pde = datetime.strptime(pe, "%Y-%m-%d")
+                except ValueError:
+                    print(f"  ⚠ sites_input '{site}': prior 날짜 형식 오류 "
+                          f"(YYYY-MM-DD 여야 함) {ps!r}~{pe!r} -> 자동계산")
+                    ps = pe = ""
+                else:
+                    if _pds > _pde:
+                        print(f"  ⚠ sites_input '{site}': prior 시작({ps}) > 종료({pe}) "
+                              f"-> 자동계산")
+                        ps = pe = ""
+        else:
+            ps = pe = ""
         if site and s and e:
-            rows.append((site, s, e, kind, sh, eh))
+            rows.append((site, s, e, kind, sh, eh, ps, pe))
     return rows
 
 
@@ -1937,13 +2028,16 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
                   app_ox: dict[str, str] | None = None,
                   file_tag: str = "",
                   site_group: str = PANEL_GROUP_SITE_DEFAULT,
-                  start_time: str = "", end_time: str = "") -> dict:
+                  start_time: str = "", end_time: str = "",
+                  period_type: str = "") -> dict:
     """한 site 의 모든 panel × reportlet 추출 + CSV 저장.
     resolved_extras: [(segment_id, panel_scope), ...] — v3 신규.
     app_ox: app_O_X.csv 로드 결과 (v3.8 DEVICE_CASES 케이스 선택용, None=csv 없음=전 site O).
     file_tag: 출력 파일명 site 뒤에 붙는 태그 (v4.2 YEAR_OFFSETS 의 '_y2025' 등, ""=없음).
     site_group: sites_input 의 B2B_B2C 값 — 그 종류의 패널만 돈다.
-    start_time/end_time: v4.4 시각 컷 'HH:MM' (둘 다 있어야 적용, ""=달력일 기준)."""
+    start_time/end_time: v4.4 시각 컷 'HH:MM' (둘 다 있어야 적용, ""=달력일 기준).
+    period_type: v4.5 prior 라벨 'campaign'/'prior'/'prior2' — 비면(PRIOR_OFFSETS=[0])
+        출력에 period_type 컬럼 자체를 만들지 않는다 (v4.4 출력과 동일)."""
     time_mode = bool(start_time and end_time)   # v4.4
     # v4.2: MONTHLY 면 총기간을 달력 월 조각으로 분할 (False 면 조각 1개 = 총기간)
     periods = _split_months(start_date, end_date)
@@ -2150,9 +2244,13 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
     #   start_date/end_date 는 **날짜 그대로 둔다** — 'YYYY-MM-DD HH:MM' 로 바꾸면
     #   그 컬럼을 날짜로 파싱하는 RESHAPE_standard_v1.7.py 가 깨진다.
     time_header = [TIME_COLUMN_START, TIME_COLUMN_END] if time_mode else []
+    # v4.5: prior 기능을 쓸 때만 period_type 컬럼 추가. 기존 optional 컬럼 **뒤**에 붙여
+    #   기능 OFF 시 컬럼 위치가 하나도 안 바뀌게 한다 (v4.4 출력과 동일).
+    period_type_header = ["period_type"] if period_type else []
     with open(stack_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        header = ["site_code", "rsid", "start_date", "end_date"] + time_header + period_header + [
+        header = (["site_code", "rsid", "start_date", "end_date"]
+                  + time_header + period_header + period_type_header) + [
                   "panel", "table", "reportlet", "dimension", "dimension_name",
                   "itemId", dim_short,
                   "value_n", "metric_origin", "metric", "segments", "device",
@@ -2171,6 +2269,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             base_cols = ([site.site_code, site.rsid, t["period_start"], t["period_end"]]
                          + ([t["period_start_time"], t["period_end_time"]] if time_mode else [])
                          + ([t["period_label"]] if MONTHLY else [])
+                         + ([period_type] if period_type else [])          # v4.5
                          + [t["panel_name"], t["tb_name"], t["reportlet_name"], dim_id, dim_name])
             # v4.1: INCLUDE_PARENT_ROWS=False 면 dim1 총계(부모) 행을 skip (breakdown 행만 출력)
             if INCLUDE_PARENT_ROWS:
@@ -2260,7 +2359,8 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
 
     with open(table_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        header = ["site_code", "rsid", "start_date", "end_date"] + time_header + period_header + [
+        header = (["site_code", "rsid", "start_date", "end_date"]
+                  + time_header + period_header + period_type_header) + [
                   "panel", "table", "reportlet", "dimension", "dimension_name",
                   "device",   # v3.8: 같은 테이블이 device 케이스 수만큼 반복 — 행 구분용
                   "itemId", dim_short]
@@ -2276,6 +2376,7 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
             base_cols = ([site.site_code, site.rsid, t["period_start"], t["period_end"]]
                          + ([t["period_start_time"], t["period_end_time"]] if time_mode else [])
                          + ([t["period_label"]] if MONTHLY else [])
+                         + ([period_type] if period_type else [])          # v4.5
                          + [t["panel_name"], t["tb_name"], t["reportlet_name"],
                             t.get("dimension_id", ""), t.get("dimension_name", ""),
                             t.get("device_case", "")])   # v3.8
@@ -2403,6 +2504,10 @@ def main() -> int:
     parser.add_argument("--year-offsets", type=str, default=None, metavar="0,-1",
                         help="(v4.2) sites_input 날짜 연도를 shift 해 추출 (YEAR_OFFSETS override). "
                              "예: '0,-1' = 올해+작년 동기간. offset≠0 은 파일명에 _y{연도} 태그")
+    parser.add_argument("--prior-offsets", type=str, default=None, metavar="0,-1",
+                        help="(v4.5) 본기간 직전의 동일 길이 구간(prior)도 같이 추출 "
+                             "(PRIOR_OFFSETS override). 예: '0,-1' = 본기간+직전구간. "
+                             "음수만 허용. offset!=0 은 파일명 _prior 태그 + period_type 컬럼")
     parser.add_argument("--times", type=str, default=None, metavar="HH:MM-HH:MM",
                         help="(v4.4) 전 site 에 이 시각 구간을 강제 (sites_input 의 start_time/end_time 컬럼 무시). "
                              "예: '09:00-18:00' = 시작일 09시 ~ 종료일 18:59:59 연속 1구간. "
@@ -2434,6 +2539,25 @@ def main() -> int:
         if not _offs:
             raise SystemExit("❌ --year-offsets 가 비었음 (예: --year-offsets 0,-1)")
         globals()["YEAR_OFFSETS"] = _offs
+    # v4.5: prior 기간 override
+    if args.prior_offsets is not None:
+        try:
+            _poffs = [int(v.strip()) for v in args.prior_offsets.split(",") if v.strip()]
+        except ValueError:
+            raise SystemExit(f"❌ --prior-offsets 형식 오류 (정수 콤마 나열): {args.prior_offsets!r}")
+        if not _poffs:
+            raise SystemExit("❌ --prior-offsets 가 비었음 (예: --prior-offsets 0,-1)")
+        globals()["PRIOR_OFFSETS"] = _poffs
+    # v4.5: PRIOR_OFFSETS 검증 (상수를 직접 고친 경우도 잡는다)
+    if [v for v in PRIOR_OFFSETS if v > 0]:
+        raise SystemExit(f"❌ PRIOR_OFFSETS 는 음수(과거 구간)만 허용: {PRIOR_OFFSETS} "
+                         f"— 직후 구간은 이 도구의 용도가 아니다")
+    if len(set(PRIOR_OFFSETS)) != len(PRIOR_OFFSETS):
+        raise SystemExit(f"❌ PRIOR_OFFSETS 에 중복 값: {PRIOR_OFFSETS} "
+                         f"(같은 기간을 두 번 뽑고 파일명도 겹친다)")
+    if PRIOR_OFFSETS != [0] and 0 not in PRIOR_OFFSETS:
+        print(f"  ⚠ PRIOR_OFFSETS={PRIOR_OFFSETS} 에 0 이 없음 — **본기간을 안 뽑고** "
+              f"prior 만 추출한다. 의도한 게 맞는지 확인할 것")
     # v4.4: 시각 컷 override — 여기선 형식 검증만 하고(fail fast), 실제 적용은
     #   sites_rows 를 읽은 뒤 (행 단위 값이라 globals() 로 못 덮는다).
     if args.times is not None and args.no_times:
@@ -2492,6 +2616,10 @@ def main() -> int:
     # v4.2: 기간 분할 / 연도 shift
     print(f"  MONTHLY       : {'ON (총기간을 달력 월로 분할 — period 컬럼 추가)' if MONTHLY else 'OFF (총기간 1회)'}")
     print(f"  YEAR_OFFSETS  : {YEAR_OFFSETS}  ({'sites_input 그대로' if YEAR_OFFSETS == [0] else 'site 당 ' + str(len(YEAR_OFFSETS)) + ' run — offset≠0 은 파일명 _y{연도} 태그'})")
+    print(f"  PRIOR_OFFSETS : {PRIOR_OFFSETS}  "
+          + ("(본기간만 — prior 미사용)" if PRIOR_OFFSETS == [0] else
+             "(본기간 run 마다 직전 동일길이 구간 추가 — 파일명 _prior 태그 + period_type 컬럼. "
+             "RESHAPE_standard 는 v1.9 이상 필요)"))
     # v4.4: 시각 컷
     if cli_times:
         print(f"  TIME CUT      : ON  {cli_times[0]} ~ {cli_times[1]}  (--times — 전 site 강제, "
@@ -2520,9 +2648,10 @@ def main() -> int:
     # v4.4: --times / --no-times 는 sites_input 의 행별 시각 값을 통째로 덮는다.
     #   (globals() 로는 못 덮는 행 단위 값이라 여기서 처리 — 위 CLI 블록에서 형식 검증은 끝났다)
     if cli_times:
-        sites_rows = [(r[0], r[1], r[2], r[3], cli_times[0], cli_times[1]) for r in sites_rows]
+        sites_rows = [(r[0], r[1], r[2], r[3], cli_times[0], cli_times[1], r[6], r[7])
+                      for r in sites_rows]
     elif args.no_times:
-        sites_rows = [(r[0], r[1], r[2], r[3], "", "") for r in sites_rows]
+        sites_rows = [(r[0], r[1], r[2], r[3], "", "", r[6], r[7]) for r in sites_rows]
 
     # v4.2: YEAR_OFFSETS 만큼 run 확장 — (site_code, start, end, file_tag, site_group)
     #   offset 0 → tag "" (v4.1 과 동일한 파일명). offset≠0 → "_y{shift 된 연도}"
@@ -2535,13 +2664,15 @@ def main() -> int:
     #   같은 site 를 시간대만 바꿔 두 번 돌리면 출력 경로가 완전히 같아져 **나중 run 이 앞 run 을
     #   덮어쓴다** — 위 GROUP_TAG_IN_FILENAME 주석의 2026-07-31 B2B 유실과 똑같은 구조.
     _grp_by_site: dict[str, set] = {}
-    for _sc, _s, _e, _g, _sh, _eh in sites_rows:
+    for _sc, _s, _e, _g, _sh, _eh, _ps, _pe in sites_rows:
         _grp_by_site.setdefault(_sc, set()).add(_g)
     _multi_group_sites = {sc for sc, gs in _grp_by_site.items() if len(gs) > 1 and any(gs)}
 
-    runs: list[tuple[str, str, str, str, str, str, str]] = []
+    # v4.5: prior run 은 본기간(off==0)에만 붙인다 — YEAR_OFFSETS 와 곱집합이 아니다.
+    #   파일명 태그 순서 = {group}{year}{prior}{time}  (예: _B2C_y2025_prior_t1200-2359)
+    runs: list[tuple[str, str, str, str, str, str, str, str]] = []
     kind_off_used: dict[str, list[int]] = {}
-    for site_code, s_date, e_date, s_grp, s_time, e_time in sites_rows:
+    for site_code, s_date, e_date, s_grp, s_time, e_time, p_s, p_e in sites_rows:
         offs = PANEL_GROUP_YEAR_OFFSETS.get(s_grp, YEAR_OFFSETS)
         kind_off_used[s_grp] = offs
         g_tag = (f"_{s_grp}" if GROUP_TAG_IN_FILENAME and site_code in _multi_group_sites
@@ -2551,7 +2682,15 @@ def main() -> int:
         for off in offs:
             s2, e2 = _shift_year(s_date, off), _shift_year(e_date, off)
             y_tag = "" if off == 0 else f"_y{s2[:4]}"
-            runs.append((site_code, s2, e2, f"{g_tag}{y_tag}{t_tag}", s_grp, s_time, e_time))
+            for poff in (PRIOR_OFFSETS if off == 0 else [0]):
+                s3, e3 = _shift_period(s2, e2, poff, p_s, p_e)
+                p_tag = ("" if poff == 0 else
+                         ("_prior" if poff == -1 else f"_prior{abs(poff)}"))
+                # PRIOR_OFFSETS=[0] (기능 OFF) 이면 빈 문자열 -> period_type 컬럼 자체가 안 생긴다
+                ptype = ("" if PRIOR_OFFSETS == [0] else
+                         ("campaign" if poff == 0 else p_tag[1:]))
+                runs.append((site_code, s3, e3, f"{g_tag}{y_tag}{p_tag}{t_tag}",
+                             s_grp, s_time, e_time, ptype))
 
     _group_cnt: dict[str, int] = {}
     for r in sites_rows:
@@ -2571,6 +2710,16 @@ def main() -> int:
     if YEAR_OFFSETS != [0]:
         _yrs = sorted({r[1][:4] for r in runs})
         print(f"  처리 run : {len(runs)}개 (site {len(sites_rows)} × 연도 {len(YEAR_OFFSETS)} → {_yrs})")
+    if PRIOR_OFFSETS != [0]:
+        _ovr = [r[0] for r in sites_rows if r[6] and r[7]]
+        print(f"  prior    : PRIOR_OFFSETS={PRIOR_OFFSETS} -> 총 run {len(runs)}개 "
+              f"(본기간 run 마다 prior {len(PRIOR_OFFSETS) - 1}개 추가, 작년 run 에는 미적용)")
+        for _r in runs:
+            if _r[7] and _r[7] != "campaign":
+                print(f"             · {_r[0]}{_r[3]}  {_r[1]} ~ {_r[2]}  [{_r[7]}]")
+        if _ovr:
+            print(f"             · prior 수동 지정 site: {_ovr} "
+                  f"({PRIOR_COLUMN_START}/{PRIOR_COLUMN_END} 컬럼 — 자동계산 미적용)")
     print()
 
     # 인증 + project 한 번만
@@ -2637,8 +2786,8 @@ def main() -> int:
 
     # 사이트별 처리 — v3.6: SITE_WORKERS>1 이면 site 단위 병렬 (_contents 시리즈 포팅)
     def _run_one(item):
-        # v4.2: file_tag / site_group,  v4.4: start_time / end_time
-        site_code, start_date, end_date, file_tag, site_group, s_time, e_time = item
+        # v4.2: file_tag / site_group,  v4.4: start_time / end_time,  v4.5: period_type
+        site_code, start_date, end_date, file_tag, site_group, s_time, e_time, p_type = item
         site_info = lookup_site(site_code)
         _t0 = datetime.now()
         res = _process_site(headers, gcid, project, panels,
@@ -2650,7 +2799,8 @@ def main() -> int:
                             app_ox=app_ox,
                             file_tag=file_tag,
                             site_group=site_group,
-                            start_time=s_time, end_time=e_time)
+                            start_time=s_time, end_time=e_time,
+                            period_type=p_type)
         res["file_tag"] = file_tag
         res["elapsed_sec"] = (datetime.now() - _t0).total_seconds()
         return res
