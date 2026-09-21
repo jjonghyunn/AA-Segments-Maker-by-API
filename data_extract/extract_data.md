@@ -7,12 +7,12 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 
 | 파일 | 용도 |
 |---|---|
-| `extract_data_v4.5.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** + **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + **stack/table 출력 2종** + **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성) + **(v3.9) stack metric → metric_origin** + **(v4.0) breakdown 단계별 cap `LIMIT_BD` ~ `LIMIT_BD4` + 출력 무결성 자가검증 + breakdown 진행률·남은예상시간 + `--estimate` 사전추정** + **(v4.1) breakdown 깊이/부모행 출력 제어 `BREAKDOWN_MAX_DEPTH`(깊이 캡)·`INCLUDE_PARENT_ROWS`(총계행 포함 여부) — 총계만/총계+bd1/bd1만 조합** + **(v4.2) 기간 분할·연도 shift `MONTHLY`(총기간을 달력 월로 쪼개 월별 추출, period 컬럼)·`YEAR_OFFSETS`(sites_input 연도 ±N shift, 동기간 YoY 를 한 실행으로)** + **(v4.5) prior 기간 자동계산 `PRIOR_OFFSETS`(본기간 직전의 동일 길이 구간을 같이 추출, `_prior` 파일 태그 + `period_type` 컬럼) · sites_input 선택 컬럼 `prior_start`/`prior_end` 로 수동 지정** |
+| `extract_data_v4.6.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** + **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + **stack/table 출력 2종** + **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성) + **(v3.9) stack metric → metric_origin** + **(v4.0) breakdown 단계별 cap `LIMIT_BD` ~ `LIMIT_BD4` + 출력 무결성 자가검증 + breakdown 진행률·남은예상시간 + `--estimate` 사전추정** + **(v4.1) breakdown 깊이/부모행 출력 제어 `BREAKDOWN_MAX_DEPTH`(깊이 캡)·`INCLUDE_PARENT_ROWS`(총계행 포함 여부) — 총계만/총계+bd1/bd1만 조합** + **(v4.2) 기간 분할·연도 shift `MONTHLY`(총기간을 달력 월로 쪼개 월별 추출, period 컬럼)·`YEAR_OFFSETS`(sites_input 연도 ±N shift, 동기간 YoY 를 한 실행으로)** + **(v4.5) prior 기간 자동계산 `PRIOR_OFFSETS`(본기간 직전의 동일 길이 구간을 같이 추출, `_prior` 파일 태그 + `period_type` 컬럼) · sites_input 선택 컬럼 `prior_start`/`prior_end` 로 수동 지정** + **(v4.6) 작년 기간 수동 지정 `last_year_start`/`last_year_end`(YEAR_OFFSETS 의 offset -1 run 에만 — 채운 행만 그 기간, 빈 행은 연도 -1 산술)** |
 | `RESHAPE_standard_v1.9.py` | extract_data 출력 → `_union_standard_*.csv` union 정제 (범용). **v1.7: `period` 컬럼(v4.2 MONTHLY 의 월 라벨) passthrough** (`PASSTHROUGH_COLUMNS`) — YEAR_OFFSETS 의 `_y{연도}` 파일은 v1.6 에서도 이미 연도별로 union 됨. v1.6: wide 의 revenue 계열을 `<metric>_org`(원본)+`<metric>`(fx) 두 열로 분리 + `variable` 컬럼(dimension 뒤 토큰, 예 `variables/evar26`→`evar26`) 추가. v1.5: metric_origin + 정제 metric + value_origin + wide union(`_union_standard_wide_*`). v1.4: panel/table/reportlet 의 product 키워드(`Multi Purchase`/`Multi Order`/`Best Selling Product`) 행에 `product_category.yaml` 로 `category` 컬럼 분류 추가 (`ADD_CATEGORY_COLUMN`). v1.3: `stack_data_extract_*` 입력 패턴 대응 (구버전 `extract_data_*` 호환). v1.2: metric / Panel name 출력 컬럼 추가 + `EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션. v1.1: breakdown 행 모드(`BREAKDOWN_ROWS_MODE`) + device/bd 컬럼 passthrough + `_old` 접미사 SITE CODE 정규화 **v1.9: `period_type`(v4.5 prior 라벨) passthrough + 환율 미조회 경고(못 찾아 rate=1.0 이 먹은 행을 site×연도별로 실행 끝에 표시)** |
 | `site_registry.py` | `site_code → (subsidiary, country, rsid)` 매핑. `lookup_site()` 함수 제공 |
 | `table_data_extract_example.csv` / `stack_data_extract_example.csv` | 출력 2종(가로형 table / 세로형 stack) 형식 예시 (placeholder 값) |
 | `app_O_X_example.csv` / `currency_example.csv` / `product_category_example.yaml` | **입력 참조 파일 형식 예시.** 실제 파일(`app_O_X.csv` / `currency.csv` / `product_category.yaml`)은 운영 데이터라 repo 미포함 — `_example` 을 뗀 이름으로 본인 데이터를 채워 같은 폴더에 저장할 것 |
-| `_contents_tier1_2_uni/` (하위폴더) | **캠페인 콘텐츠(콘텐츠 배너·시나리오) 분석 전용** 변형. contents 프로젝트의 site × device payload 분기 + Tier1+Tier2 통합 추출 + `RESHAPE_contents_tier1_2` 후처리(환율·Delayed 합산·SITE CODE 정규화)가 묶인 도구 세트. generic `extract_data_v4.5.py` 와 별개 — 콘텐츠 캠페인 추출은 여기 사용. 추출: `_contents_tier1_2_uni/extract_data_v4.3_contents.py`, 정제 상세: `_contents_tier1_2_uni/RESHAPE_contents_tier1_2_v2.0.md` |
+| `_contents_tier1_2_uni/` (하위폴더) | **캠페인 콘텐츠(콘텐츠 배너·시나리오) 분석 전용** 변형. contents 프로젝트의 site × device payload 분기 + Tier1+Tier2 통합 추출 + `RESHAPE_contents_tier1_2` 후처리(환율·Delayed 합산·SITE CODE 정규화)가 묶인 도구 세트. generic `extract_data_v4.6.py` 와 별개 — 콘텐츠 캠페인 추출은 여기 사용. 추출: `_contents_tier1_2_uni/extract_data_v4.3_contents.py`, 정제 상세: `_contents_tier1_2_uni/RESHAPE_contents_tier1_2_v2.0.md` |
 
 ## v4.3 신규 기능 (2026-07-29)
 
@@ -129,29 +129,29 @@ PANEL_GROUP_PANEL_DEFAULT = "B2B"
 
 → "프로젝트 URL 만 넣으면 구조 파악 + 데이터 추출 + 추가 segment 적용까지 한번에" 되는 단일 스크립트.
 
-## extract_data_v4.5.py 사용법
+## extract_data_v4.6.py 사용법
 
 ```bash
-python extract_data_v4.5.py                       # sites_input.csv 의 모든 site 처리
-python extract_data_v4.5.py --site us             # us 하나만
-python extract_data_v4.5.py --site us --site uk   # 여러 개 좁히기
-python extract_data_v4.5.py --dry-run             # payload 생성까지만 (API 호출 안 함)
-python extract_data_v4.5.py --workers 8           # 병렬 워커 수 (기본 6)
-python extract_data_v4.5.py --limit 200          # 1st level(dim1) reportlet 당 행 수 cap (0=무제한)
-python extract_data_v4.5.py --limit-bd 50        # breakdown 1단계(bd1=level2) 부모 item 당 행 수 cap (0=무제한)
-python extract_data_v4.5.py --limit-bd2 15 --limit-bd3 15 --limit-bd4 15   # breakdown 2/3/4단계(bd2~4 = level3~5) 각 cap
-python extract_data_v4.5.py --estimate           # 실제 추출 전 총 호출수·예상 소요시간만 출력 (dim1+단계별 1경로 샘플)
-python extract_data_v4.5.py --include-global-for-us            # us_old site 에서도 Global panel 추출
-python extract_data_v4.5.py --site-workers 3                   # site 3곳 동시 처리 (기본 5, 1=순차)
-python extract_data_v4.5.py --breakdown-top-n 5                # breakdown 레벨별 상위 5개만 (검증/성능)
-python extract_data_v4.5.py --breakdown-dims "variables/product,variables/evar92"  # 분해 차원 명시
-python extract_data_v4.5.py --prior-offsets 0,-1               # (v4.5) 본기간 + 직전 동일길이 구간
-python extract_data_v4.5.py --estimate --prior-offsets 0,-1    # 추출 전 호출수·ETA 만 확인 (run 이 2배가 된다)
-python extract_data_v4.5.py --breakdown-max-depth 1           # (v4.1) breakdown 깊이 캡 (0=총계만, 1=bd1까지, N=bdN까지, -1=무제한)
-python extract_data_v4.5.py --breakdown-max-depth 1 --no-parent-rows   # (v4.1) dim1 총계행 빼고 bd1 행만 ("bd만" 모드)
-python extract_data_v4.5.py --monthly                          # (v4.2) 총기간을 달력 월로 쪼개 월별 추출 (period 컬럼 추가)
-python extract_data_v4.5.py --year-offsets 0,-1                # (v4.2) 올해 + 작년 동기간 한 실행으로 (작년은 파일명 _y{연도})
-python extract_data_v4.5.py --monthly --year-offsets 0,-1      # (v4.2) 두 옵션 조합 — 2개 연도 × 월별
+python extract_data_v4.6.py                       # sites_input.csv 의 모든 site 처리
+python extract_data_v4.6.py --site us             # us 하나만
+python extract_data_v4.6.py --site us --site uk   # 여러 개 좁히기
+python extract_data_v4.6.py --dry-run             # payload 생성까지만 (API 호출 안 함)
+python extract_data_v4.6.py --workers 8           # 병렬 워커 수 (기본 6)
+python extract_data_v4.6.py --limit 200          # 1st level(dim1) reportlet 당 행 수 cap (0=무제한)
+python extract_data_v4.6.py --limit-bd 50        # breakdown 1단계(bd1=level2) 부모 item 당 행 수 cap (0=무제한)
+python extract_data_v4.6.py --limit-bd2 15 --limit-bd3 15 --limit-bd4 15   # breakdown 2/3/4단계(bd2~4 = level3~5) 각 cap
+python extract_data_v4.6.py --estimate           # 실제 추출 전 총 호출수·예상 소요시간만 출력 (dim1+단계별 1경로 샘플)
+python extract_data_v4.6.py --include-global-for-us            # us_old site 에서도 Global panel 추출
+python extract_data_v4.6.py --site-workers 3                   # site 3곳 동시 처리 (기본 5, 1=순차)
+python extract_data_v4.6.py --breakdown-top-n 5                # breakdown 레벨별 상위 5개만 (검증/성능)
+python extract_data_v4.6.py --breakdown-dims "variables/product,variables/evar92"  # 분해 차원 명시
+python extract_data_v4.6.py --prior-offsets 0,-1               # (v4.5) 본기간 + 직전 동일길이 구간
+python extract_data_v4.6.py --estimate --prior-offsets 0,-1    # 추출 전 호출수·ETA 만 확인 (run 이 2배가 된다)
+python extract_data_v4.6.py --breakdown-max-depth 1           # (v4.1) breakdown 깊이 캡 (0=총계만, 1=bd1까지, N=bdN까지, -1=무제한)
+python extract_data_v4.6.py --breakdown-max-depth 1 --no-parent-rows   # (v4.1) dim1 총계행 빼고 bd1 행만 ("bd만" 모드)
+python extract_data_v4.6.py --monthly                          # (v4.2) 총기간을 달력 월로 쪼개 월별 추출 (period 컬럼 추가)
+python extract_data_v4.6.py --year-offsets 0,-1                # (v4.2) 올해 + 작년 동기간 한 실행으로 (작년은 파일명 _y{연도})
+python extract_data_v4.6.py --monthly --year-offsets 0,-1      # (v4.2) 두 옵션 조합 — 2개 연도 × 월별
 ```
 
 ## 사용자 설정 (상단 상수)
@@ -207,6 +207,7 @@ us,2026-05-19,2026-06-07,2026-04-01,2026-05-18
 - `site_code` — `site_registry._SITE_MASTER` 의 key. 매핑에 없으면 fallback `sscompany_name4{site_code 의 _ 제거}` 사용
 - `start_date` / `end_date` — site 별 **총기간**, ISO `YYYY-MM-DD`. v3 가 `YYYY-MM-DDT00:00:00.000/다음날T00:00:00.000` 형식 (AA 컨벤션) 으로 자동 변환
 - `prior_start` / `prior_end` — **(v4.5) 선택**. prior 기간을 수동 지정할 때만 채운다. 비우면 `PRIOR_OFFSETS` 로 자동계산. 아래 "prior 기간" 섹션 참고
+- `last_year_start` / `last_year_end` — **(v4.6) 선택**. 작년 기간을 수동 지정할 때만 채운다. `YEAR_OFFSETS` 의 **offset -1 run 에만** 쓰이고, 비우면 연도 -1 산술. 아래 "작년 기간 수동 지정" 섹션 참고
 - **(v4.2) 여기엔 총기간만 넣는다** — 월별로 쪼갤지(`MONTHLY`), 다른 연도 동기간도 뽑을지(`YEAR_OFFSETS`)는 상단 상수가 결정. 연도별로 sites_input 을 복사·수정하거나 폴더를 통째로 복제할 필요 없음
 - **(v4.3) 패널 분류 컬럼은 선택** — `PANEL_GROUP_COLUMN` 에 이름을 박으면 그 이름의 4번째 컬럼을 site 별 분류값으로 읽는다. 컬럼이 없어도(또는 상수가 `""` 여도) 그대로 동작하며 분류 필터만 적용되지 않는다. 예:
   ```csv
@@ -273,6 +274,32 @@ us,2026-05-19,2026-06-07,2026-04-01,2026-05-18
 - 둘 다 채워야 적용. **한쪽만 채우거나 / 형식 오류 / start>end 면 경고 후 자동계산으로 폴백**한다
   (시각 컬럼과 같은 가드).
 - `-2` 이하 offset 은 override 구간을 기준으로 그 길이만큼 더 밀어낸다.
+
+### 작년 기간 수동 지정 — last_year_start / last_year_end (v4.6)
+
+`YEAR_OFFSETS` 에 `-1` 을 넣으면 기본적으로 **sites_input 날짜의 연도만 -1** 한 기간을 뽑는다.
+그런데 캠페인은 해마다 **시작 요일과 기간이 달라서**, "작년 같은 날짜"가 "작년 같은 캠페인"이 아니다.
+
+`last_year_start` / `last_year_end` 를 채운 행은 **그 기간을 그대로** 쓰고,
+**비워둔 행은 기존처럼 연도 -1 산술**로 간다. 한 파일 안에서 섞어 써도 된다.
+
+```csv
+site_code,start_date,end_date,last_year_start,last_year_end
+at,2026-08-17,2026-09-15,2025-08-11,2025-09-09
+fr,2026-07-29,2026-08-30,,
+```
+→ `at_y2025` = **2025-08-11 ~ 2025-09-09** (지정값) / `fr_y2025` = 2025-07-29 ~ 2025-08-30 (산술)
+
+- **offset `-1` 에만 적용**된다. offset `0`(본기간)·`-2` 이하·양수는 영향 없다.
+- 둘 다 채워야 적용. **한쪽만 / 형식 오류 / start > end 면 경고 후 산술로 폴백**
+  (prior·시각 컬럼과 같은 가드 — `_read_date_pair`).
+- 파일명 `_y{연도}` 태그는 **지정한 시작일의 연도**로 붙는다 (산술이든 지정값이든 동일).
+- `YEAR_OFFSETS` 에 `-1` 이 없으면(기본 `[0]`) 이 컬럼은 읽히기만 하고 안 쓰인다.
+- prior 와 병용 가능 — prior 는 본기간 run 에만 붙으므로 서로 간섭하지 않는다.
+  (`YEAR_OFFSETS=[0,-1]` + `PRIOR_OFFSETS=[0,-1]` → campaign / prior / y2025 3 run)
+- 실행 시 콘솔에 **지정한 site 와 산술로 간 site 를 갈라서** 찍는다 (산술이면 어떤 기간이었을지도 함께).
+
+> **출력 컬럼은 늘지 않는다** — 날짜 값만 바뀐다. 그래서 `RESHAPE_standard` 는 **v1.9 그대로** 쓰면 된다.
 
 ### ⚠ 해석 주의 — 캠페인 스코프 세그면 prior 는 거의 0 이 나온다
 
@@ -465,9 +492,9 @@ columnTree 에 DateRange 컴포넌트가 있으면:
 ## 권장 사용 흐름
 
 1. `sites_input.csv` 의 site 들 + 캠페인 시즌의 start/end 채움
-2. `python extract_data_v4.5.py --dry-run --site us` 로 한 site payload 확인
+2. `python extract_data_v4.6.py --dry-run --site us` 로 한 site payload 확인
 3. breakdown 쓰는 경우 `--site <한곳> --breakdown-top-n 5` 로 소규모 검증 (총계 = breakdown 합 확인)
-4. OK 면 전체 실행 — `python extract_data_v4.5.py`
+4. OK 면 전체 실행 — `python extract_data_v4.6.py`
 5. `output/` 폴더의 사이트별 CSV 검토. 실패 site (FAIL 표시) 만 따로 `--site <code>` 로 재시도
 6. union 정제 필요 시 `python RESHAPE_standard_v1.9.py` (breakdown 행 처리 모드는 `BREAKDOWN_ROWS_MODE`)
 
@@ -481,7 +508,7 @@ Mac venv 사용 예 (Python 3.13):
 
 ```bash
 cd data_extract
-DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib .venv/bin/python3.13 extract_data_v4.5.py
+DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib .venv/bin/python3.13 extract_data_v4.6.py
 ```
 
 ## 시각(time) 컷 — v4.4
@@ -513,8 +540,8 @@ in,2026-06-01,2026-06-03,09:00,18:00
 - 파일명에 `_t{SH}{SM}-{EH}{EM}` 태그 (같은 site 를 시간대만 바꿔 돌릴 때 덮어쓰기 방지)
 
 ```bash
-python extract_data_v4.5.py --times 09:00-18:00   # 전 site 강제
-python extract_data_v4.5.py --no-times            # sites_input 의 시각 무시
+python extract_data_v4.6.py --times 09:00-18:00   # 전 site 강제
+python extract_data_v4.6.py --no-times            # sites_input 의 시각 무시
 ```
 
 ### MONTHLY 병용

@@ -1,5 +1,17 @@
-# extract_data_v4.5.py
+# extract_data_v4.6.py
 # 2026-09-21  Jonghyun Park w/ Claude
+# v4.6 (2026-09-21): **작년 기간 수동 지정** — sites_input 선택 컬럼 last_year_start / last_year_end.
+#   YEAR_OFFSETS 의 **offset -1 run 에만** 적용된다. 값이 있으면 그 기간을 그대로 쓰고,
+#   **비어 있는 행만** 기존처럼 연도 -1 산술(_shift_year)로 뽑는다. 섞어 쓸 수 있다.
+#     · 캠페인은 해마다 시작 요일·기간이 달라서 "작년 같은 날짜"가 "작년 같은 캠페인"이 아니다.
+#       그 site 만 실제 작년 캠페인 기간을 적어두면 나머지는 산술 그대로 간다.
+#     · 둘 다 채워야 적용. 한쪽만 / 형식 오류 / start > end 면 경고 후 산술로 폴백
+#       (prior·시각 컬럼과 같은 가드).
+#     · offset -2 이하, 0, 양수에는 적용하지 않는다 (작년 = -1 하나만).
+#     · 파일명 `_y{연도}` 태그는 **지정한 시작일의 연도**로 붙는다 — 산술이든 지정값이든 동일.
+#     · YEAR_OFFSETS 에 -1 이 없으면(예: 기본 [0]) 이 컬럼은 읽히기만 하고 안 쓰인다.
+#   ※ **출력 컬럼이 늘지 않는다** (날짜 값만 바뀜) → RESHAPE_standard 는 v1.9 그대로 쓰면 된다.
+#   ※ 그 외 추출 로직은 v4.5 와 동일.
 # v4.5 (2026-09-21): **prior 기간** 자동계산 추가 — PRIOR_OFFSETS.
 #   본기간(sites_input 의 start ~ end) **직전의 동일 길이 구간**을 스크립트가 계산해 같이 추출한다.
 #     계산: N = (end - start).days + 1 (양끝 포함 일수) -> 양 날짜를 N x |offset| 일 뒤로 민다.
@@ -286,6 +298,17 @@ PRIOR_OFFSETS: list[int] = [0]
 #   컬럼명을 바꿔 쓰고 싶으면 아래 두 상수만 고치면 된다.
 PRIOR_COLUMN_START = "prior_start"
 PRIOR_COLUMN_END   = "prior_end"
+
+# 작년 기간 **수동 지정** 컬럼 (sites_input.csv, 선택 — v4.6).
+#   YEAR_OFFSETS 의 **offset -1 run 에만** 쓰인다. 채운 행만 그 기간으로 뽑고,
+#   빈 행은 기존대로 연도 -1 산술(_shift_year). 한 파일 안에서 섞어 쓸 수 있다.
+#   왜 필요한가: 캠페인은 해마다 시작 요일·기간이 달라 "작년 같은 날짜"가
+#   "작년 같은 캠페인"이 아니다. 어긋나는 site 만 실제 작년 캠페인 기간을 적어둔다.
+#   예) site_code,start_date,end_date,last_year_start,last_year_end
+#       de,2026-08-17,2026-09-15,2025-08-11,2025-09-09
+#   한쪽만 채우면 경고 후 둘 다 버리고 산술 (prior·시각 컬럼과 같은 안전장치).
+LAST_YEAR_COLUMN_START = "last_year_start"
+LAST_YEAR_COLUMN_END   = "last_year_end"
 
 # ─── 시각(time) 컷 (v4.4) ───────────────────────────────────────────
 # sites_input.csv 에 아래 두 컬럼을 추가하면 그 site 는 지정 **시각 구간**만 추출한다.
@@ -1792,9 +1815,11 @@ def _extract_one(task: dict, headers: dict, gcid: str) -> dict:
 
 
 # ─── sites_input.csv 로드 ──────────────────────────────────────────
-def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str, str, str]]:
+def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str,
+                                                  str, str, str, str]]:
     """sites_input.csv 읽음 — site_code, start_date, end_date, site_group(B2B/B2C),
-    start_time, end_time (v4.4), prior_start, prior_end (v4.5).
+    start_time, end_time (v4.4), prior_start, prior_end (v4.5),
+    last_year_start, last_year_end (v4.6).
 
     - 빈 줄 / # 시작 주석 라인 무시.
     - site_code/start/end 중 하나라도 비면 skip → 앞에 빈칸(`,,,`)을 넣어 컬럼을 오른쪽으로
@@ -1813,8 +1838,12 @@ def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str, st
         · PRIOR_COLUMN_* 컬럼이 헤더에 없으면 전 행 ("","") -> PRIOR_OFFSETS 로 자동계산.
         · 둘 다 채워야 적용. 한쪽만 / 형식 오류 / start>end 면 **경고 후 둘 다 버리고 자동계산**.
         · PRIOR_OFFSETS=[0] (기본) 이면 이 값은 어차피 안 쓰인다.
+    - last_year_start/last_year_end (v4.6, 9·10번째 값):
+        · LAST_YEAR_COLUMN_* 컬럼이 헤더에 없으면 전 행 ("","") -> 연도 -1 산술.
+        · 채운 행만 YEAR_OFFSETS 의 **offset -1 run** 에서 그 기간을 쓴다 (나머지 행은 산술).
+        · 가드는 prior 와 동일 (_read_date_pair).
     """
-    rows: list[tuple[str, str, str, str, str, str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str, str, str, str, str, str]] = []
     if not path.exists():
         return rows
     with open(path, encoding="utf-8-sig") as f:
@@ -1829,6 +1858,8 @@ def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str, st
     has_time_col = TIME_COLUMN_START in _fields or TIME_COLUMN_END in _fields
     # v4.5: prior 수동 지정 컬럼도 같은 방식 — 헤더에 없으면 기능 미사용(자동계산)
     has_prior_col = PRIOR_COLUMN_START in _fields or PRIOR_COLUMN_END in _fields
+    # v4.6: 작년 기간 수동 지정 컬럼 — 헤더에 없으면 기능 미사용(연도 -1 산술)
+    has_ly_col = LAST_YEAR_COLUMN_START in _fields or LAST_YEAR_COLUMN_END in _fields
     for r in reader:
         site = (r.get("site_code") or "").strip()
         s = (r.get("start_date") or "").strip()
@@ -1851,33 +1882,43 @@ def _load_sites_input(path: Path) -> list[tuple[str, str, str, str, str, str, st
                 sh = eh = ""
         else:
             sh = eh = ""
-        # v4.5: prior 수동 지정 — 둘 다 + 형식 정상일 때만 채택, 아니면 경고 후 자동계산
-        if has_prior_col:
-            ps = (r.get(PRIOR_COLUMN_START) or "").strip()
-            pe = (r.get(PRIOR_COLUMN_END) or "").strip()
-            if bool(ps) != bool(pe):
-                print(f"  ⚠ sites_input '{site}': {PRIOR_COLUMN_START}='{ps}' / "
-                      f"{PRIOR_COLUMN_END}='{pe}' — 한쪽만 채워져 있음. "
-                      f"prior 를 수동 지정하려면 둘 다 채워야 한다 -> 이 site 는 자동계산")
-                ps = pe = ""
-            elif ps and pe:
-                try:
-                    _pds = datetime.strptime(ps, "%Y-%m-%d")
-                    _pde = datetime.strptime(pe, "%Y-%m-%d")
-                except ValueError:
-                    print(f"  ⚠ sites_input '{site}': prior 날짜 형식 오류 "
-                          f"(YYYY-MM-DD 여야 함) {ps!r}~{pe!r} -> 자동계산")
-                    ps = pe = ""
-                else:
-                    if _pds > _pde:
-                        print(f"  ⚠ sites_input '{site}': prior 시작({ps}) > 종료({pe}) "
-                              f"-> 자동계산")
-                        ps = pe = ""
-        else:
-            ps = pe = ""
+        # v4.5 prior / v4.6 작년 기간 — 둘 다 + 형식 정상일 때만 채택 (아니면 경고 후 폴백)
+        ps, pe = (_read_date_pair(r, PRIOR_COLUMN_START, PRIOR_COLUMN_END, site,
+                                  "prior", "자동계산") if has_prior_col else ("", ""))
+        ly_s, ly_e = (_read_date_pair(r, LAST_YEAR_COLUMN_START, LAST_YEAR_COLUMN_END, site,
+                                      "작년 기간", "연도 -1 산술") if has_ly_col else ("", ""))
         if site and s and e:
-            rows.append((site, s, e, kind, sh, eh, ps, pe))
+            rows.append((site, s, e, kind, sh, eh, ps, pe, ly_s, ly_e))
     return rows
+
+
+def _read_date_pair(row: dict, col_start: str, col_end: str, site: str, label: str,
+                    fallback_desc: str) -> tuple[str, str]:
+    """sites_input 의 선택적 날짜쌍(시작/종료)을 검증해서 읽는다 (v4.6).
+
+    **둘 다** 정상일 때만 채택하고, 한쪽만 / 형식 오류 / start > end 면 경고 후 ("","") 를
+    돌려준다 — 조용히 의도와 다른 기간을 뽑지 않게 하는 가드. v4.5 prior 와 v4.6 작년 기간이
+    같은 규칙을 쓰므로 한 곳에 뒀다 (v4.4 시각 컷은 'HH:MM' 이라 규칙이 달라 별도)."""
+    a = (row.get(col_start) or "").strip()
+    b = (row.get(col_end) or "").strip()
+    if bool(a) != bool(b):
+        print(f"  ⚠ sites_input '{site}': {col_start}='{a}' / {col_end}='{b}' — "
+              f"한쪽만 채워져 있음. {label} 수동 지정은 둘 다 채워야 한다 "
+              f"-> 이 site 는 {fallback_desc}")
+        return "", ""
+    if not (a and b):
+        return "", ""
+    try:
+        da = datetime.strptime(a, "%Y-%m-%d")
+        db = datetime.strptime(b, "%Y-%m-%d")
+    except ValueError:
+        print(f"  ⚠ sites_input '{site}': {label} 날짜 형식 오류 "
+              f"(YYYY-MM-DD 여야 함) {a!r} ~ {b!r} -> {fallback_desc}")
+        return "", ""
+    if da > db:
+        print(f"  ⚠ sites_input '{site}': {label} 시작({a}) > 종료({b}) -> {fallback_desc}")
+        return "", ""
+    return a, b
 
 
 # ─── app_O_X.csv 로드 + device 케이스 선택 (v3.8) ──────────────────
@@ -2648,10 +2689,11 @@ def main() -> int:
     # v4.4: --times / --no-times 는 sites_input 의 행별 시각 값을 통째로 덮는다.
     #   (globals() 로는 못 덮는 행 단위 값이라 여기서 처리 — 위 CLI 블록에서 형식 검증은 끝났다)
     if cli_times:
-        sites_rows = [(r[0], r[1], r[2], r[3], cli_times[0], cli_times[1], r[6], r[7])
-                      for r in sites_rows]
+        sites_rows = [(r[0], r[1], r[2], r[3], cli_times[0], cli_times[1],
+                       r[6], r[7], r[8], r[9]) for r in sites_rows]
     elif args.no_times:
-        sites_rows = [(r[0], r[1], r[2], r[3], "", "", r[6], r[7]) for r in sites_rows]
+        sites_rows = [(r[0], r[1], r[2], r[3], "", "",
+                       r[6], r[7], r[8], r[9]) for r in sites_rows]
 
     # v4.2: YEAR_OFFSETS 만큼 run 확장 — (site_code, start, end, file_tag, site_group)
     #   offset 0 → tag "" (v4.1 과 동일한 파일명). offset≠0 → "_y{shift 된 연도}"
@@ -2664,7 +2706,7 @@ def main() -> int:
     #   같은 site 를 시간대만 바꿔 두 번 돌리면 출력 경로가 완전히 같아져 **나중 run 이 앞 run 을
     #   덮어쓴다** — 위 GROUP_TAG_IN_FILENAME 주석의 2026-07-31 B2B 유실과 똑같은 구조.
     _grp_by_site: dict[str, set] = {}
-    for _sc, _s, _e, _g, _sh, _eh, _ps, _pe in sites_rows:
+    for _sc, _s, _e, _g, _sh, _eh, _ps, _pe, _ls, _le in sites_rows:
         _grp_by_site.setdefault(_sc, set()).add(_g)
     _multi_group_sites = {sc for sc, gs in _grp_by_site.items() if len(gs) > 1 and any(gs)}
 
@@ -2672,7 +2714,7 @@ def main() -> int:
     #   파일명 태그 순서 = {group}{year}{prior}{time}  (예: _B2C_y2025_prior_t1200-2359)
     runs: list[tuple[str, str, str, str, str, str, str, str]] = []
     kind_off_used: dict[str, list[int]] = {}
-    for site_code, s_date, e_date, s_grp, s_time, e_time, p_s, p_e in sites_rows:
+    for site_code, s_date, e_date, s_grp, s_time, e_time, p_s, p_e, ly_s, ly_e in sites_rows:
         offs = PANEL_GROUP_YEAR_OFFSETS.get(s_grp, YEAR_OFFSETS)
         kind_off_used[s_grp] = offs
         g_tag = (f"_{s_grp}" if GROUP_TAG_IN_FILENAME and site_code in _multi_group_sites
@@ -2680,7 +2722,12 @@ def main() -> int:
         t_tag = (f"_t{s_time.replace(':', '')}-{e_time.replace(':', '')}"
                  if (s_time and e_time) else "")
         for off in offs:
-            s2, e2 = _shift_year(s_date, off), _shift_year(e_date, off)
+            # v4.6: offset -1(작년) 이고 그 행에 작년 기간이 지정돼 있으면 산술 대신 그 값을 쓴다.
+            #   지정 안 된 행은 기존대로 연도 -1 산술 — 한 파일에서 섞여도 된다.
+            if off == -1 and ly_s and ly_e:
+                s2, e2 = ly_s, ly_e
+            else:
+                s2, e2 = _shift_year(s_date, off), _shift_year(e_date, off)
             y_tag = "" if off == 0 else f"_y{s2[:4]}"
             for poff in (PRIOR_OFFSETS if off == 0 else [0]):
                 s3, e3 = _shift_period(s2, e2, poff, p_s, p_e)
@@ -2710,6 +2757,22 @@ def main() -> int:
     if YEAR_OFFSETS != [0]:
         _yrs = sorted({r[1][:4] for r in runs})
         print(f"  처리 run : {len(runs)}개 (site {len(sites_rows)} × 연도 {len(YEAR_OFFSETS)} → {_yrs})")
+        # v4.6: 작년 기간을 지정한 site 와 산술로 간 site 를 갈라서 보여준다 (조용한 혼동 방지)
+        if -1 in YEAR_OFFSETS:
+            _ly_set = {r[0] for r in sites_rows if r[8] and r[9]}
+            if _ly_set:
+                print(f"             · 작년 기간 수동 지정 {len(_ly_set)}개: "
+                      f"{sorted(_ly_set)} ({LAST_YEAR_COLUMN_START}/{LAST_YEAR_COLUMN_END})")
+                for _r in sites_rows:
+                    if _r[0] in _ly_set:
+                        print(f"                 {_r[0]:<10} {_r[8]} ~ {_r[9]}  "
+                              f"(산술이면 {_shift_year(_r[1], -1)} ~ {_shift_year(_r[2], -1)})")
+                _rest = [r[0] for r in sites_rows if not (r[8] and r[9])]
+                if _rest:
+                    print(f"             · 나머지 {len(_rest)}개는 연도 -1 산술: {sorted(set(_rest))}")
+            else:
+                print(f"             · 작년 기간은 전부 연도 -1 산술 "
+                      f"({LAST_YEAR_COLUMN_START}/{LAST_YEAR_COLUMN_END} 미지정)")
     if PRIOR_OFFSETS != [0]:
         _ovr = [r[0] for r in sites_rows if r[6] and r[7]]
         print(f"  prior    : PRIOR_OFFSETS={PRIOR_OFFSETS} -> 총 run {len(runs)}개 "
