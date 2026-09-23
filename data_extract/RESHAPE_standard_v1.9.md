@@ -1,5 +1,5 @@
 # RESHAPE_standard_v1.9.py  
-<sub>2026-09-21  Jonghyun Park w/ Claude</sub>  
+<sub>2026-09-23  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -219,3 +219,10 @@ PASSTHROUGH_COLUMNS: list[str] = ["device", "period", "start_time", "end_time", 
 
 ⚠ passthrough 대상은 **첫 입력 파일의 헤더**로 정해진다. 시각 컷 산출물과 달력일 산출물을
 같은 `output/` 에 섞어두면 첫 파일에 시각 컬럼이 없을 때 전체에서 빠진다.
+
+## currency.csv 자동 갱신 (2026-09-23 추가)
+
+- 입력(추출 CSV)에 `revenue` 가 있으면 정제 전에 `currency_csv_from_xecom.py` 를 불러 `currency.csv` 를 새로 만든다 — 기준일 = `sites_input.csv` 의 max `end_date`, 비교일 = 그 1년 전 (xe.com, 값 = USD per unit).
+- 도구는 **이 폴더 → 상위 2단계** 순으로 찾는다 (추출 폴더 최상단에 1개). 사용법·출력 형식은 `currency_csv_from_xecom.md`.
+- 헤더 날짜가 이미 같으면 다시 받지 않는다. 받기에 실패하면(아직 확정 전 날짜 404, 네트워크) **경고 후 기존 `currency.csv` 로 진행**한다.
+- 끄려면 상단 `AUTO_CURRENCY_CSV = False`. 새 site 의 통화는 도구 옆 `currency_code_by_site.csv` 에 추가.

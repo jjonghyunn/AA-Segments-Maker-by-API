@@ -24,6 +24,7 @@ AA-Segments-Maker-by-API/
 │   ├── extract_data_v*.py          (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼 + site 병렬)
 │   ├── RESHAPE_standard_v*.py      (추출본 union 정제 — **(v1.9) `period_type`(prior) passthrough + 환율 미조회 경고** + breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션 + product category 분류)
 │   ├── site_registry.py            (site_code ↔ rsid 매핑)
+│   ├── currency_csv_from_xecom.py  (sites_input max end_date 기준 xe.com 환율 → currency.csv. RESHAPE 가 revenue 있을 때 자동 호출)
 │   ├── aa_segment_lookup.py        (extract_data 가 import 하는 필수 의존 — 원본은 segment_maker/, 갱신 시 동기화)
 │   ├── sites_input.csv             (추출 대상 site/기간 입력 템플릿)
 │   ├── *_example.csv / *_example.yaml  (입출력 형식 예시 — 실제 입력 파일은 repo 미포함, README 참조)

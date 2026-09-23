@@ -22,6 +22,7 @@ Adobe Workspace project 의 panel × reportlet 에서 세그먼트/메트릭 이
 | 파일 | 역할 |
 |---|---|
 | `site_registry.py` | `site_code → rsid` 매핑 (`lookup_site()`). `_contents_tier1_2_uni/` 에 사본 |
+| `currency_csv_from_xecom.py` | [`currency_csv_from_xecom.md`](currency_csv_from_xecom.md) — `sites_input.csv` max end_date(+1년 전) 기준 xe.com 환율로 `currency.csv` 생성. RESHAPE 가 revenue 입력이 있을 때 자동 호출 (하위 폴더 RESHAPE 도 상위 2단계까지 찾아 씀). 통화 매핑 = `currency_code_by_site.csv` |
 | `aa_segment_lookup.py` | segment 이름 검색 + DSL decompile 헬퍼 (원본은 `segment_maker/`, 갱신 시 동기화) |
 | `sites_input.csv` | 입력 템플릿 — `site_code, start_date, end_date` |
 | `stack_data_extract_example.csv` / `table_data_extract_example.csv` | 출력 형식 예시 |

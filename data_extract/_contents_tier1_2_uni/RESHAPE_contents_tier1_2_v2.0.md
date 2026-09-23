@@ -1,5 +1,5 @@
 # RESHAPE_contents_tier1_2_v2.0.py — 정제코드 가이드  
-<sub>2026-08-10  Jonghyun Park w/ Claude</sub>  
+<sub>2026-09-23  Jonghyun Park w/ Claude</sub>  
 
 추출 CSV 를 읽어 보고서용 **union CSV 1개**로 만듭니다.
 Tier1(넓은 범위)과 Tier2(좁은 범위)를 한 번에 처리합니다.
@@ -248,3 +248,10 @@ rsid, start_date, end_date, value_n
 | Excel 고쳤는데 반영 안 됨 | 원천은 폴더의 `contents_by_country.csv` — 새로 뽑아 덮어쓸 것 |
 | US 데이터가 절반쯤 빔 | `sites_input.csv` 에 `us_old` 행이 있는지 (US 는 2행 필수) |
 | 합산 행만 값이 이상 | delayed 짝짓기 실패 — `delayed pair used` 수치가 기대보다 적은지 확인 |
+
+## currency.csv 자동 갱신 (2026-09-23 추가)
+
+- 입력(추출 CSV)에 `revenue` 가 있으면 정제 전에 `currency_csv_from_xecom.py` 를 불러 `currency.csv` 를 새로 만든다 — 기준일 = `sites_input.csv` 의 max `end_date`, 비교일 = 그 1년 전 (xe.com, 값 = USD per unit).
+- 도구는 **이 폴더 → 상위 2단계** 순으로 찾는다 (추출 폴더 최상단에 1개). 사용법·출력 형식은 `currency_csv_from_xecom.md`.
+- 헤더 날짜가 이미 같으면 다시 받지 않는다. 받기에 실패하면(아직 확정 전 날짜 404, 네트워크) **경고 후 기존 `currency.csv` 로 진행**한다.
+- 끄려면 상단 `AUTO_CURRENCY_CSV = False`. 새 site 의 통화는 도구 옆 `currency_code_by_site.csv` 에 추가.

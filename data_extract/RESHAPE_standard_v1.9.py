@@ -1,5 +1,6 @@
 # RESHAPE_standard_v1.9.py
-# 2026-09-21  Jonghyun Park w/ Claude
+# 2026-09-23  Jonghyun Park w/ Claude
+# 2026-09-23: currency.csv 자동 갱신 (AUTO_CURRENCY_CSV) — 입력에 revenue 가 있으면 정제 전에 currency_csv_from_xecom.py 로 sites_input 기준 환율을 받는다. 실패 시 기존 파일 사용.
 # v1.9 (2026-09-21): extract_data_v4.5 (prior 기간) 출력 대응 —
 #                    · 'period_type' 컬럼을 PASSTHROUGH_COLUMNS 에 추가.
 #                      v4.5 는 PRIOR_OFFSETS 를 켜면 stack CSV 에 이 컬럼('campaign'/'prior')을
@@ -163,6 +164,16 @@ SITE_CODE_STRIP_OLD = True
 # Entries/Visits 등 비-금액 metric 은 환율 무관 (rate=1.0).
 APPLY_CURRENCY = True
 CURRENCY_CSV = SCRIPT_DIR / "currency.csv"
+
+# ─── (자동 환율) currency.csv 자동 갱신 ───
+# 입력에 revenue metric 이 있으면 정제 전에 currency_csv_from_xecom.py 를 불러
+# sites_input.csv 의 max end_date(+1년 전) 기준 xe.com 환율로 currency.csv 를 새로 만든다.
+#   · 이 폴더 → 상위 폴더 순으로 도구를 찾는다 (data_extract / cutoff 폴더 최상단에 1개면 충분).
+#   · 헤더 날짜가 이미 같으면 다시 받지 않는다. 받기에 실패하면 경고 후 기존 currency.csv 로 진행.
+AUTO_CURRENCY_CSV = True
+AUTO_CURRENCY_TOOL = "currency_csv_from_xecom.py"
+AUTO_CURRENCY_SEARCH_UP = 2          # 이 폴더 + 상위 N단계까지 찾는다
+AUTO_CURRENCY_KEYWORD = "revenue"    # 입력에 이 문자열(대소문자 무시)이 있을 때만 실행
 # ★ metric 에 이 키워드가 '포함'되기만 하면(부분일치, 대소문자 무시) 환율 적용.
 #   예: 'Revenue', 'Revenue (KRW)', 'Total Revenue', 'revenue per visit' → 전부 매칭
 #       (정확히 'revenue' 일 필요 없음 — revenue 글자가 들어가면 됨)
@@ -265,6 +276,47 @@ def detect_dim_column(fieldnames) -> str:
         if j - 1 >= 0 and fn[j - 1] != "itemId":
             return fn[j - 1]
     return ""
+
+
+def _auto_currency_csv(need_or_files) -> None:
+    """(자동 환율) revenue 입력이 있으면 currency_csv_from_xecom.ensure_currency_csv() 로 currency.csv 갱신.
+    need_or_files = True/False 또는 입력 CSV 경로 목록(본문에 AUTO_CURRENCY_KEYWORD 가 있는지 본다).
+    도구가 없거나 받기에 실패하면 경고만 남기고 기존 currency.csv 로 진행한다 (정제는 멈추지 않는다)."""
+    import importlib.util
+    from pathlib import Path as _P
+    if not AUTO_CURRENCY_CSV:
+        return
+    if isinstance(need_or_files, bool):
+        need = need_or_files
+    else:
+        kw = AUTO_CURRENCY_KEYWORD.lower()
+        need = False
+        for p in need_or_files:
+            try:
+                if kw in _P(p).read_text(encoding="utf-8-sig", errors="ignore").lower():
+                    need = True
+                    break
+            except OSError:
+                pass
+    if not need:
+        print(f"[currency-auto] 입력에 '{AUTO_CURRENCY_KEYWORD}' 없음 → currency.csv 자동 갱신 skip")
+        return
+    here = _P(SCRIPT_DIR)
+    tool = next((d / AUTO_CURRENCY_TOOL for d in [here, *here.parents][:AUTO_CURRENCY_SEARCH_UP + 1]
+                 if (d / AUTO_CURRENCY_TOOL).exists()), None)
+    if tool is None:
+        print(f"[currency-auto] ⚠ {AUTO_CURRENCY_TOOL} 를 이 폴더~상위 {AUTO_CURRENCY_SEARCH_UP}단계에서 못 찾음"
+              f" → 기존 currency.csv 사용")
+        return
+    try:
+        spec = importlib.util.spec_from_file_location("_currency_csv_from_xecom", tool)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.ensure_currency_csv(here, out_path=_P(CURRENCY_CSV))
+    except KeyboardInterrupt:
+        raise
+    except BaseException as e:   # SystemExit 포함 — 환율 실패로 정제를 멈추지 않는다
+        print(f"[currency-auto] ⚠ 자동 갱신 실패 → 기존 currency.csv 사용: {e}")
 
 
 def load_currency_map(path: Path) -> dict[tuple[str, str], float]:
@@ -506,6 +558,7 @@ def process() -> int:
     apply_fx = APPLY_CURRENCY and has_revenue
     fx_missing: dict[tuple[str, str], int] = {}   # v1.9: (site, 연도) -> 환율 못 찾아 1.0 먹은 행 수
     if apply_fx:
+        _auto_currency_csv(True)   # apply_fx 블록 안 = revenue 있음
         currency = load_currency_map(CURRENCY_CSV)
         while not currency:
             print(f"\n[일시정지] revenue metric 이 있는데 환율 파일이 없습니다:")

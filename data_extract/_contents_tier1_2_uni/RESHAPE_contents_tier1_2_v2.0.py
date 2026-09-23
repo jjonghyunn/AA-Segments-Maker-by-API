@@ -1,5 +1,6 @@
 # RESHAPE_contents_tier1_2_v2.0.py
-# 2026-08-03  Jonghyun Park w/ Claude
+# 2026-09-23  Jonghyun Park w/ Claude
+# 2026-09-23: currency.csv 자동 갱신 (AUTO_CURRENCY_CSV) — 입력에 revenue 가 있으면 정제 전에 currency_csv_from_xecom.py 로 sites_input 기준 환율을 받는다. 실패 시 기존 파일 사용.
 #
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ 이 파일은 무엇인가 — 처음 보는 사람용 3줄 요약                              ║
@@ -65,6 +66,16 @@ INPUT_DIR  = SCRIPT_DIR / "output"      # 추출 CSV 가 있는 곳
 OUTPUT_DIR = SCRIPT_DIR / "output"      # union 저장 위치
 
 CURRENCY_CSV = SCRIPT_DIR / "currency.csv"    # site 별 환율 (revenue 환산용)
+
+# ─── (자동 환율) currency.csv 자동 갱신 ───
+# 입력에 revenue metric 이 있으면 정제 전에 currency_csv_from_xecom.py 를 불러
+# sites_input.csv 의 max end_date(+1년 전) 기준 xe.com 환율로 currency.csv 를 새로 만든다.
+#   · 이 폴더 → 상위 폴더 순으로 도구를 찾는다 (data_extract / cutoff 폴더 최상단에 1개면 충분).
+#   · 헤더 날짜가 이미 같으면 다시 받지 않는다. 받기에 실패하면 경고 후 기존 currency.csv 로 진행.
+AUTO_CURRENCY_CSV = True
+AUTO_CURRENCY_TOOL = "currency_csv_from_xecom.py"
+AUTO_CURRENCY_SEARCH_UP = 2          # 이 폴더 + 상위 N단계까지 찾는다
+AUTO_CURRENCY_KEYWORD = "revenue"    # 입력에 이 문자열(대소문자 무시)이 있을 때만 실행
 APP_OX_CSV   = SCRIPT_DIR / "app_O_X.csv"     # App 론치 O/X
 
 # 출력 파일명 → _union_contents_tier1_2_<YYMMDD_HHMM>.csv
@@ -393,6 +404,47 @@ def clean_segment_name(name: str) -> str:
 # ─────────────────────────────────────────────────────────────────
 # 부가 입력
 # ─────────────────────────────────────────────────────────────────
+def _auto_currency_csv(need_or_files) -> None:
+    """(자동 환율) revenue 입력이 있으면 currency_csv_from_xecom.ensure_currency_csv() 로 currency.csv 갱신.
+    need_or_files = True/False 또는 입력 CSV 경로 목록(본문에 AUTO_CURRENCY_KEYWORD 가 있는지 본다).
+    도구가 없거나 받기에 실패하면 경고만 남기고 기존 currency.csv 로 진행한다 (정제는 멈추지 않는다)."""
+    import importlib.util
+    from pathlib import Path as _P
+    if not AUTO_CURRENCY_CSV:
+        return
+    if isinstance(need_or_files, bool):
+        need = need_or_files
+    else:
+        kw = AUTO_CURRENCY_KEYWORD.lower()
+        need = False
+        for p in need_or_files:
+            try:
+                if kw in _P(p).read_text(encoding="utf-8-sig", errors="ignore").lower():
+                    need = True
+                    break
+            except OSError:
+                pass
+    if not need:
+        print(f"[currency-auto] 입력에 '{AUTO_CURRENCY_KEYWORD}' 없음 → currency.csv 자동 갱신 skip")
+        return
+    here = _P(SCRIPT_DIR)
+    tool = next((d / AUTO_CURRENCY_TOOL for d in [here, *here.parents][:AUTO_CURRENCY_SEARCH_UP + 1]
+                 if (d / AUTO_CURRENCY_TOOL).exists()), None)
+    if tool is None:
+        print(f"[currency-auto] ⚠ {AUTO_CURRENCY_TOOL} 를 이 폴더~상위 {AUTO_CURRENCY_SEARCH_UP}단계에서 못 찾음"
+              f" → 기존 currency.csv 사용")
+        return
+    try:
+        spec = importlib.util.spec_from_file_location("_currency_csv_from_xecom", tool)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.ensure_currency_csv(here, out_path=_P(CURRENCY_CSV))
+    except KeyboardInterrupt:
+        raise
+    except BaseException as e:   # SystemExit 포함 — 환율 실패로 정제를 멈추지 않는다
+        print(f"[currency-auto] ⚠ 자동 갱신 실패 → 기존 currency.csv 사용: {e}")
+
+
 def load_currency_map(path: Path) -> dict[tuple[str, str], float]:
     """(site, 연도) → 환율. 헤더의 'YYYY-MM-DD' 를 **연도만** 보고 키를 만든다.
     날짜 전체를 상수로 고정하면 cutoff 폴더를 복사할 때 매칭이 깨져 조용히 환산이 빠진다."""
@@ -541,6 +593,7 @@ def process() -> int:
         print(f"   - {site:8} {kind:8} {p.name}")
 
     # 2) 부가 입력
+    _auto_currency_csv([t[2] for t in picked])   # (site, ts, path, kind)
     currency = load_currency_map(CURRENCY_CSV)
     app_x_sites = load_app_x_sites(APP_OX_CSV)
     print(f"[currency] {len(currency)} (site×year) / [app X] {len(app_x_sites)} sites")
