@@ -8,7 +8,7 @@ Adobe Workspace project 의 모든 panel × reportlet 에서 세그먼트/메트
 | 파일 | 용도 |
 |---|---|
 | `extract_data_v5.0.py` | 메인 추출 스크립트. `sites_input.csv` 의 row 별로 RSID + dateRange override + EXTRA_SEGMENTS globalFilter 추가 + **SKIP_PANEL_SEGMENTS 옵션** (panel segmentGroups 무시) + **EXTRA_SEGMENTS `enabled` 토글** (항목별 끄기) + **`OUTPUT_PREFIX`** (출력 파일명 prefix) + **`REQUIRED_TABLE_KEYWORDS`** (reportlet/테이블 단위 필터) + **name_keywords 패널-우선 해석** + **`SKIP_PANEL_SEGMENT_KEYWORDS`** (특정 패널 세그만 제거) + **EXTRA↔SKIP 충돌검사** + **N단계 dimension breakdown** + **device 컬럼 자동 추출** + **레벨별 limit cap** (`LIMIT_LV1`/`LIMIT_BD`) + **stack/table 출력 2종** + **device 케이스별 반복 추출** (`DEVICE_CASES`, 기본 비활성) + **(v3.9) stack metric → metric_origin** + **(v4.0) breakdown 단계별 cap `LIMIT_BD` ~ `LIMIT_BD4` + 출력 무결성 자가검증 + breakdown 진행률·남은예상시간 + `--estimate` 사전추정** + **(v4.1) breakdown 깊이/부모행 출력 제어 `BREAKDOWN_MAX_DEPTH`(깊이 캡)·`INCLUDE_PARENT_ROWS`(총계행 포함 여부) — 총계만/총계+bd1/bd1만 조합** + **(v4.2) 기간 분할·연도 shift `MONTHLY`(총기간을 달력 월로 쪼개 월별 추출, period 컬럼)·`YEAR_OFFSETS`(sites_input 연도 ±N shift, 동기간 YoY 를 한 실행으로)** + **(v4.5) prior 기간 자동계산 `PRIOR_OFFSETS`(본기간 직전의 동일 길이 구간을 같이 추출, `_prior` 파일 태그 + `period_type` 컬럼) · sites_input 선택 컬럼 `prior_start`/`prior_end` 로 수동 지정** + **(v4.6) 작년 기간 수동 지정 `last_year_start`/`last_year_end`(YEAR_OFFSETS 의 offset -1 run 에만 — 채운 행만 그 기간, 빈 행은 연도 -1 산술)** + **(v5.0) 기간 분할 `PERIOD_SPLIT`(""/monthly/**daily**) — MONTHLY 상수를 대체, daily 는 하루 단위 조각 + `DAILY_TIME_MODE` 로 '매일 그 시간대만' 가능** |
-| `RESHAPE_standard_v1.9.py` | extract_data 출력 → `_union_standard_*.csv` union 정제 (범용). **v1.7: `period` 컬럼(v4.2 MONTHLY 의 월 라벨) passthrough** (`PASSTHROUGH_COLUMNS`) — YEAR_OFFSETS 의 `_y{연도}` 파일은 v1.6 에서도 이미 연도별로 union 됨. v1.6: wide 의 revenue 계열을 `<metric>_org`(원본)+`<metric>`(fx) 두 열로 분리 + `variable` 컬럼(dimension 뒤 토큰, 예 `variables/evar26`→`evar26`) 추가. v1.5: metric_origin + 정제 metric + value_origin + wide union(`_union_standard_wide_*`). v1.4: panel/table/reportlet 의 product 키워드(`Multi Purchase`/`Multi Order`/`Best Selling Product`) 행에 `product_category.yaml` 로 `category` 컬럼 분류 추가 (`ADD_CATEGORY_COLUMN`). v1.3: `stack_data_extract_*` 입력 패턴 대응 (구버전 `extract_data_*` 호환). v1.2: metric / Panel name 출력 컬럼 추가 + `EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션. v1.1: breakdown 행 모드(`BREAKDOWN_ROWS_MODE`) + device/bd 컬럼 passthrough + `_old` 접미사 SITE CODE 정규화 **v1.9: `period_type`(v4.5 prior 라벨) passthrough + 환율 미조회 경고(못 찾아 rate=1.0 이 먹은 행을 site×연도별로 실행 끝에 표시)** |
+| `RESHAPE_standard_v1.9.py` | extract_data 출력 → `_union_standard_*.csv` union 정제 (범용). **v1.7: `period` 컬럼(`PERIOD_SPLIT` — 구 v4.2 `MONTHLY` — 의 조각 라벨) passthrough** (`PASSTHROUGH_COLUMNS`) — YEAR_OFFSETS 의 `_y{연도}` 파일은 v1.6 에서도 이미 연도별로 union 됨. v1.6: wide 의 revenue 계열을 `<metric>_org`(원본)+`<metric>`(fx) 두 열로 분리 + `variable` 컬럼(dimension 뒤 토큰, 예 `variables/evar26`→`evar26`) 추가. v1.5: metric_origin + 정제 metric + value_origin + wide union(`_union_standard_wide_*`). v1.4: panel/table/reportlet 의 product 키워드(`Multi Purchase`/`Multi Order`/`Best Selling Product`) 행에 `product_category.yaml` 로 `category` 컬럼 분류 추가 (`ADD_CATEGORY_COLUMN`). v1.3: `stack_data_extract_*` 입력 패턴 대응 (구버전 `extract_data_*` 호환). v1.2: metric / Panel name 출력 컬럼 추가 + `EXCLUDE_OUTPUT_COLUMNS` 컬럼 제외 옵션. v1.1: breakdown 행 모드(`BREAKDOWN_ROWS_MODE`) + device/bd 컬럼 passthrough + `_old` 접미사 SITE CODE 정규화 **v1.9: `period_type`(v4.5 prior 라벨) passthrough + 환율 미조회 경고(못 찾아 rate=1.0 이 먹은 행을 site×연도별로 실행 끝에 표시)** |
 | `site_registry.py` | `site_code → (subsidiary, country, rsid)` 매핑. `lookup_site()` 함수 제공 |
 | `table_data_extract_example.csv` / `stack_data_extract_example.csv` | 출력 2종(가로형 table / 세로형 stack) 형식 예시 (placeholder 값) |
 | `app_O_X_example.csv` / `currency_example.csv` / `product_category_example.yaml` | **입력 참조 파일 형식 예시.** 실제 파일(`app_O_X.csv` / `currency.csv` / `product_category.yaml`)은 운영 데이터라 repo 미포함 — `_example` 을 뗀 이름으로 본인 데이터를 채워 같은 폴더에 저장할 것 |
@@ -50,6 +50,7 @@ PANEL_GROUP_PANEL_DEFAULT = "B2B"
 > 전제: `sites_input.csv` 에는 site 별 **총기간**(start ~ end)만 넣는다. 아래 두 상수가 "그 총기간을 어떻게 뽑을지"를 정한다. 기본값(`False` / `[0]`) 이면 v4.1 과 100% 동일 출력.
 
 1. **`MONTHLY` — 총기간을 달력 월로 쪼개 월별 추출** (bd 안 쓰고 monthly)
+   - ⚠ **v5.0 에서 `PERIOD_SPLIT="monthly"` 로 대체됐다** (아래 "기간 분할 — PERIOD_SPLIT" 섹션). 이 항목은 v4.2 당시 기록이다.
    - 월마다 `dateRange` override 로 각각 호출. 양 끝 부분월은 총기간에 맞춰 잘림 (`2025-07-06~07-21` → `Jul 2025` 한 조각).
    - 출력에 **`period` 컬럼** 추가 (`Jul 2025` — AA `daterangemonth` 표기와 동일) + `start_date`/`end_date` 가 그 달 범위로 기록. `MONTHLY=False` 면 `period` 컬럼 자체가 생기지 않음.
    - **AA 프로젝트에 daterangemonth breakdown 을 미리 만들 필요가 없다** — 어떤 프로젝트든 월별로 뽑힌다. bd 슬롯을 안 쓰므로 **기존 breakdown(예: 채널 detail)과 병행** 가능.
@@ -175,7 +176,7 @@ python extract_data_v5.0.py --monthly --year-offsets 0,-1      # (v4.2) 두 옵�
 | `BREAKDOWN_TOP_N` | 레벨별 상위 N item 만 분해 (`0` = 전체) | 검증/성능 조절 |
 | `BREAKDOWN_MAX_DEPTH` | breakdown 깊이 캡 (`-1`=무제한, `0`=총계만, `N`=bdN까지) | 필요한 깊이만 뽑을 때 |
 | `INCLUDE_PARENT_ROWS` | dim1 총계(부모) 행 출력 포함 (`False`=breakdown 행만) | "bd만" 모드 |
-| `MONTHLY` (v4.2) | 총기간을 달력 월로 쪼개 월별 추출 (`False`=총기간 1회). `True` 면 `period` 컬럼 추가 | 월별 추이가 필요할 때 |
+| `PERIOD_SPLIT` (v5.0, 구 `MONTHLY`) | 총기간을 조각으로 나눠 추출 (`""`=총기간 1회, `"monthly"`=달력 월, `"daily"`=하루). 나누면 `period` 컬럼 추가 | 월별·일별 추이가 필요할 때 |
 | `YEAR_OFFSETS` (v4.2) | sites_input 날짜 연도 shift 리스트 (`[0]`=그대로, `[0,-1]`=올해+작년). offset≠0 은 파일명 `_y{연도}` 태그 | 동기간 YoY 를 한 폴더에서 |
 | `SITE_PANEL_SITES` (v4.3) | 패널명에 site_code 가 토큰으로 든 패널을 그 site 전용으로 판정할 site 목록 (`[]`=기존 US·Global 접두 룰) | 패널이 site 별로 나뉜 프로젝트 |
 | `SITE_PANEL_ALIAS` (v4.3) | 패널명이 site_code 와 다를 때 쓸 키워드 (`{"us_old": ["US_old","US old"]}`) | 패널명 표기가 다를 때 |
@@ -197,20 +198,22 @@ python extract_data_v5.0.py --monthly --year-offsets 0,-1      # (v4.2) 두 옵�
 ## sites_input.csv 형식
 
 ```csv
-site_code,start_date,end_date,prior_start,prior_end
-ae,2026-05-11,2026-05-17,,
-au,2026-05-14,2026-05-17,,
-br,2026-05-11,2026-05-17,,
-de,2026-05-12,2026-05-17,,
-us,2026-05-19,2026-06-07,2026-04-01,2026-05-18
-...
+site_code,start_date,end_date,start_time,end_time,prior_start,prior_end,last_year_start,last_year_end,설명
+au,2026-05-11,2026-05-31,,,,,,,① 총기간만 (A~C)
+in,2026-06-01,2026-06-03,09:00,18:00,,,,,② + 시각 컷 (A~E)
+us,2026-05-19,2026-06-07,09:00,18:00,2026-04-01,2026-05-18,,,③ + prior 수동 지정 (A~G)
+de,2026-08-17,2026-09-15,09:00,18:00,2026-07-18,2026-08-16,2025-08-11,2025-09-09,④ + 작년 기간 수동 지정 (A~I)
 ```
+
+- 필수는 A~C(`site_code`, `start_date`, `end_date`) 3열. D~I 는 선택이라 비우거나 컬럼 자체를 빼도 된다
+- 로더는 **헤더명으로** 읽는다 — J열 `설명` 처럼 모르는 컬럼은 무시되고, 열 순서가 달라도 된다
 
 - `site_code` — `site_registry._SITE_MASTER` 의 key. 매핑에 없으면 fallback `sscompany_name4{site_code 의 _ 제거}` 사용
 - `start_date` / `end_date` — site 별 **총기간**, ISO `YYYY-MM-DD`. v3 가 `YYYY-MM-DDT00:00:00.000/다음날T00:00:00.000` 형식 (AA 컨벤션) 으로 자동 변환
+- `start_time` / `end_time` — **(v4.4) 선택**. `HH:MM` 시각 컷. 둘 다 채워야 적용되고, 비우면 달력일 기준. 아래 "시각(time) 컷" 섹션 참고
 - `prior_start` / `prior_end` — **(v4.5) 선택**. prior 기간을 수동 지정할 때만 채운다. 비우면 `PRIOR_OFFSETS` 로 자동계산. 아래 "prior 기간" 섹션 참고
 - `last_year_start` / `last_year_end` — **(v4.6) 선택**. 작년 기간을 수동 지정할 때만 채운다. `YEAR_OFFSETS` 의 **offset -1 run 에만** 쓰이고, 비우면 연도 -1 산술. 아래 "작년 기간 수동 지정" 섹션 참고
-- **(v4.2) 여기엔 총기간만 넣는다** — 월별로 쪼갤지(`MONTHLY`), 다른 연도 동기간도 뽑을지(`YEAR_OFFSETS`)는 상단 상수가 결정. 연도별로 sites_input 을 복사·수정하거나 폴더를 통째로 복제할 필요 없음
+- **(v4.2) 여기엔 총기간만 넣는다** — 월·일 단위로 쪼갤지(`PERIOD_SPLIT`, v5.0 — 구 `MONTHLY`), 다른 연도 동기간도 뽑을지(`YEAR_OFFSETS`)는 상단 상수가 결정. 연도별로 sites_input 을 복사·수정하거나 폴더를 통째로 복제할 필요 없음
 - **(v4.3) 패널 분류 컬럼은 선택** — `PANEL_GROUP_COLUMN` 에 이름을 박으면 그 이름의 4번째 컬럼을 site 별 분류값으로 읽는다. 컬럼이 없어도(또는 상수가 `""` 여도) 그대로 동작하며 분류 필터만 적용되지 않는다. 예:
   ```csv
   site_code,start_date,end_date,B2B_B2C
@@ -455,7 +458,7 @@ data_extract/
        - 리포틀렛별 세그먼트/메트릭 이름 추출
        - columnTree 의 DateRange 컴포넌트 감지 + API 로 definition 조회
        - /reports API payload 자동 빌드 (site 별 RSID + dateRange override 적용)
-         · (v4.2) MONTHLY 면 총기간을 달력 월로 쪼개 조각마다 payload 1개씩
+         · (v5.0) PERIOD_SPLIT 이 monthly/daily 면 총기간을 월/일로 쪼개 조각마다 payload 1개씩
 3. ThreadPoolExecutor 로 동시다발적 /reports POST
        - dimension 있는 테이블 → rows 추출
        - dimension 없는 summary 테이블 → summaryData.totals 추출
@@ -505,7 +508,7 @@ output/
 └── ...
 ```
 
-- `MONTHLY=True` 면 `end_date` 뒤에 **`period` 컬럼**(`Jul 2025`)이 추가되고 `start_date`/`end_date` 는 **그 달의 범위**로 기록된다 (마지막 달은 총기간 end 까지). `MONTHLY=False` 면 컬럼 자체가 없음.
+- `PERIOD_SPLIT="monthly"` 면 `end_date` 뒤에 **`period` 컬럼**(`Jul 2025`)이 추가되고 `start_date`/`end_date` 는 **그 달의 범위**로 기록된다 (마지막 달은 총기간 end 까지). `"daily"` 면 `period` 가 `2026-05-14` 형식. `PERIOD_SPLIT=""` 면 컬럼 자체가 없음.
 - 월 정보는 `bd{k}_*` 가 아니라 `period` 로만 들어가므로, 테이블에 원래 breakdown(예: 채널 detail)이 있어도 그대로 공존한다.
 
 | 파일 | 내용 |
@@ -593,8 +596,8 @@ python extract_data_v5.0.py --times 09:00-18:00   # 전 site 강제
 python extract_data_v5.0.py --no-times            # sites_input 의 시각 무시
 ```
 
-### MONTHLY 병용
-첫 조각에만 시작시각, 마지막 조각에만 종료시각 (중간 달 조각은 온전한 달력일).
+### PERIOD_SPLIT 병용
+`"monthly"` 는 첫 조각에만 시작시각, 마지막 조각에만 종료시각 (중간 달 조각은 온전한 달력일). `"daily"` 는 `DAILY_TIME_MODE` 로 해석이 갈린다 (위 "daily + 시각 컷" 참고).
 
 ### ⚠ 구간을 쪼개도 합이 안 맞는다 (AA 특성, 코드 문제 아님)
 

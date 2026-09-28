@@ -198,7 +198,7 @@ pip install aanalytics2 requests pyyaml
 | RESHAPE | 요구 extract_data | 계기 |
 |---|---|---|
 | v1.6 | v3.9 이상 | (extract 변경 없음) |
-| v1.7 | **v4.2 이상** | `period` 컬럼 (MONTHLY) |
+| v1.7 | **v4.2 이상** | `period` 컬럼 (`MONTHLY` → v5.0 `PERIOD_SPLIT`) |
 | v1.8 | **v4.4 이상** | `start_time` / `end_time` (시각 컷) |
 
 반대로 `extract_data` 는 신규 기능을 **기본값에서 끄고** 내보내므로, 기능을 안 쓰면 이전
