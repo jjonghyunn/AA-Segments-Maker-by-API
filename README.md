@@ -28,7 +28,7 @@ AA-Segments-Maker-by-API/
 │   ├── aa_segment_lookup.py        (extract_data 가 import 하는 필수 의존 — 원본은 segment_maker/, 갱신 시 동기화)
 │   ├── sites_input.csv             (추출 대상 site/기간 입력 템플릿)
 │   ├── *_example.csv / *_example.yaml  (입력 형식 예시 — 실제 입력 파일은 repo 미포함, README 참조)
-│   ├── output/                     (추출·정제 출력 폴더 — 형식 예시 `stack`/`table_data_extract_example.csv` + `_union_standard(_wide)_example.csv`)
+│   ├── output/                     (추출·정제 출력 폴더 — 형식 예시 `stack`(`_prior`)/`table_data_extract_example.csv` + `_union_standard(_wide)_example.csv`)
 │   └── _contents_tier1_2_uni/ …    (콘텐츠 CC_xx Tier1+Tier2 통합 추출·정제)
 ├── dateranges/             # Date Range 도구 (aa_daterange 단건 + list/update/create/upsert 일괄)
 ├── panel_collapse/         # panel 안 subPanel 일괄 collapse=True
