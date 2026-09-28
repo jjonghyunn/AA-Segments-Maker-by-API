@@ -25,7 +25,8 @@ Adobe Workspace project 의 panel × reportlet 에서 세그먼트/메트릭 이
 | `currency_csv_from_xecom.py` | [`currency_csv_from_xecom.md`](currency_csv_from_xecom.md) — `sites_input.csv` max end_date(+1년 전) 기준 xe.com 환율로 `currency.csv` 생성. RESHAPE 가 revenue 입력이 있을 때 자동 호출 (하위 폴더 RESHAPE 도 상위 2단계까지 찾아 씀). 통화 매핑 = `currency_code_by_site.csv` |
 | `aa_segment_lookup.py` | segment 이름 검색 + DSL decompile 헬퍼 (원본은 `segment_maker/`, 갱신 시 동기화) |
 | `sites_input.csv` | 입력 템플릿 — A~I(`site_code, start_date, end_date` 필수 + 시각 컷·prior·작년 기간 선택) + J열 `설명`. 입력 패턴 4가지 예시는 `#` 을 붙인 비활성 행 (상세 `extract_data.md` "sites_input.csv 형식") |
-| `stack_data_extract_example.csv` / `table_data_extract_example.csv` | 출력 형식 예시 |
+| `output/stack_data_extract_example.csv` / `output/table_data_extract_example.csv` | 추출 출력 형식 예시 (v5.0 기본 설정) |
+| `output/_union_standard_example.csv` / `output/_union_standard_wide_example.csv` | 정제(RESHAPE_standard) 출력 형식 예시 — 위 stack 예시를 정제한 결과 (long / wide) |
 | `app_O_X_example.csv` | 입력 형식 예시 — site 별 App 론치 O/X (`extract_data_v5.0.py` 의 `requires_app` device 케이스 필터용) |
 | `currency_example.csv` | 입력 형식 예시 — `site_code` × `YYYY-MM-DD` 헤더 환율표 (revenue metric 환산용) |
 | `product_category_example.yaml` | 입력 형식 예시 — 제품코드 분류 룰 (`ADD_CATEGORY_COLUMN=True` 일 때 `category` 컬럼 생성) |

@@ -27,7 +27,8 @@ AA-Segments-Maker-by-API/
 │   ├── currency_csv_from_xecom.py  (sites_input max end_date 기준 xe.com 환율 → currency.csv. RESHAPE 가 revenue 있을 때 자동 호출)
 │   ├── aa_segment_lookup.py        (extract_data 가 import 하는 필수 의존 — 원본은 segment_maker/, 갱신 시 동기화)
 │   ├── sites_input.csv             (추출 대상 site/기간 입력 템플릿)
-│   ├── *_example.csv / *_example.yaml  (입출력 형식 예시 — 실제 입력 파일은 repo 미포함, README 참조)
+│   ├── *_example.csv / *_example.yaml  (입력 형식 예시 — 실제 입력 파일은 repo 미포함, README 참조)
+│   ├── output/                     (추출·정제 출력 폴더 — 형식 예시 `stack`/`table_data_extract_example.csv` + `_union_standard(_wide)_example.csv`)
 │   └── _contents_tier1_2_uni/ …    (콘텐츠 CC_xx Tier1+Tier2 통합 추출·정제)
 ├── dateranges/             # Date Range 도구 (aa_daterange 단건 + list/update/create/upsert 일괄)
 ├── panel_collapse/         # panel 안 subPanel 일괄 collapse=True
@@ -66,8 +67,8 @@ python aa_segment_lookup.py --search "[CAMPAIGN NAME]"     # → lookup/segment_
 # 5) Workspace 프로젝트 패널 데이터 추출
 cd ../data_extract
 python extract_data_v5.0.py                # sites_input.csv 의 site 별로 추출
-#   → stack_data_extract_<site>_<ts>.csv  (형식: stack_data_extract_example.csv)
-#   → table_data_extract_<site>_<ts>.csv  (형식: table_data_extract_example.csv)
+#   → stack_data_extract_<site>_<ts>.csv  (형식: output/stack_data_extract_example.csv)
+#   → table_data_extract_<site>_<ts>.csv  (형식: output/table_data_extract_example.csv)
 python RESHAPE_standard_v1.9.py            # union 정제
 ```
 

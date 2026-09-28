@@ -165,6 +165,7 @@ python RESHAPE_standard_v1.9.py
 - `ADD_CATEGORY_COLUMN=True` 면 같은 폴더에 `product_category.yaml` 필요 (없고 키워드 매칭 행 있으면 경고 후 분류 skip)
 - 입력: 같은 폴더 `output/stack_data_extract_*.csv` (+구버전 `extract_data_*.csv`)
 - 결과: `output/_union_standard_{날짜시간}.csv` (long) + `_union_standard_wide_{날짜시간}.csv` (wide)
+- 형식 예시: `output/_union_standard_example.csv` (long) / `output/_union_standard_wide_example.csv` (wide) — `output/stack_data_extract_example.csv` 를 그대로 정제한 결과다. 파일명에 타임스탬프가 없어 RESHAPE 입력으로는 잡히지 않는다
 - revenue 행이 있으면 `currency.csv` (1열 site_code + 헤더에 `YYYY-MM-DD` 컬럼들) 도 같은 폴더에 필요
 
 > ⚠️ **`product_category.yaml` 과 `currency.csv` 는 repo 에 포함돼 있지 않다** (운영 데이터라 제외).

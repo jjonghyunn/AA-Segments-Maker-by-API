@@ -1,0 +1,4 @@
+﻿TIER,SUBS,COUNTRY,SITE CODE,ITEM,rsid,start_date,end_date,variable,dim_value,category,category_non_acc_unknown_excl,segments,device,Panel name,reportlet,Visits,Unique Visitors,Non bounced visit,Page Views
+,,US,us,[part_name] All Page Track(PAGE_TYPES),sscompany_name4newus,2026-05-19,2026-06-07,,(summary),,,[Device] Mobile; [Global] DIV1 Visit; [part_name] All Page Track(PAGE_TYPES),Mobile,Shop Traffic By Division,Shop DIV1 Visit,5266539,4426510,1408148,7096099
+,,US,us,[part_name] All Page Track(PAGE_TYPES),sscompany_name4newus,2026-05-19,2026-06-07,,(summary),,,[Device] PC; [Global] DIV1 Visit; [part_name] All Page Track(PAGE_TYPES),PC,Shop Traffic By Division,Shop DIV1 Visit,875363,713131,433900,1556927
+,,US,us,[part_name] All Page Track(PAGE_TYPES),sscompany_name4newus,2026-05-19,2026-06-07,,(summary),,,[Device] Android; [Global] DIV1 Visit; [part_name] All Page Track(PAGE_TYPES),Android,Shop Traffic By Division,Shop DIV1 Visit,327293,187850,326963,1024971
