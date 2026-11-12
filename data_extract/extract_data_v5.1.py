@@ -1,5 +1,16 @@
-# extract_data_v5.0.py
-# 2026-09-21  Jonghyun Park w/ Claude
+# extract_data_v5.1.py
+# 2026-11-12  Jonghyun Park w/ Claude
+# v5.1 (2026-11-12): **실행 날짜 폴더 출력** — OUTPUT_DATE_SUBDIR (기본 False = 종전과 동일).
+#   · True 면 OUTPUT_DIR 아래 실행 시작일(YYMMDD) 폴더에 저장한다 — output/261106/stack_data_extract_*.csv
+#     매일 같은 추출을 반복할 때 회차별 결과가 한 폴더에 모여 섞이지 않는다.
+#   · 날짜는 **실행 시작 시각** 기준 — 자정을 넘겨도 한 번의 실행은 한 폴더에 쓴다.
+#   · 정제는 RESHAPE_standard **v1.10 이상**의 INPUT_DATE_DIR 로 폴더를 고른다
+#     ("latest" = 가장 최근 날짜 폴더 / "261106" = 지정). v1.9 이하는 output/ 루트만 읽는다.
+#   · 부분 재추출: 바뀐 site 만 --site 로 다시 뽑고 나머지 site 파일은 전날 폴더에서 복사.
+#     빼야 할 site 파일은 그 날짜 폴더의 old/ 로 옮긴다 (RESHAPE 는 하위 폴더를 읽지 않는다).
+#   · 시작 요약의 prior 개수 표시 수정 — PRIOR_OFFSETS=[0,-1] 처럼 0 이 들어 있을 때만 맞던 계산을
+#     0 이 아닌 값의 개수로 바꿨다 (추출 동작은 무변경).
+#   ※ 출력 컬럼은 안 늘어난다. 그 외 추출 로직은 v5.0 과 동일.
 # v5.0 (2026-09-21): **기간 분할에 daily 추가** + 상수 통합 — MONTHLY(bool) -> PERIOD_SPLIT(str).
 #   ⚠ **호환이 깨지는 변경**이라 메이저 버전이다. MONTHLY=True 로 쓰던 사본은
 #     PERIOD_SPLIT="monthly" 로 바꿔야 한다. MONTHLY 를 다시 정의해두면 조용히 무시되지 않고
@@ -17,38 +28,6 @@
 #     기존 --monthly / --no-monthly 도 별칭으로 계속 받는다.
 #   ※ 출력 컬럼은 안 늘어난다 (period 컬럼은 v4.2 부터 있던 것) → RESHAPE_standard 는 v1.9 그대로.
 #   ※ 그 외 추출 로직은 v4.6 과 동일.
-# v4.6 (2026-09-21): **작년 기간 수동 지정** — sites_input 선택 컬럼 last_year_start / last_year_end.
-#   YEAR_OFFSETS 의 **offset -1 run 에만** 적용된다. 값이 있으면 그 기간을 그대로 쓰고,
-#   **비어 있는 행만** 기존처럼 연도 -1 산술(_shift_year)로 뽑는다. 섞어 쓸 수 있다.
-#     · 캠페인은 해마다 시작 요일·기간이 달라서 "작년 같은 날짜"가 "작년 같은 캠페인"이 아니다.
-#       그 site 만 실제 작년 캠페인 기간을 적어두면 나머지는 산술 그대로 간다.
-#     · 둘 다 채워야 적용. 한쪽만 / 형식 오류 / start > end 면 경고 후 산술로 폴백
-#       (prior·시각 컬럼과 같은 가드).
-#     · offset -2 이하, 0, 양수에는 적용하지 않는다 (작년 = -1 하나만).
-#     · 파일명 `_y{연도}` 태그는 **지정한 시작일의 연도**로 붙는다 — 산술이든 지정값이든 동일.
-#     · YEAR_OFFSETS 에 -1 이 없으면(예: 기본 [0]) 이 컬럼은 읽히기만 하고 안 쓰인다.
-#   ※ **출력 컬럼이 늘지 않는다** (날짜 값만 바뀜) → RESHAPE_standard 는 v1.9 그대로 쓰면 된다.
-#   ※ 그 외 추출 로직은 v4.5 와 동일.
-# v4.5 (2026-09-21): **prior 기간** 자동계산 추가 — PRIOR_OFFSETS.
-#   본기간(sites_input 의 start ~ end) **직전의 동일 길이 구간**을 스크립트가 계산해 같이 추출한다.
-#     계산: N = (end - start).days + 1 (양끝 포함 일수) -> 양 날짜를 N x |offset| 일 뒤로 민다.
-#       예) 2026-05-14 ~ 2026-05-17 (4일) -> -1: 2026-05-10 ~ 2026-05-13 / -2: 2026-05-06 ~ 2026-05-09
-#       (prior_end = start - 1일 — 갭 없이 바로 앞에 붙는다)
-#     · [0] 기본 -> 본기간만. **v4.4 와 출력 100% 동일** (period_type 컬럼도 안 생김).
-#       [0,-1] -> site 당 run 2배. [0,-1,-2] -> 직전 2구간까지. **음수만 허용**(양수는 SystemExit).
-#     · YEAR_OFFSETS 와 **곱집합이 아니다** — offset 0(본기간) run 에만 prior 가 붙는다.
-#       ([0,-1] x [0,-1] = 3 run: 올해본/올해prior/작년본. 작년 prior 는 안 뽑는다)
-#     · offset≠0 run 은 파일명에 `_prior`(-2 면 `_prior2`) 태그 — 태그가 없으면 RESHAPE 의
-#       "site 별 최신 1개" 선택에서 campaign/prior 가 같은 키로 경쟁해 한쪽이 통째로 버려진다
-#       (아래 GROUP_TAG_IN_FILENAME 주석의 2026-07-31 유실과 같은 구조).
-#     · 기능을 켜면 출력 CSV 에 **period_type 컬럼**(`campaign` / `prior` / `prior2`) 추가.
-#       ⚠ RESHAPE_standard 는 **v1.9 이상**을 쓸 것 — PASSTHROUGH_COLUMNS 화이트리스트에
-#         period_type 이 없으면 **에러 없이 조용히 유실**된다 (v1.6 의 period, v1.7 의 시각 컬럼 전례).
-#     · sites_input 선택 컬럼 `prior_start` / `prior_end` 로 **수동 지정** 가능 (자동계산 대신).
-#       US 분할처럼 직전 구간이 다른 report suite 시절이라 자동계산이 안 맞는 행에 쓴다.
-#       한쪽만 채우면 경고 후 둘 다 버리고 자동계산 (시각 컬럼과 같은 안전장치).
-#     · CLI --prior-offsets 0,-1
-#   ※ 그 외 추출 로직은 v4.4 와 동일.
 # (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 """
 extract_data — AA Workspace 프로젝트의 panel·reportlet 구조를 여러 site(RSID)로 추출.
@@ -117,6 +96,10 @@ PROJECT_ID = "YOUR_PROJECT_ID" # 재방문 API 추출 테스트
 # ─── input / 출력 ──────────────────────────────────────────────────
 SITES_INPUT_CSV = Path(__file__).resolve().parent / "sites_input.csv"
 OUTPUT_DIR      = Path(__file__).resolve().parent / "output"
+# (v5.1) True 면 OUTPUT_DIR 아래 **실행 날짜(YYMMDD) 폴더**에 저장 — output/261106/stack_data_extract_*.csv
+#   매일 반복 추출할 때 회차별 결과가 섞이지 않는다. 날짜 = 실행 시작 시각 기준.
+#   정제는 RESHAPE_standard v1.10+ 의 INPUT_DATE_DIR 로 그 폴더를 고른다. False = 종전처럼 OUTPUT_DIR 에 바로 저장.
+OUTPUT_DATE_SUBDIR: bool = False
 # 출력 CSV 파일명 prefix. "" = 기존 동작. 예: "excl-seg_"(세그 제외 적용본), "full_"(세그 없는 전체)
 OUTPUT_PREFIX   = ""
 # 출력 CSV basename (v3.7 파일명 개편):
@@ -528,6 +511,8 @@ SETTINGS_FALLBACK = {
 # ════════════════════════════════════════════════════════════════════
 # 내부 사용
 # ════════════════════════════════════════════════════════════════════
+# (v5.1) 실제 저장 폴더 — 실행 시작 시각에 한 번 정한다 (병렬 site 가 자정을 넘겨도 같은 폴더)
+RUN_OUTPUT_DIR = OUTPUT_DIR / datetime.now().strftime("%y%m%d") if OUTPUT_DATE_SUBDIR else OUTPUT_DIR
 # 무제한(limit=0) 모드일 때 API 1 page 크기 (cap 모드에선 settings.limit = cap 으로 1~수 page)
 PAGE_SIZE_UNCAPPED = 5000
 # ─── metric 정규화 (v3.9) — metric_origin → 정제 metric ──────────────
@@ -2195,10 +2180,10 @@ def _process_site(headers: dict, gcid: str, project: dict, panels: list[dict],
         print(f"  breakdown 소요: {datetime.now() - bd_start}  (총 호출 {total_bd_calls}회)")
 
     # CSV 저장 (v3.7 파일명 개편 — 기존 extract_data_* → stack, column_mapping_* → table)
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    RUN_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     # v4.2: file_tag = YEAR_OFFSETS 로 shift 한 run 의 '_y2025' 등 (offset 0 / 미사용이면 "")
-    stack_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_STACK}_{site.site_code}{file_tag}_{ts}.csv"
-    table_path = OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_TABLE}_{site.site_code}{file_tag}_{ts}.csv"
+    stack_path = RUN_OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_STACK}_{site.site_code}{file_tag}_{ts}.csv"
+    table_path = RUN_OUTPUT_DIR / f"{OUTPUT_PREFIX}{OUTPUT_BASENAME_TABLE}_{site.site_code}{file_tag}_{ts}.csv"
 
     # dim_short — task 들의 dimension 마지막 토큰 (variables/evar26 → evar26).
     # 여러 dimension 섞여있으면 generic "dim_value" 로 fallback.
@@ -2744,7 +2729,7 @@ def main() -> int:
     if PRIOR_OFFSETS != [0]:
         _ovr = [r[0] for r in sites_rows if r[6] and r[7]]
         print(f"  prior    : PRIOR_OFFSETS={PRIOR_OFFSETS} -> 총 run {len(runs)}개 "
-              f"(본기간 run 마다 prior {len(PRIOR_OFFSETS) - 1}개 추가, 작년 run 에는 미적용)")
+              f"(본기간 run 마다 prior {len([v for v in PRIOR_OFFSETS if v])}개 추가, 작년 run 에는 미적용)")
         for _r in runs:
             if _r[7] and _r[7] != "campaign":
                 print(f"             · {_r[0]}{_r[3]}  {_r[1]} ~ {_r[2]}  [{_r[7]}]")

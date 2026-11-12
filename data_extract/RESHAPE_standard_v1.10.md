@@ -1,5 +1,5 @@
-# RESHAPE_standard_v1.9.py  
-<sub>2026-09-28  Jonghyun Park w/ Claude</sub>  
+# RESHAPE_standard_v1.10.py  
+<sub>2026-11-12  Jonghyun Park w/ Claude</sub>  
 
 `extract_data_v*.py` 가 site 별로 떨군 추출 CSV(`stack_data_extract_*`, 구버전 `extract_data_*`) 들을 **하나로 합치고(union) 보기 좋게 정리**해주는 범용 정제 스크립트.
 특정 디멘션(`campaign`, `evar26` 등)에 묶이지 않는다 — 디멘션 컬럼을 **자동 감지**하므로, 어떤 추출본이든 거의 설정 없이 그대로 돌릴 수 있다.
@@ -121,6 +121,7 @@ panel/table/reportlet 이름에 **product 키워드**(`Multi Purchase` / `Multi 
 
 | 상수 | 무슨 일 | 언제 바꾸나 |
 |---|---|---|
+| `INPUT_DATE_DIR` | 입력·출력 폴더 (v1.10). `"latest"`=output/ 아래 최신 YYMMDD 폴더(없으면 루트) / `"261106"`=그 폴더 / `""`=루트 | extract_data `OUTPUT_DATE_SUBDIR=True` 로 날짜 폴더에 뽑을 때, 지난 회차를 다시 정제할 때 |
 | `SITES_FILTER` | 특정 site 만 처리 (빈 리스트=전체) | 일부 site 만 뽑을 때 |
 | `OUTPUT_BASENAME` | 출력 파일명 앞부분 | 결과 이름 바꿀 때 |
 | `SEG_SPLIT_CHAR` | ITEM 뽑을 구분자 (기본 `;`) | segments 구분자가 다를 때 |
@@ -159,12 +160,12 @@ rsid, start_date, end_date, value_n, metric_origin, metric, [variable], <디멘�
 ## 실행
 
 ```bash
-python RESHAPE_standard_v1.9.py
+python RESHAPE_standard_v1.10.py
 ```
 - 같은 폴더에 `site_registry.py` 필요 (site_code → 국가/rsid)
 - `ADD_CATEGORY_COLUMN=True` 면 같은 폴더에 `product_category.yaml` 필요 (없고 키워드 매칭 행 있으면 경고 후 분류 skip)
-- 입력: 같은 폴더 `output/stack_data_extract_*.csv` (+구버전 `extract_data_*.csv`)
-- 결과: `output/_union_standard_{날짜시간}.csv` (long) + `_union_standard_wide_{날짜시간}.csv` (wide)
+- 입력: 같은 폴더 `output/stack_data_extract_*.csv` (+구버전 `extract_data_*.csv`). 날짜 폴더를 쓰면 `output/<YYMMDD>/` — `INPUT_DATE_DIR` 참고 (v1.10)
+- 결과: 입력과 같은 폴더에 `_union_standard_{날짜시간}.csv` (long) + `_union_standard_wide_{날짜시간}.csv` (wide)
 - 형식 예시: `output/_union_standard_example.csv` (long) / `output/_union_standard_wide_example.csv` (wide) — `output/stack_data_extract_example.csv`(campaign) + `stack_data_extract_prior_example.csv`(prior) 두 파일을 정제한 결과다. `period_type` 으로 campaign / prior 가 구분되고, 선택 열 `start_time`/`end_time`/`period`/`period_type`/`bd1_*`/`bd2_*` 가 `PASSTHROUGH_COLUMNS` 로 따라온다. 파일명에 타임스탬프가 없어 RESHAPE 입력으로는 잡히지 않는다
 - revenue 행이 있으면 `currency.csv` (1열 site_code + 헤더에 `YYYY-MM-DD` 컬럼들) 도 같은 폴더에 필요
 
@@ -176,6 +177,32 @@ python RESHAPE_standard_v1.9.py
 ## 의존성
 
 표준 라이브러리(csv, re, pathlib 등) + `pyyaml`(category 분류용) + 같은 폴더 `site_registry.py`.
+
+## v1.10 (2026-11-12) — 날짜 폴더 선택 `INPUT_DATE_DIR`
+
+`extract_data_v5.1` 의 `OUTPUT_DATE_SUBDIR=True` 는 추출물을 `output/<실행 YYMMDD>/` 에 저장한다.
+RESHAPE 는 어느 날짜 폴더를 정제할지 상단 상수 하나로 고르고, 결과도 **그 폴더에** 쓴다.
+
+```python
+INPUT_DATE_DIR = "latest"   # 최신 날짜 폴더 (기본)
+INPUT_DATE_DIR = "261106"   # 그 날짜 폴더 — 지난 회차를 다시 정제할 때
+INPUT_DATE_DIR = ""         # output/ 루트 (날짜 폴더를 안 쓰는 종전 방식)
+```
+
+- `"latest"` = `output/` 아래 이름이 6자리 숫자인 폴더 중 **이름순 마지막**. 날짜 폴더가 하나도 없으면 `output/` 루트를 읽으므로, 날짜 폴더를 안 쓰는 기존 사용처는 v1.9 와 동작이 같다.
+- 지정한 날짜 폴더가 없거나 형식이 틀리면 에러로 멈춘다 (엉뚱한 폴더를 조용히 읽지 않게).
+- 실행하면 첫 줄에 실제로 읽는 폴더가 찍힌다 — `[input/output dir] …\output\261106`.
+
+### 매일 반복 추출할 때 쓰는 법
+
+1. `extract_data_v5.1.py` (`OUTPUT_DATE_SUBDIR=True`) → `output/261106/` 생성
+2. `RESHAPE_standard_v1.10.py` (`INPUT_DATE_DIR="latest"`) → 같은 폴더에 `_union_standard_*`
+3. **부분 재추출** — 기간이 바뀐 site 만 `python extract_data_v5.1.py --site de --site in` 으로 다시 뽑고,
+   나머지 site 의 `stack_data_extract_*` 는 전날 폴더에서 오늘 폴더로 **복사**한다. RESHAPE 는 오늘 폴더만 보고 전체 site 를 합친다.
+4. **제외 처리** — 이번 회차에서 빠질 site 파일은 그 날짜 폴더의 `old/` 로 옮긴다. RESHAPE 는 하위 폴더를 읽지 않는다.
+
+- 같은 날 다시 돌리면 같은 폴더에 쌓이지만, site·태그별 **최신 타임스탬프 1개**만 쓰므로 문제없다.
+- 추출이 자정을 넘겨 끝나도 추출 쪽은 **시작일 폴더**에 쓴다. 그 뒤 RESHAPE 를 다음 날 돌릴 때 사이에 다른 날짜 폴더가 생겼다면 `"latest"` 대신 날짜를 지정할 것.
 
 ## v1.9 (2026-09-21) — prior 라벨 passthrough + 환율 조용한 실패 차단
 

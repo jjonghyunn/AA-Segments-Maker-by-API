@@ -22,7 +22,7 @@ AA-Segments-Maker-by-API/
 │   └── find_user_id.py             (AA 사용자 numeric loginId 검색)
 ├── data_extract/           # Workspace 리포트 데이터 추출 (extract_data_v*.py 권장 + _contents_tier1_2_uni 등 캠페인 variant)
 │   ├── extract_data_v*.py          (사이트별 RSID + dateRange override + N단계 breakdown + device 컬럼 + site 병렬)
-│   ├── RESHAPE_standard_v*.py      (추출본 union 정제 — **(v1.9) `period_type`(prior) passthrough + 환율 미조회 경고** + breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션 + product category 분류)
+│   ├── RESHAPE_standard_v*.py      (추출본 union 정제 — **(v1.10) 날짜 폴더 선택 `INPUT_DATE_DIR`** + (v1.9) `period_type`(prior) passthrough + 환율 미조회 경고 + breakdown 행 모드 + device/bd passthrough + metric/Panel name 컬럼·컬럼 제외 옵션 + product category 분류)
 │   ├── site_registry.py            (site_code ↔ rsid 매핑)
 │   ├── currency_csv_from_xecom.py  (sites_input max end_date 기준 xe.com 환율 → currency.csv. RESHAPE 가 revenue 있을 때 자동 호출)
 │   ├── aa_segment_lookup.py        (extract_data 가 import 하는 필수 의존 — 원본은 segment_maker/, 갱신 시 동기화)
@@ -66,10 +66,10 @@ python aa_segment_lookup.py --search "[CAMPAIGN NAME]"     # → lookup/segment_
 
 # 5) Workspace 프로젝트 패널 데이터 추출
 cd ../data_extract
-python extract_data_v5.0.py                # sites_input.csv 의 site 별로 추출
+python extract_data_v5.1.py                # sites_input.csv 의 site 별로 추출
 #   → stack_data_extract_<site>_<ts>.csv  (형식: output/stack_data_extract_example.csv)
 #   → table_data_extract_<site>_<ts>.csv  (형식: output/table_data_extract_example.csv)
-python RESHAPE_standard_v1.9.py            # union 정제
+python RESHAPE_standard_v1.10.py            # union 정제
 ```
 
 > 입력 CSV·structure DSL·결과 CSV 의 구체 형식은 `segment_maker/segments_input_example.csv` · `.dsl` · `segments_result_example.csv`, `data_extract/table_data_extract_example.csv` · `stack_data_extract_example.csv`, `panel_maker/panel_contents_mapping_example.csv` 참고. (모두 placeholder 값)

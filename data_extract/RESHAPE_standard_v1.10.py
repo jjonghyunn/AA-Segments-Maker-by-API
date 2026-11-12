@@ -1,30 +1,15 @@
-# RESHAPE_standard_v1.9.py
-# 2026-09-23  Jonghyun Park w/ Claude
+# RESHAPE_standard_v1.10.py
+# 2026-11-12  Jonghyun Park w/ Claude
+# v1.10 (2026-11-12): **입력·출력 날짜 폴더 선택** — INPUT_DATE_DIR.
+#   · extract_data v5.1 의 OUTPUT_DATE_SUBDIR=True 로 output/<YYMMDD>/ 에 쌓인 추출물을 정제할 때,
+#     어느 날짜 폴더를 읽을지 상수로 고른다. 결과(_union_standard_*)도 같은 폴더에 쓴다.
+#       "latest" (기본) = output/ 아래 6자리 숫자 폴더 중 이름순 마지막. 날짜 폴더가 없으면 output/ 루트
+#       "261106"        = 그 날짜 폴더 지정 (지난 회차 재정제). 폴더가 없으면 에러로 멈춘다
+#       ""              = output/ 루트 고정 (날짜 폴더를 안 쓰는 종전 방식)
+#   · 날짜 폴더를 안 쓰는 기존 사용처는 "latest" 여도 루트로 떨어지므로 v1.9 와 동작이 같다.
+#   · 하위 폴더(old/ 등)는 읽지 않는다 — 빼야 할 site 파일은 그 날짜 폴더의 old/ 로 옮기면 된다.
+#   ※ 정제 로직·출력 컬럼은 v1.9 와 동일.
 # 2026-09-23: currency.csv 자동 갱신 (AUTO_CURRENCY_CSV) — 입력에 revenue 가 있으면 정제 전에 currency_csv_from_xecom.py 로 sites_input 기준 환율을 받는다. 실패 시 기존 파일 사용.
-# v1.9 (2026-09-21): extract_data_v4.5 (prior 기간) 출력 대응 —
-#                    · 'period_type' 컬럼을 PASSTHROUGH_COLUMNS 에 추가.
-#                      v4.5 는 PRIOR_OFFSETS 를 켜면 stack CSV 에 이 컬럼('campaign'/'prior')을
-#                      붙이는데, 화이트리스트에 없으면 **에러 없이 조용히 유실**된다
-#                      (v1.6 이 'period' 를, v1.7 이 시각 컬럼을 빠뜨린 것과 같은 구조).
-#                    · 등록하면 metric/value 계열이 아니므로 wide 피봇의 index_cols 에 자동으로
-#                      들어가 campaign / prior 가 별도 행으로 분리된다.
-#                      (SITE CODE 는 _old 접미 제거로 정규화되므로, 날짜와 이 컬럼이 유일한 구분자)
-#                    · 입력에 없는 이름은 무시되므로 prior 를 안 쓴 기존 추출물은 무영향
-#                      (출력 컬럼도 안 늘어남) → v1.8 출력과 동일.
-#                    · 환율 **조용한 실패 차단** — 환율을 못 찾아 rate=1.0 이 적용된 행을
-#                      (site, 연도)별로 세어 실행 끝에 경고로 찍는다. v1.8 까지는 아무 표시가
-#                      없어서 현지통화 금액이 USD 인 척 나갔다.
-#                      prior 기간이 **전년으로 넘어가면**(예: 1월 캠페인) end_date[:4] 가 전년이라
-#                      currency.csv 에 그 연도 열이 없어 여기 걸리기 쉽다.
-# v1.8 (2026-08-14): extract_data_v4.4 (시각 컷) 출력 대응 —
-#                    · 'start_time' / 'end_time' 컬럼을 PASSTHROUGH_COLUMNS 에 추가.
-#                      v4.4 는 시각 컷을 걸면 stack/table CSV 에 이 두 컬럼을 붙이는데,
-#                      passthrough 화이트리스트에 없으면 **에러 없이 조용히 유실**된다
-#                      (v1.6 이 'period' 를 빠뜨려 월 라벨을 날린 것과 같은 구조).
-#                    · 입력에 없는 이름은 무시되므로 시각 컷을 안 쓴 기존 추출물은 무영향
-#                      (출력 컬럼도 안 늘어남) → v1.7 출력과 동일.
-#                    · v4.4 는 start_date/end_date 를 순수 날짜로 유지하므로 환율 조회
-#                      (end_date[:4] 연도 매칭)는 그대로 동작한다. 별도 수정 불필요.
 # (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 #
 # ※ [LOCAL ONLY / 마이너] 단발성 union 정제용 로컬 도구.
@@ -104,8 +89,15 @@ from site_registry import lookup_site
 # ════════════════════════════════════════════════════════════════════
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-INPUT_DIR  = SCRIPT_DIR / "output"
-OUTPUT_DIR = SCRIPT_DIR / "output"
+OUTPUT_ROOT = SCRIPT_DIR / "output"
+
+# ─── 입력·출력 폴더 (v1.10) ─────────────────────────────────────────
+# extract_data 의 OUTPUT_DATE_SUBDIR=True 면 추출물이 output/<YYMMDD>/ 날짜 폴더에 쌓인다.
+# 어느 폴더를 정제할지 고른다. 결과(_union_standard_*)도 같은 폴더에 쓴다.
+#   "latest" = output/ 아래 6자리 숫자 폴더 중 이름순 마지막(가장 최근 실행일). 없으면 output/ 루트
+#   "261106" = 그 날짜 폴더 지정 (지난 회차를 다시 정제할 때). 없으면 에러
+#   ""       = output/ 루트 고정 (날짜 폴더를 안 쓰는 종전 방식)
+INPUT_DATE_DIR = "latest"
 
 # 처리 site 제한 (CSV 안의 site_code 기준). 빈 리스트면 최신 batch 의 모든 site.
 SITES_FILTER: list[str] = []
@@ -428,6 +420,25 @@ def make_category_cells(dim_value: str, mode: str | None, rules) -> tuple[str, s
     return (category, category_non_acc)
 
 
+_DATE_DIR_RE = re.compile(r"^\d{6}$")
+
+
+def resolve_io_dir() -> Path:
+    """(v1.10) INPUT_DATE_DIR 로 입력·출력 폴더 결정."""
+    sel = (INPUT_DATE_DIR or "").strip()
+    if not sel:
+        return OUTPUT_ROOT
+    if sel.lower() == "latest":
+        dated = sorted(p for p in OUTPUT_ROOT.glob("*") if p.is_dir() and _DATE_DIR_RE.match(p.name))
+        return dated[-1] if dated else OUTPUT_ROOT
+    if not _DATE_DIR_RE.match(sel):
+        raise SystemExit(f"❌ INPUT_DATE_DIR 는 'latest' / '' / YYMMDD 6자리 중 하나여야 함: {sel!r}")
+    target = OUTPUT_ROOT / sel
+    if not target.is_dir():
+        raise SystemExit(f"❌ 날짜 폴더 없음: {target}")
+    return target
+
+
 def find_latest_per_site(input_dir: Path) -> tuple[list[Path], dict[str, str]]:
     """site 별로 각자 최신 ts 의 extract_data csv 1개만 반환.
     return: (paths_list, {site: ts})"""
@@ -480,7 +491,9 @@ def _normalize_metric(name):
 
 def process() -> int:
     # 1) site 별 최신 extract_data_*.csv 1개씩 pick
-    files, site_to_ts = find_latest_per_site(INPUT_DIR)
+    io_dir = resolve_io_dir()
+    print(f"[input/output dir] {io_dir}  (INPUT_DATE_DIR={INPUT_DATE_DIR!r})")
+    files, site_to_ts = find_latest_per_site(io_dir)
     print(f"[per-site latest] {len(files)} sites:")
     for p in files:
         m = RE_TS_FILE.match(p.name)
@@ -722,9 +735,9 @@ def process() -> int:
             return v
         return int(fv) if fv == int(fv) else round(fv, 2)
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    io_dir.mkdir(parents=True, exist_ok=True)
     ts = _ts_now()
-    out_path = OUTPUT_DIR / f"{OUTPUT_BASENAME}_{ts}.csv"
+    out_path = io_dir / f"{OUTPUT_BASENAME}_{ts}.csv"
     with open(out_path, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=out_headers, quoting=csv.QUOTE_MINIMAL,
                            extrasaction="ignore")  # 제외 컬럼 키 무시
@@ -751,7 +764,7 @@ def process() -> int:
               f"prior 기간이 전년으로 넘어간 경우 자주 발생한다.")
 
     # v1.5: 정제 metric 을 열로 올린 wide union 추가 출력
-    _write_wide(out_rows, out_headers, OUTPUT_DIR, ts)
+    _write_wide(out_rows, out_headers, io_dir, ts)
     return 0
 
 
