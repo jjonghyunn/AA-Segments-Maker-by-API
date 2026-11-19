@@ -1,5 +1,6 @@
 # extract_data_v5.1.py
 # 2026-11-12  Jonghyun Park w/ Claude
+# updated: 2026-11-19 13:55  — 주석·에러 메시지의 세그먼트 ID 예시를 placeholder 로 교체
 # v5.1 (2026-11-12): **실행 날짜 폴더 출력** — OUTPUT_DATE_SUBDIR (기본 False = 종전과 동일).
 #   · True 면 OUTPUT_DIR 아래 실행 시작일(YYMMDD) 폴더에 저장한다 — output/261106/stack_data_extract_*.csv
 #     매일 같은 추출을 반복할 때 회차별 결과가 한 폴더에 모여 섞이지 않는다.
@@ -424,7 +425,7 @@ PANEL_GROUP_SKIP_SITE_PANEL_RULE: list[str] = []
 # ─── 추가 세그먼트 (이름 검색 → globalFilter 적용) ─────────────────
 # 비어있으면 v2 와 동일 동작. 항목 하나 = 추가 segment 1개.
 # 항목은 segment_id (직접 지정) 또는 name_keywords (이름 검색) 둘 중 하나 사용.
-#   segment_id    : 세그먼트 ID 직접 지정 — "s200001591_69829951bd7205268da08767"
+#   segment_id    : 세그먼트 ID 직접 지정 — "s200000000_YOUR_SEGMENT_ID"
 #                   검색 단계 생략, 바로 globalFilter 에 추가. lookup CSV/DSL 도 생성 안 함.
 #                   (이미 lookup 으로 ID 확정한 경우 이게 가장 빠름)
 #   name_keywords : 세그먼트 이름 검색. 두 가지 형식 지원:
@@ -1024,7 +1025,7 @@ def _resolve_extra_segment(spec: dict, headers: dict, gcid: str, ts_str: str, pa
     if sid_raw:
         sid = str(sid_raw).strip()
         if not SEG_ID_RE.match(sid):
-            raise SystemExit(f"EXTRA_SEGMENTS segment_id 형식 오류: {sid!r} (예: s200001591_69829951bd7205268da08767)")
+            raise SystemExit(f"EXTRA_SEGMENTS segment_id 형식 오류: {sid!r} (예: s200000000_YOUR_SEGMENT_ID)")
         # 이름 fetch — 캐시에 박아 _build_global_filters 의 segment_names 에 활용
         name = _fetch_segment_name(headers, gcid, sid)
         print(f"\n[segment by id] {sid}  '{name or '(name 조회 실패)'}'")

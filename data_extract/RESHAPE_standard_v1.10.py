@@ -1,5 +1,6 @@
 # RESHAPE_standard_v1.10.py
 # 2026-11-12  Jonghyun Park w/ Claude
+# updated: 2026-11-19 13:55  — load_category_rules docstring 의 제품명 예시를 중립 표현으로 교체
 # v1.10 (2026-11-12): **입력·출력 날짜 폴더 선택** — INPUT_DATE_DIR.
 #   · extract_data v5.1 의 OUTPUT_DATE_SUBDIR=True 로 output/<YYMMDD>/ 에 쌓인 추출물을 정제할 때,
 #     어느 날짜 폴더를 읽을지 상수로 고른다. 결과(_union_standard_*)도 같은 폴더에 쓴다.
@@ -356,7 +357,7 @@ def item_from_segments(segments: str) -> str:
 # ─── product category 분류 (v1.4) ──────────────────────────────────
 def load_category_rules(path: Path):
     """product_category.yaml → [(category_name, [include_re], [exclude_re]), …].
-    divisions·categories 의 파일 순서를 보존 (예: Smartthings 가 ACC 보다 먼저 매칭돼야 함).
+    divisions·categories 의 파일 순서를 보존 (예: 브랜드 계열 카테고리가 ACC 보다 먼저 매칭돼야 함).
     division 명(ETC 등)은 출력 라벨이 아니라 그룹일 뿐 — leaf category 명만 사용."""
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}

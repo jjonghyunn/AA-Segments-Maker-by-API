@@ -1,5 +1,6 @@
 # extract_data_v4.3_contents.py
 # 2026-08-03  Jonghyun Park w/ Claude
+# updated: 2026-11-19 13:55  — SLUG_ABBREVIATIONS 의 샵 약칭 슬러그를 placeholder 로 교체 (출력 파일명 슬러그 변경)
 #
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ 이 파일은 무엇인가 — 처음 보는 사람용 3줄 요약                              ║
@@ -859,8 +860,8 @@ def _parse_own_num(reportlet_name: str):
 
 SLUG_ABBREVIATIONS = [
     (r"\bcampaign\b", "cmp"),
-    (r"\bs\s*\.\s*com\b", "scom"),
-    (r"\bs\.com\b", "scom"),
+    (r"\bs\s*\.\s*com\b", "shop"),
+    (r"\bs\.com\b", "shop"),
     (r"\bconversion\b", "cvr"),
     (r"\blogin\s*&\s*non[\s\-]*login\b", "loginout"),
     (r"\blogin\s*&\s*logout\b", "loginout"),
